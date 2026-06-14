@@ -1,6 +1,6 @@
 # 29 — Global search / Command palette (GLO-001)
 
-> Related: [`docs/14-screen-inventory.md`](14-screen-inventory.md) (GLO-001 spec), [`docs/11-design-identity.md`](11-design-identity.md) (Cmd+K as navigation contract), [`docs/18-feature-flags.md`](18-feature-flags.md) (flag pattern), [`docs/27-notifications.md`](27-notifications.md) (parallel global surface — bell vs. palette), [Mockup `docs/design/global/command-palette.html`](design/global/command-palette.html). Schema lives in migration [`0062_search_indexes.sql`](../packages/api/migrations/0062_search_indexes.sql); flag seed in [`0061_command_palette_feature_flag.sql`](../packages/api/migrations/0061_command_palette_feature_flag.sql).
+> Related: [`docs/14-screen-inventory.md`](14-screen-inventory.md) (GLO-001 spec), [`docs/11-design-identity.md`](11-design-identity.md) (Cmd+K as navigation contract), [`docs/18-feature-flags.md`](18-feature-flags.md) (flag pattern), [`docs/27-notifications.md`](27-notifications.md) (parallel global surface — bell vs. palette), [Mockup `docs/design/global/command-palette.html`](design/global/command-palette.html). Schema lives in migration [`0062_search_indexes.sql`](../packages/api/migrations/0062_search_indexes.sql). The flag seed in [`0061_command_palette_feature_flag.sql`](../packages/api/migrations/0061_command_palette_feature_flag.sql) is superseded by the issue #493 flag retirement (migration 0082) — the palette is now always on for tenant users.
 
 ## 0. Why this exists — at a glance
 
@@ -14,7 +14,7 @@ Givernance's MVP shipped with **entity-scoped** search — every list page has i
 
 It's the keyboard-first navigation layer that operators trained by Linear, Notion, and the Stripe Dashboard already expect. Without it, every entity-scoped search input is a separate place to look — and Salesforce's "global search" is one of the few NPSP features users actually praise.
 
-The surface is **gated behind `productivity.command_palette` (default off)**. With the flag off, the overlay, the topbar button, the global keyboard listener, and the `GET /v1/search` route are all completely absent — no inert placeholder anywhere. The full flag rationale + rollback drill is in [§5](#5-feature-flag-productivitycommand_palette).
+The palette is **always available to tenant users** — pressing `Cmd+K` / `Ctrl+K` opens it on any authenticated page. Super-admins don't get it because it searches tenant-scoped data (constituents / campaigns / donations) that has no meaning outside a tenant context — a role distinction, not a flag. The surface originally shipped behind `productivity.command_palette` (default off); that flag was retired in issue #493 — see [§5](#5-flag-retirement-issue-493).
 
 ## 1. User flow — operator searches across entities
 
@@ -37,7 +37,7 @@ sequenceDiagram
 
     Note over Palette: debounce 200 ms<br/>previous in-flight req aborted
     Palette->>+API: GET /v1/search?q=Marie<br/>Bearer JWT (HTTP-only cookie)
-    Note over API: 1. requireFlag(productivity.command_palette)<br/>   → 404 if off (anti-disclosure)<br/>2. requireAuth — extract orgId<br/>3. rate limit: 60/min/user
+    Note over API: 1. requireAuth — extract orgId<br/>2. rate limit: 60/min/user
     API->>+DB: withTenantContext(orgId, ...)<br/>3 parallel queries:<br/>• constituents (FTS + trigram + ILIKE)<br/>• campaigns   (FTS + trigram + ILIKE)<br/>• donations   (JOIN constituents, ref ILIKE)
     DB-->>-API: rows ranked by ts_rank + similarity,<br/>capped at 5 per group
     API-->>-Palette: { data: { query, groups } }
@@ -54,7 +54,6 @@ sequenceDiagram
 - Network error → palette stays open, shows the generic `t("commandPalette.error")` ("Could not run the search. Try again in a moment."); `aria-live="assertive"` + `role="alert"` announce it to assistive tech. The next valid keystroke supersedes the failed request.
 - 429 (rate-limit) → surfaced as the **same** generic error banner (no distinct toast) — we deliberately keep one error path rather than expose the rate-limit as a separate UX, because a sustained burst hitting the cap is usually a runaway typing loop, not a state the operator can fix differently.
 - Unauthenticated request mid-session (cookie expired between renders) → the global axios-style 401 handler in [`packages/web/src/lib/api/client.ts`](../packages/web/src/lib/api/client.ts) already routes through the auth refresh path; the palette catches the resulting rejection and surfaces the generic error until the next debounced refetch succeeds.
-- Flag off mid-session (operator just got demoted) → SSR-fetched flag list was stale, the topbar button vanishes on next nav, the API returns 404; the palette is never re-opened. No UI is left half-broken because the entire surface is conditional on `commandPaletteEnabled`.
 
 ## 2. Domain model — no new tables
 
@@ -173,7 +172,7 @@ The raw user input never reaches the SQL string. It's bound as a single `text` p
 ### 3.6 Frontend architecture
 
 - The **CommandPalette** component lives in [`packages/web/src/components/command-palette/command-palette.tsx`](../packages/web/src/components/command-palette/command-palette.tsx).
-- Mounted once inside **AppShell** (conditional on `commandPaletteEnabled`); open/close state is owned by AppShell so the global keyboard listener + the topbar trigger button both share one source of truth.
+- Mounted once inside **AppShell** for every authenticated tenant user; open/close state is owned by AppShell so the global keyboard listener + the topbar trigger button both share one source of truth.
 - Built on the existing `cmdk` wrapper in [`packages/web/src/components/ui/command.tsx`](../packages/web/src/components/ui/command.tsx) + Radix `Dialog`.
 - Server-side filtering — `shouldFilter={false}` on the `Command` root so cmdk doesn't re-filter server results client-side (which would override the server's relevance ordering and drop hits whose `title` doesn't contain the literal query).
 - 200 ms debounce on input changes. In-flight requests are aborted via `AbortController` when a fresher keystroke supersedes them — eliminates the out-of-order-response race.
@@ -183,36 +182,23 @@ The raw user input never reaches the SQL string. It's bound as a single `text` p
 
 | Endpoint / surface | Auth | RBAC | Notes |
 |---|---|---|---|
-| `GET /v1/search?q=…` | Authenticated tenant user (any role) | None beyond auth | Flag-gated 404 when `productivity.command_palette=off`. Rate limit: 60 req/min/user. RLS-scoped to the JWT's `org_id`. |
-| Topbar Cmd+K trigger button | Authenticated tenant user | None | Hidden entirely when the flag is off (off-state QA). |
-| Global Cmd+K / Ctrl+K listener | Authenticated tenant user | None | Listener is NOT mounted when the flag is off — pressing the shortcut is a no-op. |
-| Command palette overlay | Authenticated tenant user | None for the search results; quick-create rows require `org_admin` or `user` (viewers see only the search + Go-to rows). | Component is not loaded at all when the flag is off. |
+| `GET /v1/search?q=…` | Authenticated tenant user (any role) | None beyond auth | `requireAuth` + rate limit: 60 req/min/user. RLS-scoped to the JWT's `org_id`. |
+| Topbar Cmd+K trigger button | Authenticated tenant user | None | Always rendered for tenant users. |
+| Global Cmd+K / Ctrl+K listener | Authenticated tenant user | None | Always mounted for tenant users. |
+| Command palette overlay | Authenticated tenant user | None for the search results; quick-create rows require `org_admin` or `user` (viewers see only the search + Go-to rows). | Always available to tenant users. |
 | "New constituent" / "Record a donation" / "New campaign" rows | Authenticated tenant user | `org_admin` OR `user` (the `requireWrite` boundary) | Reused existing entity-create flows — no new endpoints. |
 
 Search results respect each entity's existing RLS: a viewer sees the same hits as an org_admin within the tenant (the palette is a navigation aid, not a permissioned data surface), and tenant isolation prevents any cross-tenant leakage.
 
-## 5. Feature flag — `productivity.command_palette`
+## 5. Flag retirement (issue #493)
 
-| Field | Value |
-|---|---|
-| Key | `productivity.command_palette` |
-| Default | `false` |
-| Scope | `tenant` |
-| Tenant override allowed | `true` (org-admin self-serves from `/settings/feature-flags`) |
-| Public projection | `true` (the topbar trigger + global listener need to know at page-load) |
-| Registry | [`packages/shared/src/constants/feature-flags.ts`](../packages/shared/src/constants/feature-flags.ts) |
-| Seed migration | [`0061_command_palette_feature_flag.sql`](../packages/api/migrations/0061_command_palette_feature_flag.sql) |
-| Gated surfaces | `GET /v1/search` route, topbar trigger button, global Cmd+K listener, the CommandPalette component (never imported when off via the conditional in AppShell) |
-| Off-state QA | With the flag off: the trigger button is **absent** (not greyed out), the Cmd+K keypress is a **no-op** (listener not mounted), and the API returns **404** (not 403). |
-| Emergency rollback | See [`docs/runbooks/feature-flag-rollback.md`](runbooks/feature-flag-rollback.md). One `UPDATE feature_flags SET enabled=false WHERE key='productivity.command_palette';` + `redis-cli DEL flags:global`. |
-
-The public-projection caveat in CLAUDE.md applies — the key name is intentionally descriptive (`productivity.command_palette`) and not teasing an unannounced surprise, so its presence in `GET /v1/feature-flags` for every authenticated tenant user is acceptable.
+The command palette originally shipped behind the `productivity.command_palette` feature flag (default off, tenant scope), with a phased rollout and the standard off-state guarantees. That flag was **retired in issue #493** (migration 0082 drops the seed row): the palette now ships unconditionally for every tenant user — the `GET /v1/search` route is guarded by `requireAuth` alone, and the topbar trigger, the global Cmd+K / Ctrl+K listener, and the `CommandPalette` component all mount for tenant users without any flag check. The original rollout rationale and the off-state QA matrix are preserved in git history (and in this doc's earlier revisions).
 
 ## 6. Privacy / GDPR posture
 
 - **No new PII storage**: search reads from existing tables only. The `constituents.deleted_at` soft-delete filter is applied; deleted donor records are invisible to the palette.
 - **Audit trail**: read-only search hits do **not** generate audit rows — every authenticated tenant user can already list constituents / campaigns / donations, and the audit log already records the *resulting* navigation (e.g. opening a constituent detail page emits the existing read audit, unchanged).
-- **Logs**: the `requireFlag` guard logs `flag.route_gated` when a disabled tenant hits the route (existing pattern, low cardinality — path is the route TEMPLATE, not the raw URL). The search handler emits the standard request log line via Fastify's pino — **the raw query string `q` is not redacted** because it doesn't carry PII by design (an operator's typed substring of a donor's name is far less sensitive than what the constituent detail page itself emits to the same log channel). If a future tenant requests stricter posture, redacting `q` to a hash is a single-line change in [`packages/shared/src/constants/log-redact-paths.ts`](../packages/shared/src/constants/log-redact-paths.ts).
+- **Logs**: the search handler emits the standard request log line via Fastify's pino — **the raw query string `q` is not redacted** because it doesn't carry PII by design (an operator's typed substring of a donor's name is far less sensitive than what the constituent detail page itself emits to the same log channel). If a future tenant requests stricter posture, redacting `q` to a hash is a single-line change in [`packages/shared/src/constants/log-redact-paths.ts`](../packages/shared/src/constants/log-redact-paths.ts).
 - **Erasure**: a constituent erasure cascade already removes their `donations`. After erasure, the palette returns zero hits for any query that previously matched — no separate index to rebuild because the expression indices reference the live row.
 
 ## 7. Out of scope (deferred)
@@ -241,4 +227,4 @@ When a new tenant-scoped table joins the searchable graph (e.g. grants, programs
 5. Add translations under `appShell.commandPalette.groups.*` in `en.json` and `fr.json`.
 6. Add RLS-isolation + happy-path tests in [`packages/api/src/tests/integration/search.test.ts`](../packages/api/src/tests/integration/search.test.ts).
 
-The flag stays the same — adding a new entity is not "a new feature", it's an extension of an already-shipped surface.
+No flag is involved — adding a new entity is not "a new feature", it's an extension of an already-shipped, always-on surface.

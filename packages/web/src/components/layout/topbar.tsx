@@ -29,17 +29,15 @@ interface TopbarProps {
   sidebarOpen: boolean;
   hamburgerRef: RefObject<HTMLButtonElement | null>;
   /**
-   * Whether the `communication.notifications_center` flag is on for this
-   * tenant (Epic #363). When `false` the bell button is completely
-   * absent — off-state QA per `feedback_feature_flag_first`.
-   * Resolved server-side in `(app)/layout.tsx` so the bell doesn't
-   * flash in then out on hydration.
+   * Whether to render the notifications bell (Epic #363). True for
+   * tenant users, false for super-admins (no tenant-scoped events).
+   * Resolved by `AppShell` from the super-admin flag.
    */
   notificationsEnabled?: boolean;
   /**
-   * Whether the `productivity.command_palette` flag is on for this
-   * tenant (Epic #364). When `false`, the Cmd+K trigger button is
-   * completely absent — off-state QA per `feedback_feature_flag_first`.
+   * Whether to render the Cmd+K command-palette trigger (Epic #364).
+   * True for tenant users, false for super-admins (nothing tenant-
+   * scoped to search). Resolved by `AppShell` from the super-admin flag.
    */
   commandPaletteEnabled?: boolean;
   /**
@@ -139,13 +137,12 @@ export function Topbar({
       </div>
 
       {/*
-        Cmd+K trigger button (Epic #364, GLO-001). When the flag is off,
-        the surface is COMPLETELY absent (off-state QA per
-        `feedback_feature_flag_first`) — no inert placeholder input.
-        When on, this button opens the command palette via the
-        AppShell-owned state. Visual mimics the mockup's input look
-        (pill, search icon left, ⌘K badge right) but it's a button so
-        pointer + keyboard activation both go through one path.
+        Cmd+K trigger button (Epic #364, GLO-001). Rendered for tenant
+        users only (super-admins have nothing tenant-scoped to search).
+        Opens the command palette via the AppShell-owned state. Visual
+        mimics the mockup's input look (pill, search icon left, ⌘K badge
+        right) but it's a button so pointer + keyboard activation both go
+        through one path.
       */}
       {commandPaletteEnabled && onCommandPaletteOpen ? (
         <button
@@ -165,9 +162,8 @@ export function Topbar({
 
       <div className="ml-auto flex items-center gap-3">
         {/*
-          NotificationsBell is feature-flag-gated (Epic #363). When the
-          flag is off the button is completely absent — off-state QA per
-          `feedback_feature_flag_first` / docs/18 § 5.
+          NotificationsBell renders for tenant users only (Epic #363);
+          super-admins receive no tenant-scoped events.
         */}
         {notificationsEnabled ? <NotificationsBell /> : null}
 

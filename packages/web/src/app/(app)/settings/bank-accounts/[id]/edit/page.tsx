@@ -7,7 +7,6 @@ import { PageHeader } from "@/components/shared/page-header";
 import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
 import { requireAuth } from "@/lib/auth/guards";
-import { isFeatureFlagsPhase2Enabled } from "@/lib/feature-flags/server";
 import type { BankAccount } from "@/models/bank-account";
 import { BankAccountService } from "@/services/BankAccountService";
 
@@ -35,7 +34,6 @@ export default async function EditBankAccountPage({ params }: EditBankAccountPag
   const t = await getTranslations("settings.bankAccounts");
   const tSettings = await getTranslations("settings");
   const tForm = await getTranslations("settings.bankAccounts.form");
-  const showFeatureFlags = await isFeatureFlagsPhase2Enabled();
 
   return (
     <>
@@ -50,7 +48,7 @@ export default async function EditBankAccountPage({ params }: EditBankAccountPag
           { label: tForm("breadcrumbEdit") },
         ]}
       />
-      <SettingsNavigation showFeatureFlags={showFeatureFlags} />
+      <SettingsNavigation />
       <BankAccountForm
         mode="edit"
         bankAccount={bankAccount}

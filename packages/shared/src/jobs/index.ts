@@ -207,10 +207,6 @@ export interface GenerateMonthlyFinanceReportJob {
  *    sends, and re-schedules cyclical surveys.
  *  - SURVEY_RETENTION (weekly, Sunday 04:00 UTC) — soft-deletes
  *    `survey_responses` older than 24 months (docs/31).
- *
- * All three respect the `admin.finance_dashboard` feature flag — a
- * no-op (early return) when the flag is off so a paused rollout
- * doesn't churn Postgres for nothing.
  */
 export const FINANCE_DASHBOARD_JOBS = {
   CONSTITUENT_COUNT_REFRESH: "finance.constituent_count_refresh",
@@ -358,9 +354,8 @@ export const NOTIFICATIONS_DIGEST_JOBS = {
  *
  *  - MONTHLY_AUTO_TRIGGER — cron-fired on the 1st of each month at
  *    03:30 UTC, and once at worker startup for the boot-time backfill.
- *    The processor checks the `admin.finance_dashboard` flag, resolves
- *    the previous calendar month, idempotently inserts a pending row
- *    (with kpi_snapshot), and enqueues GENERATE_PDF.
+ *    The processor resolves the previous calendar month, idempotently
+ *    inserts a pending row (with kpi_snapshot), and enqueues GENERATE_PDF.
  *  - GENERATE_PDF — one job per `platform_finance_reports` row;
  *    renders the PDF from the pre-built kpi_snapshot and uploads to S3.
  */

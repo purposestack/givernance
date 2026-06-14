@@ -24,14 +24,12 @@
  * we stopped retaining" failure mode that has no other tell.
  */
 
-import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
 import { auditLogs, surveyResponses } from "@givernance/shared/schema";
 import type { Job } from "bullmq";
 import { count, inArray, sql } from "drizzle-orm";
 import Redis from "ioredis";
 import { env } from "../env.js";
 import { db } from "../lib/db.js";
-import { isFlagEnabled } from "../lib/flags.js";
 import { jobLogger } from "../lib/logger.js";
 
 const BATCH_SIZE = 1000;
@@ -151,12 +149,6 @@ export async function processSurveyRetention(
   deps: SurveyRetentionDeps = {},
 ): Promise<void> {
   const log = jobLogger({ jobId: job.id, tenantId: "system" });
-
-  const flagOn = await isFlagEnabled(FEATURE_FLAG_KEYS.ADMIN_FINANCE_DASHBOARD);
-  if (!flagOn) {
-    log.info("admin.finance_dashboard flag is off, skipping survey retention sweep");
-    return;
-  }
 
   // CROSS-TENANT INTENTIONAL: retention sweep spans every tenant —
   // owner-pool UPDATE scoped by the age + soft-delete predicate.

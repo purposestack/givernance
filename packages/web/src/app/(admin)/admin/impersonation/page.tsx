@@ -5,7 +5,6 @@ import { EndImpersonationSessionButton } from "@/components/admin/end-impersonat
 import { ReplicateImpersonationSessionButton } from "@/components/admin/replicate-impersonation-session-button";
 import { Button } from "@/components/ui/button";
 import { createServerApiClient } from "@/lib/api/client-server";
-import { isImpersonationReplicateEnabled } from "@/lib/feature-flags/server";
 import { cn } from "@/lib/utils";
 import {
   ImpersonationService,
@@ -63,14 +62,9 @@ export default async function ImpersonationListPage({ searchParams }: Impersonat
   const [params, client] = await Promise.all([searchParams, createServerApiClient()]);
   const modeFilter = parseModeFilter(params.mode);
 
-  // Two independent SSR fetches — kick off in parallel so the page
-  // doesn't block on serial round-trips. `?all=true` returns historical
-  // sessions too (newest-first); the flag fetch decides whether the
+  // `?all=true` returns historical sessions too (newest-first); the
   // past-rows table renders the Replicate row-action (issue #428).
-  const [sessionsRes, replicateEnabled] = await Promise.all([
-    ImpersonationService.listSessions(client, { all: true, limit: 200 }),
-    isImpersonationReplicateEnabled(),
-  ]);
+  const sessionsRes = await ImpersonationService.listSessions(client, { all: true, limit: 200 });
   const { data } = sessionsRes;
 
   const active = data.filter((s) => deriveStatus(s) === "active");
@@ -121,7 +115,7 @@ export default async function ImpersonationListPage({ searchParams }: Impersonat
             }
           />
         ) : (
-          <SessionTable rows={past} rowActions={replicateEnabled ? "replicate" : "none"} />
+          <SessionTable rows={past} rowActions="replicate" />
         )}
       </section>
     </main>
@@ -249,10 +243,9 @@ function UserCell({
 /**
  * Per-section row action mode. `end` = active row with the End-Session
  * button. `replicate` = past row with the Replicate row-action (issue
- * #428, gated on `admin.impersonation_replicate`). `none` = past row
- * with the flag off, only the View button renders.
+ * #428).
  */
-type RowActions = "end" | "replicate" | "none";
+type RowActions = "end" | "replicate";
 
 async function SessionTable({
   rows,
@@ -370,14 +363,11 @@ async function SessionRow({
           </Button>
           {rowActions === "end" && <EndImpersonationSessionButton sessionId={session.id} />}
           {/*
-            Replicate variants when `rowActions === "replicate"` (flag
-            ON; off-state QA invariant: flag OFF means this branch is
-            never reached and the column ends with only the View button):
+            Replicate variants when `rowActions === "replicate"`:
               - `targetUserId !== null` → render the active button.
               - `targetUserId === null` → render a disabled marker
                 explaining *why* Replicate is unavailable (off-boarded
-                target). Pre-fix the row was visually identical to a
-                flag-off row, which read as "Replicate is gone" rather
+                target) so it doesn't read as "Replicate is gone" rather
                 than "the target this session ran against has been
                 hard-deleted" — SOC + ops feedback, PR #429 review.
            */}

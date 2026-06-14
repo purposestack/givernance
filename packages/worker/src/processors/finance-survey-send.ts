@@ -21,14 +21,10 @@
  *     are left with their `next_scheduled_at` in the past so they
  *     don't re-trigger.
  *
- * Gated by `admin.finance_dashboard` — no-op when flag is off (the
- * survey infrastructure ships dark with the dashboard).
- *
  * Cohort matcher (the MVP shape, intentionally tiny — extend in docs/31):
  *   { "roles": ["org_admin"], "orgIds": ["..."], "excludeUserIds": ["..."] }
  */
 
-import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
 import { SURVEY_EVENT_TYPES } from "@givernance/shared/jobs";
 import {
   outboxEvents,
@@ -40,7 +36,6 @@ import {
 import type { Job } from "bullmq";
 import { and, eq, inArray, isNull, not, sql } from "drizzle-orm";
 import { db } from "../lib/db.js";
-import { isFlagEnabled } from "../lib/flags.js";
 import { jobLogger } from "../lib/logger.js";
 
 /** JSONB matcher shape for `surveys.cohort_rule`. */
@@ -112,12 +107,6 @@ function inviteExpiresAt(now: Date, cadenceDays: number | null): Date {
 
 export async function processSurveySend(job: Job): Promise<void> {
   const log = jobLogger({ jobId: job.id, tenantId: "system" });
-
-  const flagOn = await isFlagEnabled(FEATURE_FLAG_KEYS.ADMIN_FINANCE_DASHBOARD);
-  if (!flagOn) {
-    log.info("admin.finance_dashboard flag is off, skipping survey send loop");
-    return;
-  }
 
   const now = new Date();
 

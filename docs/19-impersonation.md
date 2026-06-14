@@ -26,7 +26,7 @@ Both modes carry the RFC 8693 `act` claim — the RFC's "delegation" / "imperson
 
 **Why both must coexist**: a one-mode design forces a tradeoff between "operator can do support work" and "operator can safely browse a user's account without changing anything". Delegation answers the first; pure impersonation answers the second. Conflating them is what the RFC 8693 spec writers explicitly warned against (§4.1).
 
-**Dev-speed surface (issue #428)**: a one-click **Replicate** row-action on the Back Office past-sessions list re-enters the same target with the same mode + reason, reusing the existing 5-min MFA-fresh window (no new security mechanism — see § 4.1). Gated by `admin.impersonation_replicate` (default off, `scope='platform'`); with the flag off the list is identical to what shipped with issue #24.
+**Dev-speed surface (issue #428)**: a one-click **Replicate** row-action ships unconditionally on the Back Office past-sessions list — it re-enters the same target with the same mode + reason, reusing the existing 5-min MFA-fresh window (no new security mechanism — see § 4.1). It originally shipped behind `admin.impersonation_replicate`; that flag was retired in issue #493 (migration 0082).
 
 ## 1. Goals
 
@@ -152,9 +152,9 @@ Once a session is `ENDED` / `REVOKED` / `EXPIRED`, the same investigation often 
 
 **Reason marker**: the FE appends `" (replicated)"` to the original reason before POSTing, idempotently (no double-append on chained replicates) and skipped when the result would exceed the 2000-char cap. Audit-log readers see distinct rows under `impersonation.started` with the marker visible in the captured reason; SOC dashboards correlate replicate chains by `(impersonator_keycloak_id, target_keycloak_id)` ordered by `created_at`.
 
-**Flag gate**: `admin.impersonation_replicate` (default off, `scope='platform'`, `tenant_override_allowed=false`, `public=true`). SSR-fetched on the list page; with the flag off the column ends with only the View button and the Replicate component is never mounted. Migration `0059_admin_impersonation_replicate_flag` seeds the row. Emergency rollback: `docs/runbooks/feature-flag-rollback.md`.
+**No flag gate**: the Replicate column always renders on past sessions for super-admins. A disabled marker still shows in place of the button when the target was hard-deleted (see "Off-boarded target" below) — that behaviour is unchanged. The action originally shipped behind `admin.impersonation_replicate` (seeded by migration `0059_admin_impersonation_replicate_flag`, which stays immutable); that flag was retired in issue #493 (migration 0082).
 
-**Off-boarded target**: if the past target's `users.id` has been hard-deleted (`targetUserId` null in the DTO), the Replicate button is hidden for that row even with the flag on. The operator can still inspect the past session via View, but cannot re-enter it (the start endpoint requires a live `users.id` — see `resolveTarget()` in `impersonation-service.ts`).
+**Off-boarded target**: if the past target's `users.id` has been hard-deleted (`targetUserId` null in the DTO), the Replicate button is hidden for that row. The operator can still inspect the past session via View, but cannot re-enter it (the start endpoint requires a live `users.id` — see `resolveTarget()` in `impersonation-service.ts`).
 
 ```mermaid
 sequenceDiagram

@@ -8,13 +8,7 @@
  *   - reschedules cyclical surveys per cadence_days.
  */
 
-import {
-  featureFlags,
-  outboxEvents,
-  surveyInvitations,
-  surveys,
-  users,
-} from "@givernance/shared/schema";
+import { outboxEvents, surveyInvitations, surveys, users } from "@givernance/shared/schema";
 import type { Job } from "bullmq";
 import { and, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -31,21 +25,6 @@ function mockJob(): Job {
 }
 
 beforeAll(async () => {
-  await db
-    .insert(featureFlags)
-    .values({
-      key: "admin.finance_dashboard",
-      enabled: true,
-      label: "finance",
-      description: "finance",
-      scope: "platform",
-      public: true,
-    })
-    .onConflictDoUpdate({
-      target: featureFlags.key,
-      set: { enabled: true },
-    });
-
   await db.execute(sql`
     INSERT INTO tenants (id, name, slug, status)
     VALUES (${TENANT_ID}, 'Survey Test NPO', 'survey-test-npo-436', 'active')
@@ -98,10 +77,6 @@ afterAll(async () => {
   await db.execute(sql`DELETE FROM surveys WHERE id = ${SURVEY_QUARTERLY}`);
   await db.execute(sql`DELETE FROM users WHERE id IN (${ORG_ADMIN_ID}, ${REGULAR_USER_ID})`);
   await db.execute(sql`DELETE FROM tenants WHERE id = ${TENANT_ID}`);
-  await db
-    .update(featureFlags)
-    .set({ enabled: false })
-    .where(eq(featureFlags.key, "admin.finance_dashboard"));
 });
 
 describe("resolveCohort", () => {
@@ -225,32 +200,5 @@ describe("processSurveySend", () => {
       );
 
     expect(after.length).toBe(before.length);
-  });
-
-  it("no-op when admin.finance_dashboard flag is off", async () => {
-    await db
-      .update(featureFlags)
-      .set({ enabled: false })
-      .where(eq(featureFlags.key, "admin.finance_dashboard"));
-    await db
-      .update(surveys)
-      .set({ nextScheduledAt: new Date(Date.now() - 60 * 1000) })
-      .where(eq(surveys.id, SURVEY_QUARTERLY));
-    const sentinelTime = Date.now();
-
-    await processSurveySend(mockJob());
-
-    // next_scheduled_at unchanged (still in the past, not bumped by
-    // cadence).
-    const [s] = await db
-      .select({ next: surveys.nextScheduledAt })
-      .from(surveys)
-      .where(eq(surveys.id, SURVEY_QUARTERLY));
-    expect(s?.next?.getTime()).toBeLessThan(sentinelTime);
-
-    await db
-      .update(featureFlags)
-      .set({ enabled: true })
-      .where(eq(featureFlags.key, "admin.finance_dashboard"));
   });
 });

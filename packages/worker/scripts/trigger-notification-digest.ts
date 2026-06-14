@@ -23,7 +23,6 @@
  *     row (toggle from /profile/notifications or via SQL).
  *   - User has an unread `notifications` row whose `type` matches the
  *     preference row.
- *   - `communication.notifications_center` flag is on for the tenant.
  */
 
 import { Queue } from "bullmq";

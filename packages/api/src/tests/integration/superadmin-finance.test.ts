@@ -4,7 +4,6 @@
  * Coverage:
  *   - RBAC matrix per route: super_admin → 200/202; org_admin / user /
  *     viewer → 404 (anti-disclosure); unauthenticated → 401.
- *   - Flag off → 404 on every gated route.
  *   - Custom-range fuzz: missing bounds, `from > to`, oversize window,
  *     `1900-01-01` clamping, `'; DROP TABLE` SQLi attempt.
  *   - Idempotent launch: replay with same key → cached 202.
@@ -18,12 +17,9 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
-import { featureFlags } from "@givernance/shared/schema";
-import { eq, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { flagService } from "../../lib/flags/flag-service.js";
 import { redis } from "../../lib/redis.js";
 import { createServer } from "../../server.js";
 import {
@@ -36,9 +32,8 @@ import {
   USER_A_ROW_ID,
   USER_B_ROW_ID,
 } from "../helpers/auth.js";
-import { db, systemDb } from "../helpers/db.js";
+import { systemDb } from "../helpers/db.js";
 
-const FLAG_KEY = FEATURE_FLAG_KEYS.ADMIN_FINANCE_DASHBOARD;
 const SUPER_ADMIN_KEYCLOAK_ID = "00000000-0000-0000-0000-0000000437ad";
 const SUPER_ADMIN_PLATFORM_ROW_ID = "00000000-0000-0000-0000-0000000437a1";
 const PLATFORM_TENANT_ID = "00000000-0000-0000-0000-0000000000a1";
@@ -59,11 +54,6 @@ function superAdminToken() {
     role: undefined,
     email: "super-finance@example.org",
   });
-}
-
-async function setFlag(enabled: boolean): Promise<void> {
-  await db.update(featureFlags).set({ enabled }).where(eq(featureFlags.key, FLAG_KEY));
-  await flagService.invalidate();
 }
 
 async function clearRedisCache(): Promise<void> {
@@ -139,8 +129,6 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await clearRedisCache();
-  // Default ON for most tests — flag-off coverage explicitly toggles back.
-  await setFlag(true);
   // Clean state per test.
   await systemDb.execute(sql`DELETE FROM survey_launches WHERE survey_id = ${pmfSurveyId}`);
   await systemDb.execute(
@@ -169,10 +157,6 @@ beforeEach(async () => {
     WHERE survey_id = ${pmfSurveyId}
       AND id NOT IN (${pmfInvitationForUserA}, ${pmfInvitationForUserB})
   `);
-});
-
-afterEach(async () => {
-  await setFlag(false);
 });
 
 // ─── GET /v1/superadmin/finance/summary ─────────────────────────────────
@@ -235,21 +219,6 @@ describe("GET /v1/superadmin/finance/summary", () => {
         type: "https://httpproblems.com/http-status/401",
         title: "Unauthorized",
         status: 401,
-      });
-    });
-
-    it("flag off → 404 (gated route invisible)", async () => {
-      await setFlag(false);
-      const res = await app.inject({
-        method: "GET",
-        url: "/v1/superadmin/finance/summary?period=30d",
-        headers: authHeader(superAdminToken()),
-      });
-      expect(res.statusCode).toBe(404);
-      expect(res.json()).toMatchObject({
-        type: "https://httpproblems.com/http-status/404",
-        title: "Not Found",
-        status: 404,
       });
     });
   });
@@ -482,16 +451,6 @@ describe("GET /v1/superadmin/finance/summary.csv", () => {
         url: "/v1/superadmin/finance/summary.csv?period=30d",
       });
       expect(res.statusCode).toBe(401);
-    });
-
-    it("flag off → 404", async () => {
-      await setFlag(false);
-      const res = await app.inject({
-        method: "GET",
-        url: "/v1/superadmin/finance/summary.csv?period=30d",
-        headers: authHeader(superAdminToken()),
-      });
-      expect(res.statusCode).toBe(404);
     });
   });
 
@@ -834,17 +793,6 @@ describe("POST /v1/superadmin/surveys/:slug/launch", () => {
     expect(res.statusCode).toBe(404);
   });
 
-  it("flag off → 404", async () => {
-    await setFlag(false);
-    const res = await app.inject({
-      method: "POST",
-      url: `/v1/superadmin/surveys/${PMF_SLUG}/launch`,
-      headers: { ...authHeader(superAdminToken()), "idempotency-key": randomUUID() },
-      payload: { channel: "email" },
-    });
-    expect(res.statusCode).toBe(404);
-  });
-
   it("non-v4 UUID Idempotency-Key → 400 (v3/v5 must fail closed)", async () => {
     // RFC-4122 v3 (MD5-namespaced): the third group starts with '3', not '4'.
     const v3Key = "12345678-1234-3456-8123-1234567890ab";
@@ -1056,17 +1004,6 @@ describe("POST /v1/surveys/:invitationId/respond", () => {
     });
     expect(res.statusCode).toBe(401);
   });
-
-  it("flag off → 404", async () => {
-    await setFlag(false);
-    const res = await app.inject({
-      method: "POST",
-      url: `/v1/surveys/${pmfInvitationForUserA}/respond`,
-      headers: authHeader(signToken(app, { sub: USER_A })),
-      payload: { response: { category: "very_disappointed" } },
-    });
-    expect(res.statusCode).toBe(404);
-  });
 });
 
 describe("POST /v1/superadmin/finance/cache/flush (#449)", () => {
@@ -1148,16 +1085,6 @@ describe("POST /v1/superadmin/finance/cache/flush (#449)", () => {
     });
   });
 
-  it("flag off → 404", async () => {
-    await setFlag(false);
-    const res = await app.inject({
-      method: "POST",
-      url: "/v1/superadmin/finance/cache/flush",
-      headers: authHeader(superAdminToken()),
-    });
-    expect(res.statusCode).toBe(404);
-  });
-
   it("idempotent: flushing twice keeps decoy keys intact and returns 0 the second time", async () => {
     await app.inject({
       method: "POST",
@@ -1224,16 +1151,6 @@ describe("GET /v1/surveys/pending", () => {
     expect(body.data[0]?.invitationId).toBe(pmfInvitationForUserA);
     expect(body.data[0]?.surveyKind).toBe("pmf");
     expect(body.data[0]?.questionFr).toBe("PMF FR");
-  });
-
-  it("flag-off → 404 (anti-disclosure)", async () => {
-    await setFlag(false);
-    const res = await app.inject({
-      method: "GET",
-      url: "/v1/surveys/pending",
-      headers: authHeader(signToken(app)),
-    });
-    expect(res.statusCode).toBe(404);
   });
 
   it("super_admin → empty list (no tenant user row)", async () => {
@@ -1412,16 +1329,6 @@ describe("POST /v1/surveys/:invitationId/dismiss", () => {
       method: "POST",
       // User A trying to dismiss User B's invitation.
       url: `/v1/surveys/${pmfInvitationForUserB}/dismiss`,
-      headers: authHeader(signToken(app)),
-    });
-    expect(res.statusCode).toBe(404);
-  });
-
-  it("flag-off → 404", async () => {
-    await setFlag(false);
-    const res = await app.inject({
-      method: "POST",
-      url: `/v1/surveys/${pmfInvitationForUserA}/dismiss`,
       headers: authHeader(signToken(app)),
     });
     expect(res.statusCode).toBe(404);

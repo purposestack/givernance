@@ -26,10 +26,8 @@
 // passes its owner-pool `db` + its own PLATFORM_REPORTS queue closure.
 //
 // PLATFORM-LEVEL: every query goes through the injected owner `db`
-// (the table has no org_id, no RLS). The API route guard chain
-// `requireFlag(ADMIN_FINANCE_DASHBOARD) → requireSuperAdmin` is
-// enforced in routes.ts (flag first so a scanner gets 404 without
-// revealing the role requirement); the worker gates on the same flag.
+// (the table has no org_id, no RLS). The API route guard
+// `requireSuperAdmin` is enforced in routes.ts.
 
 import { platformFinanceReports } from "@givernance/shared/schema";
 import { and, eq, inArray, sql } from "drizzle-orm";

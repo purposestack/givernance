@@ -3,7 +3,7 @@
 > Related: [`docs/14-screen-inventory.md`](14-screen-inventory.md) (super-admin Finance), [`docs/31-tenant-mobilization-score.md`](31-tenant-mobilization-score.md), [`docs/32-survey-infrastructure.md`](32-survey-infrastructure.md), [`docs/15-infra-adr.md`](15-infra-adr.md) (ADR-023 bucket topology), [Epic #434](https://github.com/purposestack/givernance/issues/434), [Issue #443](https://github.com/purposestack/givernance/issues/443).
 >
 > Migration that ships the schema: [`packages/api/migrations/0079_platform_finance_reports.sql`](../packages/api/migrations/0079_platform_finance_reports.sql).
-> Feature flag: gated under the existing `admin.finance_dashboard` (default off; same flag as the rest of Epic #434).
+> Feature flag: retired in issue #493 (migration 0082) — these routes are now reachable by super-admins unconditionally.
 > S3 bucket: `S3_REPORTS_BUCKET` (private, ADR-023).
 
 ## 0. Why this exists — at a glance
@@ -94,7 +94,7 @@ erDiagram
 
 | Concern | Owner | Notes |
 |---|---|---|
-| Route handlers | [`packages/api/src/modules/superadmin/finance/routes.ts`](../packages/api/src/modules/superadmin/finance/routes.ts) | Three new routes (POST, GET, GET pdf). Guard chain `requireFlag(ADMIN_FINANCE_DASHBOARD) → requireSuperAdmin` — flag first so a scanner gets 404 without enumerating the role requirement. |
+| Route handlers | [`packages/api/src/modules/superadmin/finance/routes.ts`](../packages/api/src/modules/superadmin/finance/routes.ts) | Three new routes (POST, GET, GET pdf). Guard: `requireSuperAdmin`. |
 | Service / idempotency | [`packages/api/src/modules/superadmin/finance/monthly-report.ts`](../packages/api/src/modules/superadmin/finance/monthly-report.ts) | Month resolution, snapshot build, INSERT, enqueue. Same-month race collapses to the existing row via the partial unique index (catch + re-SELECT). |
 | Snapshot source | [`packages/api/src/modules/superadmin/finance/service.ts`](../packages/api/src/modules/superadmin/finance/service.ts) (`buildFinanceSummary`) | Same SQL as the live dashboard. The 5-min Redis cache covers the typical "view dashboard → click Generate" flow. |
 | Worker processor | [`packages/worker/src/processors/generate-monthly-finance-report.ts`](../packages/worker/src/processors/generate-monthly-finance-report.ts) | Reads snapshot from row, renders PDF, uploads, flips status. |
@@ -116,7 +116,7 @@ erDiagram
 | `GET /v1/superadmin/finance/reports/:id` | 200 / 404 | 404 | 401 |
 | `GET /v1/superadmin/finance/reports/:id/pdf` | 200 stream / 409 / 404 | 404 | 401 |
 
-Every route's `preHandler` is `requireFlag(ADMIN_FINANCE_DASHBOARD) → requireSuperAdmin` (order matters — flag-off returns 404 without revealing the role requirement, consistent with the rest of Epic #434).
+Every route's `preHandler` is `requireSuperAdmin`.
 
 ## 5. Privacy / GDPR posture
 
@@ -136,7 +136,7 @@ Two non-manual paths feed into the same `requestMonthlyReport()` flow:
 
 **Multi-replica safety** — the cron and the boot-time backfill BOTH check `findLiveByMonth` before INSERTing; concurrent replicas race the partial unique index, and the loser catches the violation + replays the existing row. No coordination service required.
 
-**Flag gating** — both the boot-time backfill and the cron's fire-time fire re-check `ADMIN_FINANCE_DASHBOARD` and no-op when off, so a paused rollout doesn't churn Postgres.
+**Flag gating (retired)** — the boot-time backfill and the cron's fire-time fire originally re-checked `ADMIN_FINANCE_DASHBOARD` and no-op'd when off, so a paused rollout didn't churn Postgres. That flag was retired in issue #493 (migration 0082); both paths now run unconditionally.
 
 **Tests** — `disableSchedulers: true` on `createServer` opts is the test-only opt-out so integration suites don't enqueue spurious jobs. Production callers always get the scheduler.
 

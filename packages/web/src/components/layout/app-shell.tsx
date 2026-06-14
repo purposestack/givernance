@@ -25,16 +25,12 @@ interface AppShellProps {
   /**
    * SSR-resolved super-admin flag — lets the sidebar's "Back office" section
    * render on the server instead of popping in after `/v1/users/me` hydrates.
+   * Also decides whether the tenant-scoped topbar chrome (notifications
+   * bell, command palette) renders: super-admins live in `platform_admins`
+   * with no org_id (ADR-022), so those surfaces are meaningless for them.
    * FE-1 (PR #135 review).
    */
   isSuperAdmin?: boolean;
-  /**
-   * SSR-resolved value of `admin.finance_dashboard` (Epic #434). When
-   * `true` AND the viewer is super-admin, the sidebar renders the
-   * "Platform finance" entry. Defaults to `false` — off-state QA per
-   * `feedback_feature_flag_first`.
-   */
-  financeDashboardEnabled?: boolean;
   /**
    * Active tenant id — used to scope the "Add your logo" banner's per-org
    * dismissal key (Epic #286). Optional: when missing (super-admin), the
@@ -43,21 +39,6 @@ interface AppShellProps {
   orgId?: string;
   /** Whether the current user can act on the "Add your logo" CTA (Epic #286). */
   canManageBranding?: boolean;
-  /**
-   * Whether the `communication.notifications_center` feature flag is
-   * on for this tenant (Epic #363). Resolved SSR so the bell icon
-   * doesn't flash in/out on hydration. Defaults to `false` — off-state
-   * QA per `feedback_feature_flag_first`.
-   */
-  notificationsEnabled?: boolean;
-  /**
-   * Whether the `productivity.command_palette` feature flag is on for
-   * this tenant (Epic #364). Resolved SSR so the global Cmd+K
-   * listener + topbar button don't flash in/out on hydration. When
-   * `false`, the listener is never mounted and the overlay is never
-   * rendered — off-state QA per `feedback_feature_flag_first`.
-   */
-  commandPaletteEnabled?: boolean;
   /**
    * Server-resolved org logo (Epic #286 / PR #287 review, major 4).
    * Threaded down to `Sidebar` and `AddLogoBanner` so they don't each
@@ -88,17 +69,20 @@ export function AppShell({
   impersonationUserName,
   provisionalAdmin,
   membershipCount,
-  isSuperAdmin,
-  financeDashboardEnabled = false,
+  isSuperAdmin = false,
   orgId,
   canManageBranding = false,
   orgLogo = null,
-  notificationsEnabled = false,
-  commandPaletteEnabled = false,
 }: AppShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const hamburgerRef = useRef<HTMLButtonElement>(null);
+
+  // Tenant-scoped topbar chrome (notifications bell + command palette)
+  // renders for tenant users only. Super-admins live in `platform_admins`
+  // with no org_id (ADR-022), so there's nothing tenant-scoped to notify
+  // them about or search across.
+  const showTenantChrome = !isSuperAdmin;
 
   const handleMenuToggle = useCallback(() => {
     setSidebarOpen((prev) => !prev);
@@ -127,16 +111,15 @@ export function AppShell({
     };
   }, [sidebarOpen]);
 
-  // Global Cmd+K / Ctrl+K binding (Epic #364, GLO-001). Mounted ONLY
-  // when the flag is on so an off-state user pressing the shortcut
-  // does nothing — off-state QA per `feedback_feature_flag_first`.
+  // Global Cmd+K / Ctrl+K binding (Epic #364, GLO-001). Mounted only for
+  // tenant users — a super-admin has nothing tenant-scoped to search.
   // Guards against firing inside a text field or with modifier
   // combinations the OS already owns (Cmd+K is normally free; Ctrl+K
   // shadows a browser address-bar shortcut in Firefox, which we accept
   // — the palette is the higher-value surface for an authenticated
   // app).
   useEffect(() => {
-    if (!commandPaletteEnabled) return;
+    if (!showTenantChrome) return;
     function handleKeyDown(e: KeyboardEvent) {
       const isShortcut = (e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key === "k";
       if (!isShortcut) return;
@@ -145,7 +128,7 @@ export function AppShell({
     }
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [commandPaletteEnabled]);
+  }, [showTenantChrome]);
 
   return (
     <div className="flex min-h-screen">
@@ -154,7 +137,6 @@ export function AppShell({
         onClose={handleSidebarClose}
         membershipCount={membershipCount}
         isSuperAdmin={isSuperAdmin}
-        financeDashboardEnabled={financeDashboardEnabled}
         orgLogo={orgLogo}
       />
 
@@ -166,8 +148,8 @@ export function AppShell({
           onMenuToggle={handleMenuToggle}
           sidebarOpen={sidebarOpen}
           hamburgerRef={hamburgerRef}
-          notificationsEnabled={notificationsEnabled}
-          commandPaletteEnabled={commandPaletteEnabled}
+          notificationsEnabled={showTenantChrome}
+          commandPaletteEnabled={showTenantChrome}
           onCommandPaletteOpen={handleCommandPaletteOpen}
         />
 
@@ -179,7 +161,7 @@ export function AppShell({
         </main>
       </div>
 
-      {commandPaletteEnabled ? (
+      {showTenantChrome ? (
         <CommandPalette open={commandPaletteOpen} onClose={handleCommandPaletteClose} />
       ) : null}
     </div>

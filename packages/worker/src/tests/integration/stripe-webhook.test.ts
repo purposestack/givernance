@@ -797,15 +797,7 @@ describe("processStripeWebhook", () => {
 
   // ─── #436: BT enrichment stamps stripe_fee_cents (mocked Stripe SDK) ──
 
-  it("populates donations.stripe_fee_cents from BalanceTransaction when flag is on", async () => {
-    // Flip the flag on for this test. The seed migration inserts the
-    // row default-off; we toggle and revert.
-    await db.execute(
-      sql`INSERT INTO feature_flags (key, enabled, label, description, scope, public)
-          VALUES ('admin.finance_dashboard', true, 'finance', 'finance', 'platform', true)
-          ON CONFLICT (key) DO UPDATE SET enabled = true`,
-    );
-
+  it("populates donations.stripe_fee_cents from BalanceTransaction", async () => {
     // Stub the BT fetcher to return a 175 cents fee — bypasses the
     // real Stripe SDK call. Same currency as the donation (EUR) so the
     // 1:1 fee → base mapping holds.
@@ -848,10 +840,6 @@ describe("processStripeWebhook", () => {
         .where(and(eq(donations.orgId, ORG_ID), eq(donations.paymentRef, paymentRef)));
       expect(don?.stripeFeeCents).toBe(175);
     } finally {
-      // Restore default-off so other tests run with the flag off.
-      await db.execute(
-        sql`UPDATE feature_flags SET enabled = false WHERE key = 'admin.finance_dashboard'`,
-      );
       setStripeFeeFetcher(null);
     }
   });

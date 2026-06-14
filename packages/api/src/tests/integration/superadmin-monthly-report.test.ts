@@ -4,7 +4,6 @@
  * Coverage:
  *   - RBAC matrix on POST/GET routes (super_admin → 202/200/404;
  *     org_admin / user / viewer → 404; unauthenticated → 401).
- *   - Flag off → 404 on every gated route.
  *   - Idempotency: two POSTs for the same target month return the
  *     same `id`, only the first emits status=202 (fresh enqueue).
  *   - Audit trail: every POST writes a `platform_finance_report`
@@ -18,19 +17,16 @@
  *     elsewhere).
  */
 
-import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
-import { auditLogs, featureFlags, platformFinanceReports } from "@givernance/shared/schema";
+import { auditLogs, platformFinanceReports } from "@givernance/shared/schema";
 import { and, desc, eq, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { flagService } from "../../lib/flags/flag-service.js";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { redis } from "../../lib/redis.js";
 import { previousMonth } from "../../modules/superadmin/finance/monthly-report.js";
 import { createServer } from "../../server.js";
 import { authHeader, ensureTestTenants, signToken } from "../helpers/auth.js";
-import { db, systemDb } from "../helpers/db.js";
+import { systemDb } from "../helpers/db.js";
 
-const FLAG_KEY = FEATURE_FLAG_KEYS.ADMIN_FINANCE_DASHBOARD;
 const SUPER_ADMIN_KEYCLOAK_ID = "00000000-0000-0000-0000-0000000443ad";
 const SUPER_ADMIN_PLATFORM_ROW_ID = "00000000-0000-0000-0000-0000000443a1";
 const PLATFORM_TENANT_ID = "00000000-0000-0000-0000-0000000000a1";
@@ -44,11 +40,6 @@ function superAdminToken() {
     role: undefined,
     email: "super-report@example.org",
   });
-}
-
-async function setFlag(enabled: boolean): Promise<void> {
-  await db.update(featureFlags).set({ enabled }).where(eq(featureFlags.key, FLAG_KEY));
-  await flagService.invalidate();
 }
 
 async function clearReportsAndAudit(): Promise<void> {
@@ -85,11 +76,6 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await clearReportsAndAudit();
-  await setFlag(true);
-});
-
-afterEach(async () => {
-  await setFlag(false);
 });
 
 // ─── helpers ──────────────────────────────────────────────────────────────
@@ -172,17 +158,6 @@ describe("POST /v1/superadmin/finance/reports/monthly", () => {
         title: "Unauthorized",
         status: 401,
       });
-    });
-
-    it("flag off → 404 (gated route invisible)", async () => {
-      await setFlag(false);
-      const res = await app.inject({
-        method: "POST",
-        url: "/v1/superadmin/finance/reports/monthly",
-        headers: authHeader(superAdminToken()),
-        payload: {},
-      });
-      expect(res.statusCode).toBe(404);
     });
   });
 
@@ -348,17 +323,6 @@ describe("POST /v1/superadmin/finance/reports/backfill", () => {
   // each describe-it consumes at most one slot and use a distinct
   // x-forwarded-for header per test where two consecutive calls are
   // unavoidable.
-  it("flag off → 404 (gated)", async () => {
-    await setFlag(false);
-    const res = await app.inject({
-      method: "POST",
-      url: "/v1/superadmin/finance/reports/backfill",
-      headers: { ...authHeader(superAdminToken()), "x-forwarded-for": "10.0.0.1" },
-      payload: {},
-    });
-    expect(res.statusCode).toBe(404);
-  });
-
   it("org_admin → 404 (anti-disclosure)", async () => {
     const res = await app.inject({
       method: "POST",

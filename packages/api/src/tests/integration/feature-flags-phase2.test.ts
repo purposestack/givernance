@@ -1,29 +1,34 @@
 /**
- * Feature-flag Phase 2 integration tests (Epic #365 / PR #366).
+ * Feature-flag per-organisation override integration tests
+ * (Epic #365 / PR #366). The `admin.feature_flags_phase2` gate that
+ * once fronted these surfaces was retired in issue #493; the tooling
+ * (override endpoints, org-admin self-service, overrideStats) stays
+ * and is always reachable.
  *
- * Covers the surfaces introduced by Phase 2:
+ * Covers:
  *
  *   1. Public projection — `GET /v1/feature-flags` filters by
  *      `public=true` and overlays the caller's tenant overrides.
  *   2. Super-admin tenant overrides — GET / PUT / DELETE under
  *      `/v1/admin/tenants/:tenantId/feature-flags`.
- *   3. `overrideStats` field on `GET /v1/admin/feature-flags` when
- *      `admin.feature_flags_phase2` is on (null otherwise).
+ *   3. `overrideStats` field on `GET /v1/admin/feature-flags`.
  *   4. Org-admin self-service — `/v1/org/feature-flags` GET + PATCH.
- *   5. Off-state QA — every Phase-2 endpoint 404s when the
- *      self-flag is off.
  *
- * Test fixtures (set up in beforeAll, torn down in afterAll):
+ * Test fixtures (set up in beforeAll, torn down in afterAll) — all
+ * test-only flags NOT in FEATURE_FLAG_REGISTRY (the parity test in
+ * feature-flags.test.ts iterates the registry, so unregistered DB
+ * rows don't break it):
  *
- *   - `admin.feature_flags_phase2` flipped on for the duration of
- *     the suite (so the Phase-2 surfaces are reachable).
- *   - A test-only flag `test.scope_tenant_demo` with
- *     `scope='tenant', tenant_override_allowed=true, public=true`.
- *     The day-one production registry has zero `scope='tenant'`
- *     flags so the positive paths need a fixture flag.
- *   - A test-only flag `test.scope_tenant_admin_only` with
- *     `scope='tenant', tenant_override_allowed=false, public=false`.
- *     Used to assert that org-admin is correctly excluded.
+ *   - `test.scope_tenant_demo` with `scope='tenant',
+ *     tenant_override_allowed=true, public=true`. Drives the positive
+ *     override paths.
+ *   - `test.scope_tenant_admin_only` with `scope='tenant',
+ *     tenant_override_allowed=false, public=false`. Used to assert
+ *     that org-admin is correctly excluded.
+ *   - `test.scope_platform_demo` with `scope='platform', public=true,
+ *     enabled=true`. Drives the platform-scoped rejection paths
+ *     (PUT 422, org-admin 404) and the precedence matrix — no
+ *     production platform-scoped flag survives after issue #493.
  *
  * `audit_log` emission is exercised by the existing audit-plugin
  * tests; here we focus on flag semantics. The plugin auto-records
@@ -50,7 +55,7 @@ import { db } from "../helpers/db.js";
 
 let app: FastifyInstance;
 
-const PHASE2_KEY = "admin.feature_flags_phase2";
+const PLATFORM_DEMO_KEY = "test.scope_platform_demo";
 const TENANT_DEMO_KEY = "test.scope_tenant_demo";
 const TENANT_ADMIN_ONLY_KEY = "test.scope_tenant_admin_only";
 
@@ -66,13 +71,10 @@ beforeAll(async () => {
   await app.ready();
   await ensureTestTenants();
 
-  // Enable the Phase 2 self-flag so the new endpoints are reachable.
-  await db.update(featureFlags).set({ enabled: true }).where(eq(featureFlags.key, PHASE2_KEY));
-
-  // Seed the two test fixture flags. These are NOT in
-  // FEATURE_FLAG_REGISTRY — the parity test in feature-flags.test.ts
-  // iterates the registry, so unregistered DB rows don't break it.
-  // They live in the DB only for this suite's positive paths.
+  // Seed the test fixture flags. These are NOT in FEATURE_FLAG_REGISTRY
+  // — the parity test in feature-flags.test.ts iterates the registry, so
+  // unregistered DB rows don't break it. They live in the DB only for
+  // this suite's positive paths.
   await db
     .insert(featureFlags)
     .values([
@@ -81,7 +83,7 @@ beforeAll(async () => {
         enabled: false,
         label: "Test fixture — tenant-overridable",
         description:
-          "Test fixture used by feature-flags-phase2 integration tests. Not part of the production registry; safe to ignore in operator UI.",
+          "Test fixture used by the feature-flag override integration tests. Not part of the production registry; safe to ignore in operator UI.",
         scope: "tenant",
         tenantOverrideAllowed: true,
         public: true,
@@ -91,10 +93,20 @@ beforeAll(async () => {
         enabled: false,
         label: "Test fixture — super-admin-gated",
         description:
-          "Test fixture used by feature-flags-phase2 integration tests. Tenant-scoped but only super-admin can flip the override per tenant.",
+          "Test fixture used by the feature-flag override integration tests. Tenant-scoped but only super-admin can flip the override per tenant.",
         scope: "tenant",
         tenantOverrideAllowed: false,
         public: false,
+      },
+      {
+        key: PLATFORM_DEMO_KEY,
+        enabled: true,
+        label: "Test fixture — platform-scoped",
+        description:
+          "Test fixture used by the feature-flag override integration tests. Platform-scoped: tenant overrides are rejected and ignored by the evaluator.",
+        scope: "platform",
+        tenantOverrideAllowed: false,
+        public: true,
       },
     ])
     .onConflictDoNothing();
@@ -104,13 +116,10 @@ beforeAll(async () => {
 
 afterAll(async () => {
   // Wipe everything this suite added so other suites see a clean DB.
-  await db.delete(tenantFlagOverrides).where(eq(tenantFlagOverrides.flagKey, TENANT_DEMO_KEY));
-  await db
-    .delete(tenantFlagOverrides)
-    .where(eq(tenantFlagOverrides.flagKey, TENANT_ADMIN_ONLY_KEY));
-  await db.delete(featureFlags).where(eq(featureFlags.key, TENANT_DEMO_KEY));
-  await db.delete(featureFlags).where(eq(featureFlags.key, TENANT_ADMIN_ONLY_KEY));
-  await db.update(featureFlags).set({ enabled: false }).where(eq(featureFlags.key, PHASE2_KEY));
+  for (const key of [TENANT_DEMO_KEY, TENANT_ADMIN_ONLY_KEY, PLATFORM_DEMO_KEY]) {
+    await db.delete(tenantFlagOverrides).where(eq(tenantFlagOverrides.flagKey, key));
+    await db.delete(featureFlags).where(eq(featureFlags.key, key));
+  }
   await flagService.invalidate();
   await flagService.invalidateTenant(ORG_A);
   await flagService.invalidateTenant(ORG_B);
@@ -293,7 +302,7 @@ describe("PUT /v1/admin/tenants/:tenantId/feature-flags/:key (Phase 2)", () => {
     const token = superAdminToken();
     const res = await app.inject({
       method: "PUT",
-      url: `/v1/admin/tenants/${ORG_A}/feature-flags/${PHASE2_KEY}`,
+      url: `/v1/admin/tenants/${ORG_A}/feature-flags/${PLATFORM_DEMO_KEY}`,
       headers: authHeader(token),
       payload: { value: true },
     });
@@ -356,7 +365,7 @@ describe("DELETE /v1/admin/tenants/:tenantId/feature-flags/:key (Phase 2)", () =
 // ─── 5. GET /admin/feature-flags — overrideStats field ─────────────────────
 
 describe("GET /v1/admin/feature-flags — overrideStats (Phase 2)", () => {
-  it("rows carry overrideStats with counts when phase2 is on", async () => {
+  it("rows carry overrideStats with counts", async () => {
     const token = superAdminToken();
     // ORG_A overrides ON, ORG_B overrides OFF — stats should report 1/1.
     await app.inject({
@@ -439,7 +448,7 @@ describe("GET /v1/org/feature-flags (Phase 2)", () => {
     const keys = body.data.map((r) => r.key);
     expect(keys).toContain(TENANT_DEMO_KEY);
     expect(keys).not.toContain(TENANT_ADMIN_ONLY_KEY); // tenant_override_allowed=false
-    expect(keys).not.toContain(PHASE2_KEY); // scope=platform
+    expect(keys).not.toContain(PLATFORM_DEMO_KEY); // scope=platform
   });
 
   it("non-org_admin gets 403 (RBAC denial — anti-disclosure 404 would be wrong here because requireOrgAdmin uses 403)", async () => {
@@ -494,7 +503,7 @@ describe("PATCH /v1/org/feature-flags/:key (Phase 2)", () => {
     const token = signToken(app);
     const res = await app.inject({
       method: "PATCH",
-      url: `/v1/org/feature-flags/${PHASE2_KEY}`,
+      url: `/v1/org/feature-flags/${PLATFORM_DEMO_KEY}`,
       headers: authHeader(token),
       payload: { value: true },
     });
@@ -522,81 +531,6 @@ describe("PATCH /v1/org/feature-flags/:key (Phase 2)", () => {
   });
 });
 
-// ─── 7. Off-state QA — every Phase-2 endpoint 404s when self-flag is off ───
-
-describe("Phase-2 self-flag off-state QA", () => {
-  // This block flips the self-flag OFF then back ON so all the
-  // Phase-2 endpoints can be exercised in their disabled posture.
-  beforeAll(async () => {
-    await db.update(featureFlags).set({ enabled: false }).where(eq(featureFlags.key, PHASE2_KEY));
-    await flagService.invalidate();
-  });
-  afterAll(async () => {
-    await db.update(featureFlags).set({ enabled: true }).where(eq(featureFlags.key, PHASE2_KEY));
-    await flagService.invalidate();
-  });
-
-  it("GET /admin/tenants/:tenantId/feature-flags → 404", async () => {
-    const res = await app.inject({
-      method: "GET",
-      url: `/v1/admin/tenants/${ORG_A}/feature-flags`,
-      headers: authHeader(superAdminToken()),
-    });
-    expect(res.statusCode).toBe(404);
-  });
-
-  it("PUT /admin/tenants/:tenantId/feature-flags/:key → 404", async () => {
-    const res = await app.inject({
-      method: "PUT",
-      url: `/v1/admin/tenants/${ORG_A}/feature-flags/${TENANT_DEMO_KEY}`,
-      headers: authHeader(superAdminToken()),
-      payload: { value: true },
-    });
-    expect(res.statusCode).toBe(404);
-  });
-
-  it("DELETE /admin/tenants/:tenantId/feature-flags/:key → 404", async () => {
-    const res = await app.inject({
-      method: "DELETE",
-      url: `/v1/admin/tenants/${ORG_A}/feature-flags/${TENANT_DEMO_KEY}`,
-      headers: authHeader(superAdminToken()),
-    });
-    expect(res.statusCode).toBe(404);
-  });
-
-  it("GET /org/feature-flags → 404", async () => {
-    const res = await app.inject({
-      method: "GET",
-      url: "/v1/org/feature-flags",
-      headers: authHeader(signToken(app)),
-    });
-    expect(res.statusCode).toBe(404);
-  });
-
-  it("PATCH /org/feature-flags/:key → 404", async () => {
-    const res = await app.inject({
-      method: "PATCH",
-      url: `/v1/org/feature-flags/${TENANT_DEMO_KEY}`,
-      headers: authHeader(signToken(app)),
-      payload: { value: true },
-    });
-    expect(res.statusCode).toBe(404);
-  });
-
-  it("/admin/feature-flags response has overrideStats=null when phase2 is off", async () => {
-    const res = await app.inject({
-      method: "GET",
-      url: "/v1/admin/feature-flags",
-      headers: authHeader(superAdminToken()),
-    });
-    expect(res.statusCode).toBe(200);
-    const body = res.json<{ data: Array<{ overrideStats: unknown }> }>();
-    for (const row of body.data) {
-      expect(row.overrideStats).toBeNull();
-    }
-  });
-});
-
 // ─── 8. Precedence matrix unit-test through the route surface ───────────────
 
 describe("Evaluator precedence matrix (Phase 2)", () => {
@@ -607,23 +541,26 @@ describe("Evaluator precedence matrix (Phase 2)", () => {
     // still ignore it.
     await db.insert(tenantFlagOverrides).values({
       tenantId: ORG_A,
-      flagKey: PHASE2_KEY, // scope='platform'
+      flagKey: PLATFORM_DEMO_KEY, // scope='platform'
       value: false, // override would turn it OFF
       reason: "precedence-test",
     });
     await flagService.invalidateTenant(ORG_A);
 
-    // PHASE2_KEY platform default is `enabled=true` for this suite
+    // PLATFORM_DEMO_KEY platform default is `enabled=true` for this suite
     // (set in beforeAll). The evaluator should return TRUE despite
     // the false override.
-    const enabled = await flagService.isEnabled(PHASE2_KEY, { orgId: ORG_A });
+    const enabled = await flagService.isEnabled(PLATFORM_DEMO_KEY, { orgId: ORG_A });
     expect(enabled).toBe(true);
 
     // Clean up the artificially-injected row.
     await db
       .delete(tenantFlagOverrides)
       .where(
-        and(eq(tenantFlagOverrides.tenantId, ORG_A), eq(tenantFlagOverrides.flagKey, PHASE2_KEY)),
+        and(
+          eq(tenantFlagOverrides.tenantId, ORG_A),
+          eq(tenantFlagOverrides.flagKey, PLATFORM_DEMO_KEY),
+        ),
       );
     await flagService.invalidateTenant(ORG_A);
   });
@@ -820,7 +757,7 @@ describe("DELETE /v1/org/feature-flags/:key (Phase 2)", () => {
     const token = signToken(app);
     const res = await app.inject({
       method: "DELETE",
-      url: `/v1/org/feature-flags/${PHASE2_KEY}`,
+      url: `/v1/org/feature-flags/${PLATFORM_DEMO_KEY}`,
       headers: authHeader(token),
     });
     expect(res.statusCode).toBe(404);

@@ -6,7 +6,6 @@ import { TenantSettingsForm } from "@/components/settings/tenant-settings-form";
 import { PageHeader } from "@/components/shared/page-header";
 import { createServerApiClient } from "@/lib/api/client-server";
 import { requireAuth } from "@/lib/auth/guards";
-import { isFeatureFlagsPhase2Enabled } from "@/lib/feature-flags/server";
 
 /**
  * Settings page — protected, requires authentication.
@@ -44,9 +43,6 @@ export default async function SettingsPage() {
   }
 
   const canManageBranding = auth.roles.includes("org_admin");
-  // Phase 2 (Epic #365): only surface the Feature flags nav entry when
-  // the self-flag is on. Fail-closed (off) on projection errors.
-  const showFeatureFlags = await isFeatureFlagsPhase2Enabled();
 
   return (
     <div className="space-y-8">
@@ -55,7 +51,7 @@ export default async function SettingsPage() {
         description={t("subtitle")}
         breadcrumbs={[{ label: t("breadcrumbRoot"), href: "/dashboard" }, { label: t("title") }]}
       />
-      <SettingsNavigation showFeatureFlags={showFeatureFlags} />
+      <SettingsNavigation />
       <TenantSettingsForm
         orgId={auth.orgId}
         canManageTenant={auth.roles.includes("org_admin")}

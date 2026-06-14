@@ -6,19 +6,15 @@
 //   POST /v1/superadmin/surveys/:slug/schedule
 //   POST /v1/surveys/:invitationId/respond     (tenant user; NOT super-admin)
 //
-// Every super-admin route's preHandler chain is:
-//   requireFlag(ADMIN_FINANCE_DASHBOARD) → requireSuperAdmin
-// ORDER MATTERS: flag-first so a non-flagged probe gets 404 without
-// revealing the role requirement.
+// Every super-admin route is guarded by requireSuperAdmin; the tenant-
+// facing survey routes use requireAuth.
 
 import { createHash } from "node:crypto";
-import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
 import { auditLogs, platformAdmins, tenants } from "@givernance/shared/schema";
 import { Type } from "@sinclair/typebox";
 import { and, eq, isNull } from "drizzle-orm";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { systemDb } from "../../../lib/db.js";
-import { requireFlag } from "../../../lib/flags/flag-guard.js";
 import { requireAuth, requireSuperAdmin } from "../../../lib/guards.js";
 import { redis } from "../../../lib/redis.js";
 import { fetchPlatformReportObject } from "../../../lib/s3.js";
@@ -234,7 +230,7 @@ export async function superadminFinanceRoutes(app: FastifyInstance) {
   app.get(
     "/superadmin/finance/summary",
     {
-      preHandler: [requireFlag(FEATURE_FLAG_KEYS.ADMIN_FINANCE_DASHBOARD), requireSuperAdmin],
+      preHandler: requireSuperAdmin,
       schema: {
         tags: ["Superadmin", "Finance"],
         querystring: SummaryQuery,
@@ -322,7 +318,7 @@ export async function superadminFinanceRoutes(app: FastifyInstance) {
   app.get(
     "/superadmin/finance/summary.csv",
     {
-      preHandler: [requireFlag(FEATURE_FLAG_KEYS.ADMIN_FINANCE_DASHBOARD), requireSuperAdmin],
+      preHandler: requireSuperAdmin,
       schema: {
         tags: ["Superadmin", "Finance"],
         querystring: SummaryQuery,
@@ -389,7 +385,7 @@ export async function superadminFinanceRoutes(app: FastifyInstance) {
   app.post(
     "/superadmin/surveys/:slug/launch",
     {
-      preHandler: [requireFlag(FEATURE_FLAG_KEYS.ADMIN_FINANCE_DASHBOARD), requireSuperAdmin],
+      preHandler: requireSuperAdmin,
       schema: {
         tags: ["Superadmin", "Surveys"],
         params: SurveySlugParams,
@@ -487,7 +483,7 @@ export async function superadminFinanceRoutes(app: FastifyInstance) {
   app.post(
     "/superadmin/surveys/:slug/schedule",
     {
-      preHandler: [requireFlag(FEATURE_FLAG_KEYS.ADMIN_FINANCE_DASHBOARD), requireSuperAdmin],
+      preHandler: requireSuperAdmin,
       schema: {
         tags: ["Superadmin", "Surveys"],
         params: SurveySlugParams,
@@ -530,7 +526,7 @@ export async function superadminFinanceRoutes(app: FastifyInstance) {
   app.post(
     "/surveys/:invitationId/respond",
     {
-      preHandler: [requireFlag(FEATURE_FLAG_KEYS.ADMIN_FINANCE_DASHBOARD), requireAuth],
+      preHandler: requireAuth,
       schema: {
         tags: ["Surveys"],
         params: InvitationIdParams,
@@ -619,7 +615,7 @@ export async function superadminFinanceRoutes(app: FastifyInstance) {
   app.get(
     "/surveys/pending",
     {
-      preHandler: [requireFlag(FEATURE_FLAG_KEYS.ADMIN_FINANCE_DASHBOARD), requireAuth],
+      preHandler: requireAuth,
       schema: {
         tags: ["Surveys"],
         response: {
@@ -671,7 +667,7 @@ export async function superadminFinanceRoutes(app: FastifyInstance) {
   app.post(
     "/surveys/:invitationId/dismiss",
     {
-      preHandler: [requireFlag(FEATURE_FLAG_KEYS.ADMIN_FINANCE_DASHBOARD), requireAuth],
+      preHandler: requireAuth,
       schema: {
         tags: ["Surveys"],
         params: InvitationIdParams,
@@ -717,9 +713,8 @@ export async function superadminFinanceRoutes(app: FastifyInstance) {
   //
   // Security posture (per issue #449 callout — "ne doit pas être une
   // faille"):
-  //  - preHandler chain identical to other superadmin routes: requireFlag
-  //    fires BEFORE requireSuperAdmin so a flag-off probe gets 404
-  //    without revealing the route.
+  //  - preHandler chain identical to other superadmin routes:
+  //    requireSuperAdmin gates access.
   //  - No request body / query / header. The Redis SCAN pattern is
   //    hardcoded server-side; a compromised super-admin can NOT extend
   //    the pattern to flush arbitrary keys (e.g. `*` to nuke the entire
@@ -739,7 +734,7 @@ export async function superadminFinanceRoutes(app: FastifyInstance) {
   app.post(
     "/superadmin/finance/cache/flush",
     {
-      preHandler: [requireFlag(FEATURE_FLAG_KEYS.ADMIN_FINANCE_DASHBOARD), requireSuperAdmin],
+      preHandler: requireSuperAdmin,
       schema: {
         tags: ["Superadmin", "Finance"],
         response: {
@@ -780,7 +775,7 @@ export async function superadminFinanceRoutes(app: FastifyInstance) {
   app.post(
     "/superadmin/finance/reports/monthly",
     {
-      preHandler: [requireFlag(FEATURE_FLAG_KEYS.ADMIN_FINANCE_DASHBOARD), requireSuperAdmin],
+      preHandler: requireSuperAdmin,
       schema: {
         tags: ["Superadmin", "Finance"],
         body: MonthlyReportBody,
@@ -868,7 +863,7 @@ export async function superadminFinanceRoutes(app: FastifyInstance) {
   app.get(
     "/superadmin/finance/reports",
     {
-      preHandler: [requireFlag(FEATURE_FLAG_KEYS.ADMIN_FINANCE_DASHBOARD), requireSuperAdmin],
+      preHandler: requireSuperAdmin,
       schema: {
         tags: ["Superadmin", "Finance"],
         response: {
@@ -907,7 +902,7 @@ export async function superadminFinanceRoutes(app: FastifyInstance) {
   app.post(
     "/superadmin/finance/reports/:id/regenerate",
     {
-      preHandler: [requireFlag(FEATURE_FLAG_KEYS.ADMIN_FINANCE_DASHBOARD), requireSuperAdmin],
+      preHandler: requireSuperAdmin,
       schema: {
         tags: ["Superadmin", "Finance"],
         params: ReportIdParams,
@@ -1000,7 +995,7 @@ export async function superadminFinanceRoutes(app: FastifyInstance) {
   app.get(
     "/superadmin/finance/reports/:id",
     {
-      preHandler: [requireFlag(FEATURE_FLAG_KEYS.ADMIN_FINANCE_DASHBOARD), requireSuperAdmin],
+      preHandler: requireSuperAdmin,
       schema: {
         tags: ["Superadmin", "Finance"],
         params: ReportIdParams,
@@ -1041,7 +1036,7 @@ export async function superadminFinanceRoutes(app: FastifyInstance) {
   app.get(
     "/superadmin/finance/reports/:id/pdf",
     {
-      preHandler: [requireFlag(FEATURE_FLAG_KEYS.ADMIN_FINANCE_DASHBOARD), requireSuperAdmin],
+      preHandler: requireSuperAdmin,
       schema: {
         tags: ["Superadmin", "Finance"],
         params: ReportIdParams,
@@ -1119,7 +1114,7 @@ export async function superadminFinanceRoutes(app: FastifyInstance) {
   app.post(
     "/superadmin/finance/reports/backfill",
     {
-      preHandler: [requireFlag(FEATURE_FLAG_KEYS.ADMIN_FINANCE_DASHBOARD), requireSuperAdmin],
+      preHandler: requireSuperAdmin,
       schema: {
         tags: ["Superadmin", "Finance"],
         response: {

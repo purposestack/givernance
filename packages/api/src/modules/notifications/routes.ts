@@ -1,10 +1,6 @@
 /**
  * Notification centre routes (Epic #363, GLO-004).
  *
- * Every route is gated by `requireFlag(COMMUNICATION_NOTIFICATIONS_CENTER)`
- * as the FIRST preHandler — a disabled tenant gets a 404, indistinguishable
- * from a typo'd URL. Auth runs second.
- *
  * RBAC: every authenticated tenant member sees their OWN notifications and
  * their OWN preferences. No role restriction beyond auth — viewers,
  * users, and org_admins all get the panel. The service layer enforces
@@ -25,14 +21,9 @@
  * Givernance module). RFC 9457 problem+json on every error path.
  */
 
-import {
-  FEATURE_FLAG_KEYS,
-  NOTIFICATION_TYPE_VALUES,
-  type NotificationType,
-} from "@givernance/shared/constants";
+import { NOTIFICATION_TYPE_VALUES, type NotificationType } from "@givernance/shared/constants";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
-import { requireFlag } from "../../lib/flags/flag-guard.js";
 import { requireAuth } from "../../lib/guards.js";
 import {
   DataResponse,
@@ -110,12 +101,10 @@ const PreferenceParams = Type.Object({
 // ─── Routes ─────────────────────────────────────────────────────────
 
 export async function notificationRoutes(app: FastifyInstance) {
-  // Flag gate FIRST so an unauthenticated scanner cannot enumerate
-  // gated routes by their auth requirement. See `requireFlag` JSDoc.
   app.get(
     "/notifications",
     {
-      preHandler: [requireFlag(FEATURE_FLAG_KEYS.COMMUNICATION_NOTIFICATIONS_CENTER), requireAuth],
+      preHandler: requireAuth,
       schema: {
         tags: ["Notifications"],
         querystring: NotificationListQuery,
@@ -145,7 +134,7 @@ export async function notificationRoutes(app: FastifyInstance) {
   app.get(
     "/notifications/unread-count",
     {
-      preHandler: [requireFlag(FEATURE_FLAG_KEYS.COMMUNICATION_NOTIFICATIONS_CENTER), requireAuth],
+      preHandler: requireAuth,
       schema: {
         tags: ["Notifications"],
         response: { 200: UnreadCountResponse, ...ErrorResponses },
@@ -165,7 +154,7 @@ export async function notificationRoutes(app: FastifyInstance) {
   app.patch(
     "/notifications/:id/read",
     {
-      preHandler: [requireFlag(FEATURE_FLAG_KEYS.COMMUNICATION_NOTIFICATIONS_CENTER), requireAuth],
+      preHandler: requireAuth,
       schema: {
         tags: ["Notifications"],
         params: IdParams,
@@ -193,7 +182,7 @@ export async function notificationRoutes(app: FastifyInstance) {
   app.post(
     "/notifications/read-all",
     {
-      preHandler: [requireFlag(FEATURE_FLAG_KEYS.COMMUNICATION_NOTIFICATIONS_CENTER), requireAuth],
+      preHandler: requireAuth,
       schema: {
         tags: ["Notifications"],
         response: {
@@ -226,7 +215,7 @@ export async function notificationRoutes(app: FastifyInstance) {
   app.post(
     "/notifications/mark-read-by-link",
     {
-      preHandler: [requireFlag(FEATURE_FLAG_KEYS.COMMUNICATION_NOTIFICATIONS_CENTER), requireAuth],
+      preHandler: requireAuth,
       schema: {
         tags: ["Notifications"],
         body: Type.Object({
@@ -260,7 +249,7 @@ export async function notificationRoutes(app: FastifyInstance) {
   app.delete(
     "/notifications/:id",
     {
-      preHandler: [requireFlag(FEATURE_FLAG_KEYS.COMMUNICATION_NOTIFICATIONS_CENTER), requireAuth],
+      preHandler: requireAuth,
       schema: {
         tags: ["Notifications"],
         params: IdParams,
@@ -294,7 +283,7 @@ export async function notificationRoutes(app: FastifyInstance) {
   app.get(
     "/notifications/stream",
     {
-      preHandler: [requireFlag(FEATURE_FLAG_KEYS.COMMUNICATION_NOTIFICATIONS_CENTER), requireAuth],
+      preHandler: requireAuth,
       // Rate-limit the SSE handshake (not the long-lived stream
       // itself — `@fastify/rate-limit` only sees the initial request).
       // 5 opens / minute / IP is plenty for the ordinary "swap polling
@@ -392,24 +381,6 @@ export async function notificationRoutes(app: FastifyInstance) {
           signal: controller.signal,
           intervalMs: 5_000,
           since: Number.isNaN(since?.getTime() ?? NaN) ? undefined : since,
-          // Re-validate authorisation every polling tick — the flag
-          // may have been flipped off mid-stream, or the user's
-          // active-row check (ADR-021) may have failed. Either way
-          // we tear the stream down within one interval. (Security H2.)
-          isStillAuthorised: async () => {
-            try {
-              const stillEnabled = await request.flagService.isEnabled(
-                FEATURE_FLAG_KEYS.COMMUNICATION_NOTIFICATIONS_CENTER,
-                { orgId },
-              );
-              return stillEnabled;
-            } catch {
-              // If the flag service is unhealthy mid-stream we err on
-              // the side of closing — a stalled flag check is worse
-              // than a dropped stream the client will auto-reconnect.
-              return false;
-            }
-          },
         });
         for await (const row of stream) {
           const payload = JSON.stringify(serializeNotification(row));
@@ -435,7 +406,7 @@ export async function notificationRoutes(app: FastifyInstance) {
   app.get(
     "/notification-preferences",
     {
-      preHandler: [requireFlag(FEATURE_FLAG_KEYS.COMMUNICATION_NOTIFICATIONS_CENTER), requireAuth],
+      preHandler: requireAuth,
       schema: {
         tags: ["Notifications"],
         response: { 200: PreferenceListResponse, ...ErrorResponses },
@@ -454,7 +425,7 @@ export async function notificationRoutes(app: FastifyInstance) {
   app.patch(
     "/notification-preferences/:type",
     {
-      preHandler: [requireFlag(FEATURE_FLAG_KEYS.COMMUNICATION_NOTIFICATIONS_CENTER), requireAuth],
+      preHandler: requireAuth,
       schema: {
         tags: ["Notifications"],
         params: PreferenceParams,

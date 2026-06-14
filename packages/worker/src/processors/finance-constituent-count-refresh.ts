@@ -16,22 +16,14 @@
  * revisit with a single GROUP BY + UPDATE FROM aggregate.
  */
 
-import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
 import { constituents, tenants } from "@givernance/shared/schema";
 import type { Job } from "bullmq";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "../lib/db.js";
-import { isFlagEnabled } from "../lib/flags.js";
 import { jobLogger } from "../lib/logger.js";
 
 export async function processConstituentCountRefresh(job: Job): Promise<void> {
   const log = jobLogger({ jobId: job.id, tenantId: "system" });
-
-  const flagOn = await isFlagEnabled(FEATURE_FLAG_KEYS.ADMIN_FINANCE_DASHBOARD);
-  if (!flagOn) {
-    log.info("admin.finance_dashboard flag is off, skipping constituent count refresh");
-    return;
-  }
 
   // CROSS-TENANT INTENTIONAL: platform-wide cron sweep — every tenant's
   // count refresh happens in one job tick. Owner-pool (`db`) is used

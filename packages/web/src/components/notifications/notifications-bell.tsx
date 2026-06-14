@@ -6,10 +6,8 @@
  * Renders the bell button + the dynamic unread badge. Owns the panel
  * open/close state and forwards the live data to `NotificationsPanel`.
  *
- * Mounted ONLY when the `communication.notifications_center` flag is
- * on for this tenant — the wrapper in `topbar.tsx` short-circuits
- * before this component is even loaded by Next.js (off-state QA per
- * `feedback_feature_flag_first`).
+ * Mounted for tenant users only — the wrapper in `topbar.tsx`
+ * short-circuits for super-admins (no tenant-scoped events).
  */
 
 import type { NotificationFilterKey } from "@givernance/shared/constants";

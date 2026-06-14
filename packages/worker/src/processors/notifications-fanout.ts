@@ -30,11 +30,6 @@
  * `ON CONFLICT DO NOTHING` and silently no-ops rather than producing
  * a duplicate row per recipient.
  *
- * Feature-flag-first: every call gates on
- * `communication.notifications_center` per `feedback_feature_flag_first`.
- * Defence in depth — even if a request slipped past the API gate the
- * worker is the second wall.
- *
  * Critical-path budget — the fanout runs inside the existing
  * `processDomainEvent` switch, ahead of receipt-PDF and postal-export
  * routing. We wrap the work in a 2 s `Promise.race` budget so a slow
@@ -46,11 +41,7 @@
  * UX. A future Phase moves fanout to a dedicated retry-bearing queue.
  */
 
-import {
-  FEATURE_FLAG_KEYS,
-  getNotificationDescriptor,
-  type NotificationType,
-} from "@givernance/shared/constants";
+import { getNotificationDescriptor, type NotificationType } from "@givernance/shared/constants";
 import { BRANDING_EVENT_TYPES } from "@givernance/shared/jobs";
 import {
   type NewNotification,
@@ -60,7 +51,6 @@ import {
 } from "@givernance/shared/schema";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { withWorkerContext } from "../lib/db.js";
-import { isFlagEnabled } from "../lib/flags.js";
 import { jobLogger } from "../lib/logger.js";
 
 export interface FanoutInput {
@@ -207,21 +197,6 @@ const FANOUT_TIMEOUT_MS = 2_000;
 
 export async function fanoutNotifications(input: FanoutInput): Promise<void> {
   const log = jobLogger({ tenantId: input.tenantId, jobId: input.outboxId });
-
-  // Feature-flag-first per `feedback_feature_flag_first`. Cheap query,
-  // run before any tenant-scoped DB work so the cost of a flagged-off
-  // tenant is minimised. `isFlagEnabled` reads the platform default —
-  // correct today because the flag has `tenant_override_allowed=false`.
-  // When tenant overrides land, swap to the tenant-aware evaluator
-  // (PR #393 Security M3 follow-up).
-  const enabled = await isFlagEnabled(FEATURE_FLAG_KEYS.COMMUNICATION_NOTIFICATIONS_CENTER);
-  if (!enabled) {
-    log.info(
-      { event: "notifications.fanout_skipped_flag_off", eventType: input.type },
-      "Notifications flag off — skipping fanout",
-    );
-    return;
-  }
 
   const plan = planFanout(input);
   if (plan.length === 0) {
