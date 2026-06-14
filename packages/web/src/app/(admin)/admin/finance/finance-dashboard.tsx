@@ -29,7 +29,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { createClientApiClient } from "@/lib/api/client-browser";
-import { formatMonthYear } from "@/lib/format";
+import { formatMonthName, formatMonthYear } from "@/lib/format";
 import type {
   FinancePeriod,
   FinanceSummary,
@@ -132,7 +132,6 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
   const [error, setError] = useState<boolean>(initialError);
   const [flushing, setFlushing] = useState(false);
   const t = useTranslations("admin.finance");
-  const locale = useLocale();
 
   const periodOptions: Array<{ value: FinancePeriod; label: string }> = PERIOD_VALUES.map(
     ({ value, key }) => ({ value, label: t(key) }),
@@ -228,6 +227,26 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
   // Single-slot — only one regeneration can be running at a time
   // (gated by `reportBusy`).
   const [reportToRegenerate, setReportToRegenerate] = useState<MonthlyReport | null>(null);
+
+  // Group the archive rows by calendar year for a scannable, sectioned list.
+  // The API returns rows already ordered `month DESC` (newest first), so a
+  // single linear pass yields year buckets in descending order with months
+  // descending inside each — no re-sort, the existing chronological order is
+  // preserved exactly. Grouping by the `YYYY` prefix avoids any timezone /
+  // Date parsing.
+  const reportsByYear = useMemo(() => {
+    const groups: Array<{ year: string; items: MonthlyReport[] }> = [];
+    for (const report of reports) {
+      const year = report.month.slice(0, 4);
+      const last = groups.at(-1);
+      if (last && last.year === year) {
+        last.items.push(report);
+      } else {
+        groups.push({ year, items: [report] });
+      }
+    }
+    return groups;
+  }, [reports]);
 
   const refreshReports = useCallback(async () => {
     try {
@@ -793,102 +812,75 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
               {t("reports.archive.empty")}
             </p>
           ) : (
-            <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-              {reports.map((r) => (
-                <li
-                  key={r.id}
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "120px 100px 1fr auto",
-                    gap: 12,
-                    alignItems: "center",
-                    padding: "8px 0",
-                    borderBottom: "1px solid var(--color-outline-variant)",
-                    fontSize: 13,
-                  }}
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              {reportsByYear.map(({ year, items }, groupIndex) => (
+                <section
+                  key={year}
+                  aria-label={t("reports.archive.yearGroupLabel", {
+                    year,
+                    count: items.length,
+                  })}
+                  style={{ marginTop: groupIndex === 0 ? 0 : 14 }}
                 >
-                  <strong style={{ color: "var(--color-on-surface)" }}>
-                    {formatMonthYear(r.month, locale)}
-                  </strong>
-                  <span
+                  {/* Year band — section divider with the year on the left, a
+                      connecting rule, and a report-count pill on the right. */}
+                  <div
                     style={{
-                      fontSize: 11,
-                      fontWeight: 500,
-                      color:
-                        r.status === "ready"
-                          ? "var(--color-primary)"
-                          : r.status === "failed"
-                            ? "var(--color-error)"
-                            : "var(--color-on-surface-variant)",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      padding: "2px 0 6px",
                     }}
                   >
-                    {r.status === "ready"
-                      ? t("reports.archive.statusReady")
-                      : r.status === "pending"
-                        ? t("reports.archive.statusPending")
-                        : t("reports.archive.statusFailed")}
-                  </span>
-                  <span
-                    style={{ fontSize: 11, color: "var(--color-on-surface-variant)" }}
-                    title={r.failureReason ?? undefined}
-                  >
-                    {r.readyAt
-                      ? t("reports.archive.generatedAt", {
-                          date: new Date(r.readyAt).toLocaleString("fr-FR", {
-                            day: "numeric",
-                            month: "short",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          }),
-                        })
-                      : r.status === "failed"
-                        ? (r.failureReason ?? t("reports.archive.errorPlaceholder"))
-                        : "—"}
-                  </span>
-                  <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                    {r.status === "ready" && r.pdfUrl ? (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          const api = createClientApiClient();
-                          window.location.assign(api.resolveBrowserUrl(r.pdfUrl ?? ""));
-                        }}
-                      >
-                        <span
-                          className="material-symbols-outlined"
-                          style={{ fontSize: 14 }}
-                          aria-hidden
-                        >
-                          download
-                        </span>
-                        {t("reports.archive.downloadPdf")}
-                      </Button>
-                    ) : null}
-                    {r.status !== "pending" && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => requestRegenerate(r)}
-                        disabled={reportBusy}
-                        title={t("reports.archive.regenerateTitle")}
-                      >
-                        <span
-                          className="material-symbols-outlined"
-                          style={{ fontSize: 14 }}
-                          aria-hidden
-                        >
-                          refresh
-                        </span>
-                        {t("reports.archive.regenerate")}
-                      </Button>
-                    )}
+                    <span
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 700,
+                        letterSpacing: "0.04em",
+                        color: "var(--color-primary)",
+                        fontVariantNumeric: "tabular-nums",
+                      }}
+                    >
+                      {year}
+                    </span>
+                    <span
+                      aria-hidden
+                      style={{
+                        flex: 1,
+                        height: 1,
+                        background: "var(--color-outline-variant)",
+                      }}
+                    />
+                    <span
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 600,
+                        color: "var(--color-on-surface-variant)",
+                        background: "var(--color-surface-container-low, #f9f8f6)",
+                        padding: "2px 8px",
+                        borderRadius: 999,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {t("reports.archive.yearCount", { count: items.length })}
+                    </span>
                   </div>
-                </li>
+                  {/* Months are indented under the year band to signal the
+                      year → months hierarchy. */}
+                  <ul style={{ listStyle: "none", padding: 0, margin: 0, paddingLeft: 18 }}>
+                    {items.map((r, idx) => (
+                      <ReportArchiveRow
+                        key={r.id}
+                        report={r}
+                        isLast={idx === items.length - 1}
+                        reportBusy={reportBusy}
+                        onRegenerate={requestRegenerate}
+                      />
+                    ))}
+                  </ul>
+                </section>
               ))}
-            </ul>
+            </div>
           )}
         </section>
       )}
@@ -1662,6 +1654,108 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
         </AlertDialogContent>
       </AlertDialog>
     </main>
+  );
+}
+
+interface ReportArchiveRowProps {
+  report: MonthlyReport;
+  /** Last row of its year group — drops the bottom border (the next year
+      band already provides the separation, avoiding a doubled divider). */
+  isLast: boolean;
+  reportBusy: boolean;
+  onRegenerate: (report: MonthlyReport) => void;
+}
+
+function ReportArchiveRow({ report: r, isLast, reportBusy, onRegenerate }: ReportArchiveRowProps) {
+  const t = useTranslations("admin.finance");
+  const locale = useLocale();
+
+  return (
+    <li
+      style={{
+        display: "grid",
+        gridTemplateColumns: "120px 100px 1fr auto",
+        gap: 12,
+        alignItems: "center",
+        padding: "8px 0",
+        borderBottom: isLast ? "none" : "1px solid var(--color-outline-variant)",
+        fontSize: 13,
+      }}
+    >
+      {/* The year lives in the band above, so each row shows only the month
+          name; the full "Mai 2026" stays available as a hover title. */}
+      <strong style={{ color: "var(--color-on-surface)" }} title={formatMonthYear(r.month, locale)}>
+        {formatMonthName(r.month, locale)}
+      </strong>
+      <span
+        style={{
+          fontSize: 11,
+          fontWeight: 500,
+          color:
+            r.status === "ready"
+              ? "var(--color-primary)"
+              : r.status === "failed"
+                ? "var(--color-error)"
+                : "var(--color-on-surface-variant)",
+        }}
+      >
+        {r.status === "ready"
+          ? t("reports.archive.statusReady")
+          : r.status === "pending"
+            ? t("reports.archive.statusPending")
+            : t("reports.archive.statusFailed")}
+      </span>
+      <span
+        style={{ fontSize: 11, color: "var(--color-on-surface-variant)" }}
+        title={r.failureReason ?? undefined}
+      >
+        {r.readyAt
+          ? t("reports.archive.generatedAt", {
+              date: new Date(r.readyAt).toLocaleString("fr-FR", {
+                day: "numeric",
+                month: "short",
+                hour: "2-digit",
+                minute: "2-digit",
+              }),
+            })
+          : r.status === "failed"
+            ? (r.failureReason ?? t("reports.archive.errorPlaceholder"))
+            : "—"}
+      </span>
+      <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+        {r.status === "ready" && r.pdfUrl ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              const api = createClientApiClient();
+              window.location.assign(api.resolveBrowserUrl(r.pdfUrl ?? ""));
+            }}
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: 14 }} aria-hidden>
+              download
+            </span>
+            {t("reports.archive.downloadPdf")}
+          </Button>
+        ) : null}
+        {r.status !== "pending" && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => onRegenerate(r)}
+            disabled={reportBusy}
+            title={t("reports.archive.regenerateTitle")}
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: 14 }} aria-hidden>
+              refresh
+            </span>
+            {t("reports.archive.regenerate")}
+          </Button>
+        )}
+      </div>
+    </li>
   );
 }
 
