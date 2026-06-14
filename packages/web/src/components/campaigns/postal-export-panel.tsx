@@ -129,24 +129,30 @@ export function PostalExportPanel({
   const [exports, setExports] = useState<PostalExport[]>(initialExports);
   const [isStarting, setIsStarting] = useState(false);
   const [isPreviewing, setIsPreviewing] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const activeJob = exports.find((e) => e.status === "pending" || e.status === "processing");
 
   useExportPolling({ activeJob, campaignId, setExports, t });
 
   const refreshList = useCallback(async () => {
+    if (isRefreshing) return;
+    setIsRefreshing(true);
     const client = createClientApiClient();
     try {
       const fresh = await PostalCampaignService.listExports(client, campaignId);
       setExports(fresh);
+      toast.success(t("toast.refreshed"));
     } catch (err) {
       const message =
         err instanceof ApiProblem
           ? (err.detail ?? err.title ?? t("toast.refreshFailed"))
           : t("toast.refreshFailed");
       toast.error(message);
+    } finally {
+      setIsRefreshing(false);
     }
-  }, [campaignId, t]);
+  }, [campaignId, isRefreshing, t]);
 
   const handleStart = useCallback(async () => {
     if (isStarting) return;
@@ -238,10 +244,15 @@ export function PostalExportPanel({
           variant="ghost"
           size="sm"
           onClick={() => void refreshList()}
+          disabled={isRefreshing}
           aria-label={t("refresh")}
         >
-          <RefreshCcw size={16} aria-hidden="true" />
-          {t("refresh")}
+          <RefreshCcw
+            size={16}
+            className={isRefreshing ? "animate-spin" : undefined}
+            aria-hidden="true"
+          />
+          {isRefreshing ? t("refreshing") : t("refresh")}
         </Button>
       </CardHeader>
       <CardContent className="space-y-5">

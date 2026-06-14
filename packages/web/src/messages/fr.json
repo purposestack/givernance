@@ -2764,6 +2764,7 @@
         "blocked": "L'export postal n'est pas encore configuré — liez un compte bancaire suisse ou publiez une page de don publique pour commencer."
       },
       "refresh": "Actualiser",
+      "refreshing": "Actualisation…",
       "modes": {
         "personalized": {
           "title": "Personnalisé",
@@ -2853,6 +2854,7 @@
         "exportReady": "Export postal prêt au téléchargement.",
         "exportFailed": "L'export postal a échoué.",
         "startFailed": "Impossible de démarrer l'export. Veuillez réessayer.",
+        "refreshed": "Liste des exports à jour.",
         "refreshFailed": "Impossible d'actualiser la liste des exports.",
         "previewFailed": "Impossible de charger l'aperçu."
       },

@@ -459,4 +459,60 @@ describe("PostalCampaignSection", () => {
       vi.unstubAllGlobals();
     });
   });
+
+  describe('Refresh ("Actualiser") button', () => {
+    it("re-fetches the export list and confirms with a success toast", async () => {
+      const user = userEvent.setup();
+
+      const fresh: PostalExport = {
+        id: "33333333-3333-4333-8333-333333333333",
+        campaignId: CAMPAIGN_ID,
+        mode: "personalized",
+        format: "zip",
+        status: "completed",
+        totalCount: 2,
+        progressCount: 2,
+        zipS3Path: "campaigns/export.zip",
+        error: null,
+        requestedBy: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        completedAt: new Date().toISOString(),
+      };
+      vi.spyOn(PostalCampaignService, "listExports").mockResolvedValue([fresh]);
+
+      renderSection({ initialMemberTotal: 2 });
+
+      await user.click(screen.getByRole("button", { name: /Refresh/i }));
+
+      await waitFor(() =>
+        expect(PostalCampaignService.listExports).toHaveBeenCalledWith(
+          expect.anything(),
+          CAMPAIGN_ID,
+        ),
+      );
+      // The whole point of the change: a click must produce visible feedback
+      // even when the list is unchanged. The success toast is that signal.
+      expect(mockToast.success).toHaveBeenCalledWith("Export list up to date.");
+    });
+
+    it("surfaces an error toast when the refresh fetch fails", async () => {
+      const user = userEvent.setup();
+
+      vi.spyOn(PostalCampaignService, "listExports").mockRejectedValue(
+        new ApiProblem({
+          type: "https://givernance.test/problems/internal",
+          title: "internal_error",
+          status: 500,
+          detail: "Upstream unavailable.",
+        }),
+      );
+
+      renderSection({ initialMemberTotal: 2 });
+
+      await user.click(screen.getByRole("button", { name: /Refresh/i }));
+
+      await waitFor(() => expect(mockToast.error).toHaveBeenCalledWith("Upstream unavailable."));
+    });
+  });
 });
