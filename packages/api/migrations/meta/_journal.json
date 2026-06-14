@@ -575,6 +575,13 @@
       "when": 1948180000000,
       "tag": "0081_postal_export_merged_pdf",
       "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1958180000000,
+      "tag": "0082_retire_validated_feature_flags",
+      "breakpoints": true
     }
   ]
 }

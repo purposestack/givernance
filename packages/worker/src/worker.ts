@@ -149,9 +149,8 @@ async function scheduleRepeatableJobs() {
   );
 
   // #436 — Super-admin finance dashboard enrichment crons. All three are
-  // platform-wide sweeps; each respects the `admin.finance_dashboard`
-  // feature flag and early-returns when off. `jobId` is fixed per
-  // schedule so worker restarts don't fan out duplicates.
+  // platform-wide sweeps. `jobId` is fixed per schedule so worker
+  // restarts don't fan out duplicates.
 
   // Daily constituent-count refresh at 03:00 UTC — pre-EU morning so
   // the dashboard's per-tenant tile is fresh by the time super-admins

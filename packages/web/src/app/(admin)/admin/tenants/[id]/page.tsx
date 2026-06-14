@@ -23,7 +23,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { createServerApiClient } from "@/lib/api/client-server";
-import { FeatureFlagsService, isFlagEnabled } from "@/services/FeatureFlagsService";
+import { FeatureFlagsService } from "@/services/FeatureFlagsService";
 import type { AdminTenantDetailResponse } from "@/services/TenantAdminService";
 
 export const dynamic = "force-dynamic";
@@ -79,23 +79,15 @@ export default async function TenantDetailPage({
   const { tenant, domains, users, recentAudit, firstAdminInvitation } = detail;
 
   /**
-   * Feature-flags tab content — Epic #365 / PR #366. Gated by the
-   * `admin.feature_flags_phase2` self-flag so the surface is fully
-   * absent (no tab trigger, no fetch) when the Epic is off.
-   *
-   * SSR-fetches both the platform flag projection (to learn if the
-   * self-flag is on) and the per-tenant flag view in parallel.
-   * `Promise.allSettled` so a transient API blip on either doesn't
-   * 500 the whole tenant detail page — the tab degrades to absent
-   * with a console-only error.
+   * Feature-flags tab content — Epic #365 / PR #366. SSR-fetches the
+   * per-tenant flag view. Wrapped in try/catch so a transient API blip
+   * doesn't 500 the whole tenant detail page — the tab degrades to
+   * absent with a console-only error.
    */
   let featureFlagsTab: React.ReactNode | null = null;
   try {
-    const publicFlags = await FeatureFlagsService.listPublic(api);
-    if (isFlagEnabled(publicFlags, "admin.feature_flags_phase2")) {
-      const tenantFlags = await FeatureFlagsService.listForTenant(api, tenant.id);
-      featureFlagsTab = <TenantFeatureFlags tenantId={tenant.id} initialRows={tenantFlags} />;
-    }
+    const tenantFlags = await FeatureFlagsService.listForTenant(api, tenant.id);
+    featureFlagsTab = <TenantFeatureFlags tenantId={tenant.id} initialRows={tenantFlags} />;
   } catch {
     // Non-fatal — the rest of the tenant detail page still renders.
     featureFlagsTab = null;

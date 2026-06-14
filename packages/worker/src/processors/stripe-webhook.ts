@@ -1,7 +1,6 @@
 /** Job processor — handle Stripe webhook events asynchronously */
 
 import { ExchangeRateService } from "@givernance/shared";
-import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
 import type { ProcessStripeWebhookJob } from "@givernance/shared/jobs";
 import {
   auditLogs,
@@ -19,7 +18,6 @@ import { and, eq, sql } from "drizzle-orm";
 import Stripe from "stripe";
 import { env } from "../env.js";
 import { db, withWorkerContext } from "../lib/db.js";
-import { isFlagEnabled } from "../lib/flags.js";
 import { jobLogger } from "../lib/logger.js";
 
 /**
@@ -395,13 +393,12 @@ async function handlePaymentIntentSucceeded(
       });
     }
 
-    // #436 — Stripe BalanceTransaction fee enrichment. Gated by the
-    // `admin.finance_dashboard` flag: when off, we still process the
-    // donation normally — the column `donations.stripe_fee_cents`
-    // simply stays NULL and the dashboard's "Revenu Givernance" KPI
-    // falls back to the platform-fee accumulator without the
-    // Stripe-side processing-fee deduction. The Stripe SDK call is
-    // wrapped in try/catch — enrichment is best-effort, not
+    // #436 — Stripe BalanceTransaction fee enrichment. Best-effort:
+    // when the Stripe SDK call fails (or `STRIPE_SECRET_KEY` is unset),
+    // the column `donations.stripe_fee_cents` simply stays NULL and the
+    // dashboard's "Revenu Givernance" KPI falls back to the platform-fee
+    // accumulator without the Stripe-side processing-fee deduction. The
+    // call is wrapped in try/catch — enrichment is best-effort, not
     // transactional.
     await maybeEnrichStripeFee(tx, {
       orgId,
@@ -677,7 +674,7 @@ async function handlePaymentIntentFailed(
 /**
  * Lazy-initialised Stripe SDK singleton. Built once on first BT fetch so
  * the worker boot path doesn't crash when `STRIPE_SECRET_KEY` is unset
- * (tests, dev without the dashboard flag flipped on).
+ * (tests, dev without Stripe configured).
  */
 let _stripeClient: Stripe | null = null;
 function getStripeClient(): Stripe | null {
@@ -800,9 +797,9 @@ async function fetchStripeFeeBaseCents(args: FetchStripeFeeArgs): Promise<number
 }
 
 /**
- * Feature-flag-gated, best-effort enrichment of `donations.stripe_fee_cents`.
- * Extracted out of `handlePaymentIntentSucceeded` so that function stays
- * under the cognitive-complexity threshold. Errors are logged + swallowed —
+ * Best-effort enrichment of `donations.stripe_fee_cents`. Extracted out
+ * of `handlePaymentIntentSucceeded` so that function stays under the
+ * cognitive-complexity threshold. Errors are logged + swallowed —
  * enrichment must never roll back the donation write.
  */
 async function maybeEnrichStripeFee(
@@ -817,9 +814,6 @@ async function maybeEnrichStripeFee(
     log: ReturnType<typeof jobLogger>;
   },
 ): Promise<void> {
-  if (!(await isFlagEnabled(FEATURE_FLAG_KEYS.ADMIN_FINANCE_DASHBOARD))) {
-    return;
-  }
   try {
     const fee = await fetchStripeFeeBaseCents({
       intent: args.intent,

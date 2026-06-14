@@ -3,7 +3,7 @@
 > Related: [`docs/14-screen-inventory.md`](14-screen-inventory.md) GLO-004, [`docs/17-log-management.md`](17-log-management.md), [`docs/18-feature-flags.md`](18-feature-flags.md), [`docs/adrs/adr-031-notifications-delivery-and-fanout.md`](adrs/adr-031-notifications-delivery-and-fanout.md), [`diagrams/notifications-flow.mmd`](../diagrams/notifications-flow.mmd), [Epic #363](https://github.com/purposestack/givernance/issues/363).
 >
 > Migration that ships the schema: [`packages/api/migrations/0055_notifications_center.sql`](../packages/api/migrations/0055_notifications_center.sql).
-> Feature flag: `communication.notifications_center` (default off, scope `tenant`).
+> Feature flag: retired in issue #493 (migration 0082) — the notification centre is now always on. See [`docs/18-feature-flags.md`](18-feature-flags.md) for the flag lifecycle.
 
 ## 0. Why this exists — at a glance
 
@@ -45,13 +45,8 @@ sequenceDiagram
   Relay->>DB: SELECT pending outbox_events FOR UPDATE SKIP LOCKED
   Relay->>Worker: enqueue { type: "donation.created", payload }
   Worker->>Worker: fanoutNotifications(event)
-  Worker->>Worker: flag check: communication.notifications_center?
-  alt flag off
-    Worker-->>Worker: skip — log debug
-  else flag on
-    Worker->>DB: SELECT users WHERE role='org_admin'<br/>+ honour notification_preferences (in_app)
-    Worker->>DB: INSERT notifications (one per recipient)
-  end
+  Worker->>DB: SELECT users WHERE role='org_admin'<br/>+ honour notification_preferences (in_app)
+  Worker->>DB: INSERT notifications (one per recipient)
   Worker->>Worker: routeDomainEvent → existing receipt PDF job
   Bell->>API: EventSource /v1/notifications/stream
   API->>DB: SELECT new rows WHERE created_at > cursor (polling loop)
@@ -62,13 +57,15 @@ sequenceDiagram
   API->>DB: UPDATE read_at = NOW()
 ```
 
-### Off-state behaviour (flag off)
+### Surface availability
 
-- Topbar has no bell icon at all (off-state QA per `feedback_feature_flag_first`).
-- `/v1/notifications*` + `/v1/notification-preferences*` routes return 404 (anti-disclosure — same posture as `/v1/constituents/bulk-email`).
-- `/profile/notifications` returns 404 (the page itself re-checks the flag SSR).
-- Outbox-fanout worker silently no-ops on every event.
-- Email-digest BullMQ tick reads the flag, sees off, returns.
+The notification centre is always on (the `communication.notifications_center` flag was retired in issue #493, migration 0082). Concretely:
+
+- The topbar bell renders for every authenticated tenant user. Super-admins don't see it — they have no tenant-scoped chrome — but that's a role distinction, not a flag.
+- `/v1/notifications*` + `/v1/notification-preferences*` routes require only `requireAuth`.
+- `/profile/notifications` is reachable by any authenticated tenant role.
+- The outbox-fanout worker fans out unconditionally on every event.
+- The email-digest BullMQ tick runs on its schedule for every tenant.
 
 ## 2. Architecture overview
 
@@ -118,7 +115,6 @@ flowchart LR
 |---|---|---|
 | Schema (Drizzle) | `packages/shared/src/schema/notifications.ts` | `notifications`, `notification_preferences` |
 | Type registry | `packages/shared/src/constants/notifications.ts` | `NOTIFICATION_TYPE_VALUES`, `NOTIFICATION_TYPE_REGISTRY` |
-| Feature flag | `packages/shared/src/constants/feature-flags.ts` | `COMMUNICATION_NOTIFICATIONS_CENTER` |
 | Migration | `packages/api/migrations/0055_notifications_center.sql` | seed + table + RLS |
 | Fanout producer | `packages/worker/src/processors/notifications-fanout.ts` | `fanoutNotifications`, `planFanout` |
 | Worker wiring | `packages/worker/src/worker.ts` | `processDomainEvent` calls fanout first |
@@ -227,20 +223,18 @@ The same discipline applies to other FK columns pointing at `users.id` across th
 
 ## 4. Permissions matrix
 
-| Endpoint | Method | Flag | Guard | Notes |
-|---|---|---|---|---|
-| `/v1/notifications` | GET | `communication.notifications_center` | `requireAuth` | Lists caller's own rows. RLS isolates tenant; service filters `user_id = currentUserId`. |
-| `/v1/notifications/unread-count` | GET | `communication.notifications_center` | `requireAuth` | Caller-scoped count. |
-| `/v1/notifications/:id/read` | PATCH | `communication.notifications_center` | `requireAuth` | Caller-scoped — 404 if not owned. Idempotent. |
-| `/v1/notifications/read-all` | POST | `communication.notifications_center` | `requireAuth` | Idempotent — returns count of rows touched. |
-| `/v1/notifications/mark-read-by-link` | POST | `communication.notifications_center` | `requireAuth` | Body `{ linkUrl }`. Marks every panel-visible unread row matching the link as read. Auto-fired by the bell hook on every pathname change. |
-| `/v1/notifications/:id` | DELETE | `communication.notifications_center` | `requireAuth` | Soft-delete (sets `deleted_at`). |
-| `/v1/notifications/stream` | GET | `communication.notifications_center` | `requireAuth` | SSE. Heartbeat every 25 s. Resumes from `Last-Event-ID`. |
-| `/v1/notification-preferences` | GET | `communication.notifications_center` | `requireAuth` | Returns the closed set (every registered type), defaults merged in. |
-| `/v1/notification-preferences/:type` | PATCH | `communication.notifications_center` | `requireAuth` | Upsert (idempotent). Body `{ inApp, emailDigest }`. |
-| `/profile/notifications` | GET | `communication.notifications_center` | requireAuth (SSR) | 404 if flag off. |
-
-Flag gate runs FIRST per the canonical `[requireFlag, requireRole]` pattern from `docs/18-feature-flags.md` § 6.1 — a scanner can't enumerate gated routes by their auth requirement.
+| Endpoint | Method | Guard | Notes |
+|---|---|---|---|
+| `/v1/notifications` | GET | `requireAuth` | Lists caller's own rows. RLS isolates tenant; service filters `user_id = currentUserId`. |
+| `/v1/notifications/unread-count` | GET | `requireAuth` | Caller-scoped count. |
+| `/v1/notifications/:id/read` | PATCH | `requireAuth` | Caller-scoped — 404 if not owned. Idempotent. |
+| `/v1/notifications/read-all` | POST | `requireAuth` | Idempotent — returns count of rows touched. |
+| `/v1/notifications/mark-read-by-link` | POST | `requireAuth` | Body `{ linkUrl }`. Marks every panel-visible unread row matching the link as read. Auto-fired by the bell hook on every pathname change. |
+| `/v1/notifications/:id` | DELETE | `requireAuth` | Soft-delete (sets `deleted_at`). |
+| `/v1/notifications/stream` | GET | `requireAuth` | SSE. Heartbeat every 25 s. Resumes from `Last-Event-ID`. |
+| `/v1/notification-preferences` | GET | `requireAuth` | Returns the closed set (every registered type), defaults merged in. |
+| `/v1/notification-preferences/:type` | PATCH | `requireAuth` | Upsert (idempotent). Body `{ inApp, emailDigest }`. |
+| `/profile/notifications` | GET | requireAuth (SSR) | The preferences page — reachable by any authenticated tenant role. |
 
 ## 5. GDPR posture
 
@@ -257,9 +251,9 @@ The notification surface is per-user data; GDPR Articles 5, 15, 17 apply.
 
 The Epic ships in one PR:
 
-1. **Step 0 — feature flag**: register `communication.notifications_center` in the shared registry; seed via migration. Every new route + worker job pickup + web surface gates on it.
+1. **Step 0 — feature flag (retired)**: the centre originally shipped behind `communication.notifications_center` (every route, worker job pickup, and web surface gated on it). That flag was retired in issue #493 (migration 0082); the surface is now permanently on.
 2. **Phase 1 — schema + outbox subscriber + REST API**: migration 0055 creates the two tables + RLS + indices. Worker's `fanoutNotifications` runs alongside `routeDomainEvent` for every outbox event. API exposes list / unread-count / mark-read / mark-all-read / soft-delete.
-3. **Phase 2 — topbar bell + panel**: `NotificationsBell` mounts when the SSR-resolved flag is on; `NotificationsPanel` matches the GLO-004 mockup (filter chips, accent bars, mark-all-read, click-through). Polling fallback at 30 s.
+3. **Phase 2 — topbar bell + panel**: `NotificationsBell` mounts for every authenticated tenant user; `NotificationsPanel` matches the GLO-004 mockup (filter chips, accent bars, mark-all-read, click-through). Polling fallback at 30 s.
 4. **Phase 3 — preferences page**: `/profile/notifications` (every authenticated role; not `/settings/*` which is org-admin only). Optimistic upsert.
 5. **Phase 4 — SSE delivery**: `/v1/notifications/stream` (`text/event-stream`). EventSource client swaps polling for SSE; falls back automatically on error. `Last-Event-ID` resume.
 6. **Phase 5 — email digest (opt-in)**: BullMQ recurring job at 09:00 UTC daily. Reads each tenant's opted-in users + their unread rows since the cursor, sends one digest per recipient via `defaultEmailSender`. Templates are minimal text/HTML — per-user locale + per-tenant DKIM are explicit follow-ups (see § 7).
@@ -282,7 +276,7 @@ The Epic explicitly does NOT ship:
 
 ## 8. Acceptance — per Epic #363
 
-- [x] `communication.notifications_center` flag registered + seeded; every new route protected with `requireFlag(...)` as the first preHandler; every dependent UI surface and worker job pickup gated; off-state QA done.
+- [x] `communication.notifications_center` flag registered + seeded; every new route protected with `requireFlag(...)` as the first preHandler; every dependent UI surface and worker job pickup gated; off-state QA done. *(Flag retired in issue #493 / migration 0082 — the surface is now permanently on.)*
 - [x] Spike ADR merged ([`docs/adrs/adr-031`](adrs/adr-031-notifications-delivery-and-fanout.md)).
 - [x] `notifications` table + RLS shipped, with passing isolation tests.
 - [x] At least 5 event producers wired (donation, invitation × 2, branding activation, postal export, bulk email).

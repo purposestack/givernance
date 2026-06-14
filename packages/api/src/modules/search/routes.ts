@@ -5,12 +5,10 @@
  * constituents, donations, and campaigns. Backs the `Cmd+K` palette in
  * the web app.
  *
- * preHandler order: `requireFlag` is FIRST so a tenant with the flag
- * off gets 404 (indistinguishable from a typo'd URL), then `requireAuth`
- * resolves the JWT. RBAC: every authenticated tenant member can search;
- * RLS in the service layer enforces tenant scope, and viewers see the
- * same set as users / admins (the palette is a navigation aid, not a
- * permissioned data surface).
+ * RBAC: every authenticated tenant member can search; RLS in the service
+ * layer enforces tenant scope, and viewers see the same set as users /
+ * admins (the palette is a navigation aid, not a permissioned data
+ * surface).
  *
  * Rate limit: 60 requests/minute/user. The frontend debounces input by
  * 200 ms, so a sustained keystroke burst lands around 5 req/s — the
@@ -19,10 +17,8 @@
  * fast typists.)
  */
 
-import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
-import { requireFlag } from "../../lib/flags/flag-guard.js";
 import { requireAuth } from "../../lib/guards.js";
 import {
   ErrorResponses,
@@ -67,10 +63,7 @@ export async function searchRoutes(app: FastifyInstance) {
   app.get(
     "/search",
     {
-      // Flag-gate FIRST so a disabled tenant looks identical to a typo'd
-      // URL (404). Auth runs second. (Doc 18 §6.1, mirrors notifications
-      // and bulk-email routes.)
-      preHandler: [requireFlag(FEATURE_FLAG_KEYS.PRODUCTIVITY_COMMAND_PALETTE), requireAuth],
+      preHandler: requireAuth,
       // 60 req/min/user: matches the debounce-friendly cadence the
       // frontend can produce (5 req/s sustained at the upper bound) and
       // is comfortably above any realistic human typing speed. The
@@ -78,10 +71,7 @@ export async function searchRoutes(app: FastifyInstance) {
       config: { rateLimit: { max: 60, timeWindow: "1 minute" } },
       // Quiet the per-keystroke 200s so a sustained typing burst
       // doesn't flood stdout (and Loki) with the raw `q` substring.
-      // Errors (4xx / 5xx) still emit at warn+. The flag-gate denial
-      // path emits its own structured `flag.route_gated` log line at
-      // info via `requireFlag` (kept) — that one is bounded by route
-      // template, not the user's query.
+      // Errors (4xx / 5xx) still emit at warn+.
       logLevel: "warn",
       schema: {
         tags: ["Search"],

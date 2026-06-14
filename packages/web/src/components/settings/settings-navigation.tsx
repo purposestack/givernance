@@ -35,35 +35,23 @@ const SETTINGS_NAV_ITEMS: SettingsNavItem[] = [
     key: "bankAccounts",
     match: (pathname: string) => pathname.startsWith("/settings/bank-accounts"),
   },
+  {
+    href: "/settings/feature-flags",
+    key: "featureFlags",
+    match: (pathname: string) => pathname.startsWith("/settings/feature-flags"),
+  },
 ];
 
-const FEATURE_FLAGS_NAV_ITEM: SettingsNavItem = {
-  href: "/settings/feature-flags",
-  key: "featureFlags",
-  match: (pathname: string) => pathname.startsWith("/settings/feature-flags"),
-};
-
 /**
- * Settings-area nav strip.
- *
- * Phase 2 (Epic #365) adds an optional "Feature flags" entry — the
- * parent server component decides whether to surface it by reading
- * the `admin.feature_flags_phase2` flag SSR-side and passing
- * `showFeatureFlags`. We render the entry conditionally rather than
- * always-on so a non-org_admin user (or an org where the flag is
- * off) never sees a dead-end link.
+ * Settings-area nav strip. The "Feature flags" entry (Epic #365) points
+ * at the org-admin self-service page; the settings area is org-admin
+ * gated at the route level, so the entry is always surfaced here.
  */
-export function SettingsNavigation({
-  showFeatureFlags = false,
-}: {
-  showFeatureFlags?: boolean;
-} = {}) {
+export function SettingsNavigation() {
   const pathname = usePathname();
   const t = useTranslations("settings.navigation");
 
-  const items = showFeatureFlags
-    ? [...SETTINGS_NAV_ITEMS, FEATURE_FLAGS_NAV_ITEM]
-    : SETTINGS_NAV_ITEMS;
+  const items = SETTINGS_NAV_ITEMS;
 
   return (
     <nav aria-label={t("label")} className="overflow-x-auto">

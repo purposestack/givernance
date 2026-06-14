@@ -81,9 +81,9 @@ const ADMIN_NAV_ITEMS: AdminNavItem[] = [
 ];
 
 /**
- * Flag-gated admin nav entries (Epic #434). Rendered only when the
- * matching flag prop is on at SSR time — keeps the off-state surface
- * completely absent per `feedback_feature_flag_first`.
+ * Platform-finance admin nav entry (Epic #434). Rendered first in the
+ * super-admin "Back office" section so the daily-use dashboard leads
+ * the list.
  */
 const FINANCE_ADMIN_NAV_ITEM: AdminNavItem = {
   href: "/admin/finance",
@@ -103,13 +103,6 @@ interface SidebarProps {
    */
   isSuperAdmin?: boolean;
   /**
-   * SSR-resolved value of `admin.finance_dashboard` (Epic #434). When
-   * `true` AND the viewer is super-admin, render the "Platform finance"
-   * nav entry. When `false` the entry is completely absent (no aria
-   * trace) — off-state QA per `feedback_feature_flag_first`.
-   */
-  financeDashboardEnabled?: boolean;
-  /**
    * Server-resolved org logo (Epic #286 / PR #287 review, major 4).
    * Replaces the per-mount client-side fetch — both eliminates the
    * initial-letter flash and stops 1 GET per navigation. `null` =
@@ -128,7 +121,6 @@ export function Sidebar({
   onClose,
   membershipCount,
   isSuperAdmin: isSuperAdminProp,
-  financeDashboardEnabled = false,
   orgLogo = null,
 }: SidebarProps) {
   const pathname = usePathname();
@@ -260,9 +252,8 @@ export function Sidebar({
                 // Finance plateforme is the daily-use dashboard for
                 // super-admins — render it first so the surface follows
                 // the admin-dashboard convention (overview → entities
-                // → operations → config). Flag-gated so the slot is
-                // absent when the rollout is paused.
-                ...(financeDashboardEnabled ? [FINANCE_ADMIN_NAV_ITEM] : []),
+                // → operations → config).
+                FINANCE_ADMIN_NAV_ITEM,
                 ...ADMIN_NAV_ITEMS,
               ].map((item) => {
                 const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);

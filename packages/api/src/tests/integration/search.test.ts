@@ -2,27 +2,19 @@
  * Global search integration tests (Epic #364, GLO-001).
  *
  * Coverage matrix:
- *   1. Off-state flag — `GET /v1/search` returns 404 when the flag is
- *      off, INCLUDING for unauthenticated callers (flag gate fires
- *      before auth — anti-disclosure).
- *   2. On-state flag — happy path returns grouped hits with the
+ *   1. Happy path returns grouped hits with the
  *      `{ data: { query, groups } }` envelope.
- *   3. RLS isolation — Tenant A's records never appear in Tenant B's
+ *   2. RLS isolation — Tenant A's records never appear in Tenant B's
  *      search results, even when the literal query matches both.
- *   4. Query-injection safety — pg-flavoured payloads (NUL byte, SQL
+ *   3. Query-injection safety — pg-flavoured payloads (NUL byte, SQL
  *      meta-characters, `to_tsquery` operators) don't crash and don't
  *      escape the parameter binder.
- *   5. Schema parity — the `productivity.command_palette` row matches
- *      `FEATURE_FLAG_REGISTRY` (drift guard).
- *   6. RFC 9457 body shape on the off-state 404.
  */
 
-import { FEATURE_FLAG_KEYS, FEATURE_FLAG_REGISTRY } from "@givernance/shared/constants";
-import { campaigns, constituents, donations, featureFlags } from "@givernance/shared/schema";
-import { eq, sql } from "drizzle-orm";
+import { campaigns, constituents, donations } from "@givernance/shared/schema";
+import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { flagService } from "../../lib/flags/flag-service.js";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createServer } from "../../server.js";
 import {
   authHeader,
@@ -34,8 +26,6 @@ import {
 } from "../helpers/auth.js";
 import { db } from "../helpers/db.js";
 
-const FLAG_KEY = FEATURE_FLAG_KEYS.PRODUCTIVITY_COMMAND_PALETTE;
-
 let app: FastifyInstance;
 
 beforeAll(async () => {
@@ -45,8 +35,6 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await db.update(featureFlags).set({ enabled: false }).where(eq(featureFlags.key, FLAG_KEY));
-  await flagService.invalidate();
   await app.close();
 });
 
@@ -61,19 +49,7 @@ beforeEach(async () => {
     DELETE FROM constituents
     WHERE first_name LIKE 'SEARCH-TEST-%' OR last_name LIKE 'SEARCH-TEST-%'
   `);
-  await db.update(featureFlags).set({ enabled: false }).where(eq(featureFlags.key, FLAG_KEY));
-  await flagService.invalidate();
 });
-
-afterEach(async () => {
-  await db.update(featureFlags).set({ enabled: false }).where(eq(featureFlags.key, FLAG_KEY));
-  await flagService.invalidate();
-});
-
-async function setFlag(enabled: boolean): Promise<void> {
-  await db.update(featureFlags).set({ enabled }).where(eq(featureFlags.key, FLAG_KEY));
-  await flagService.invalidate();
-}
 
 async function seedConstituent(
   orgId: string,
@@ -133,43 +109,10 @@ async function seedDonation(
   return id;
 }
 
-// ─── 1. Off-state flag (anti-disclosure) ─────────────────────────────
-
-describe("Search — off-state flag (anti-disclosure)", () => {
-  it("returns 404 on GET /v1/search when flag is off (authenticated)", async () => {
-    const token = signToken(app);
-    const res = await app.inject({
-      method: "GET",
-      url: "/v1/search?q=marie",
-      headers: authHeader(token),
-    });
-    expect(res.statusCode).toBe(404);
-  });
-
-  it("unauthenticated GET /v1/search also returns 404 (gate before auth)", async () => {
-    const res = await app.inject({ method: "GET", url: "/v1/search?q=marie" });
-    expect(res.statusCode).toBe(404);
-  });
-
-  it("off-state 404 body conforms to RFC 9457 (status + title members)", async () => {
-    const token = signToken(app);
-    const res = await app.inject({
-      method: "GET",
-      url: "/v1/search?q=marie",
-      headers: authHeader(token),
-    });
-    expect(res.statusCode).toBe(404);
-    const body = res.json<{ status?: number; title?: string }>();
-    expect(body.status).toBe(404);
-    expect(body.title).toBe("Not Found");
-  });
-});
-
-// ─── 2. Happy path ───────────────────────────────────────────────────
+// ─── 1. Happy path ───────────────────────────────────────────────────
 
 describe("Search — happy path", () => {
   beforeEach(async () => {
-    await setFlag(true);
     // Use highly-unique fixture names so other test suites' constituents
     // (e.g. constituents.test.ts seeds "Marie" rows of its own) don't
     // crowd this query past the PER_GROUP_LIMIT=5 cap.
@@ -342,11 +285,10 @@ describe("Search — happy path", () => {
   });
 });
 
-// ─── 3. RLS isolation ────────────────────────────────────────────────
+// ─── 2. RLS isolation ────────────────────────────────────────────────
 
 describe("Search — RLS isolation across tenants", () => {
   it("Tenant B cannot see Tenant A constituents matching the same query", async () => {
-    await setFlag(true);
     // Both tenants own a "SEARCH-TEST-Camille". RLS must not leak A's
     // row to B and vice versa.
     await seedConstituent(ORG_A, "SEARCH-TEST-Camille", "AlphaOnly");
@@ -369,7 +311,6 @@ describe("Search — RLS isolation across tenants", () => {
   });
 
   it("Tenant A's campaigns are not visible to Tenant B", async () => {
-    await setFlag(true);
     await seedCampaign(ORG_A, "SEARCH-TEST-AlphaSecretCampaign");
 
     const tokenB = signTokenB(app);
@@ -384,11 +325,10 @@ describe("Search — RLS isolation across tenants", () => {
   });
 });
 
-// ─── 4. Query-injection safety ───────────────────────────────────────
+// ─── 3. Query-injection safety ───────────────────────────────────────
 
 describe("Search — query-injection safety", () => {
   beforeEach(async () => {
-    await setFlag(true);
     await seedConstituent(ORG_A, "SEARCH-TEST-Probe-Marie", "Fontaine");
   });
 
@@ -438,26 +378,5 @@ describe("Search — query-injection safety", () => {
       SELECT COUNT(*)::text AS count FROM constituents WHERE first_name = 'SEARCH-TEST-Probe-Marie'
     `);
     expect(Number(survived.rows[0]?.count ?? "0")).toBeGreaterThanOrEqual(1);
-  });
-});
-
-// ─── 5. Registry parity ──────────────────────────────────────────────
-
-describe("Search — feature-flag registry parity", () => {
-  it("DB row for productivity.command_palette matches FEATURE_FLAG_REGISTRY", async () => {
-    const row = await db.query.featureFlags.findFirst({
-      where: eq(featureFlags.key, FLAG_KEY),
-    });
-    expect(row).toBeDefined();
-
-    const expected = FEATURE_FLAG_REGISTRY.find((r) => r.key === FLAG_KEY);
-    expect(expected).toBeDefined();
-    if (!row || !expected) return;
-
-    expect(row.label).toBe(expected.label);
-    expect(row.description).toBe(expected.description);
-    expect(row.scope).toBe(expected.scope);
-    expect(row.tenantOverrideAllowed).toBe(expected.tenantOverrideAllowed);
-    expect(row.public).toBe(expected.public);
   });
 });

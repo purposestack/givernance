@@ -22,14 +22,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { FEATURE_FLAG_KEYS, type FeatureFlagKey } from "@givernance/shared/constants";
-import {
-  featureFlags,
-  notifications,
-  outboxEvents,
-  tenants,
-  users,
-} from "@givernance/shared/schema";
+import { notifications, outboxEvents, tenants, users } from "@givernance/shared/schema";
 import { and, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "../../lib/db.js";
@@ -42,25 +35,7 @@ const ADMIN_B_ID = "00000000-0000-0000-0000-00000000a431";
 const OUTBOX_ID = "00000000-0000-0000-0000-00000000e430";
 const DONATION_ID = "00000000-0000-0000-0000-00000000d430";
 
-const FLAG_KEY: FeatureFlagKey = FEATURE_FLAG_KEYS.COMMUNICATION_NOTIFICATIONS_CENTER;
-
 beforeAll(async () => {
-  // Flag must be on; otherwise `fanoutNotifications` returns early. We
-  // toggle it explicitly here rather than depend on seed state because
-  // the test must be deterministic against any prior CI run.
-  await db
-    .insert(featureFlags)
-    .values({
-      key: FLAG_KEY,
-      label: "Notifications center",
-      description: "Test toggle for #430 regression.",
-      enabled: true,
-    })
-    .onConflictDoUpdate({
-      target: featureFlags.key,
-      set: { enabled: true },
-    });
-
   // Tenant A + tenant B, each with one org_admin.
   await db.execute(
     sql`INSERT INTO tenants (id, name, slug, status, created_via)

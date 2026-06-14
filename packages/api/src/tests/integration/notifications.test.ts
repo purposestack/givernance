@@ -2,26 +2,20 @@
  * Notification centre integration tests (Epic #363, GLO-004).
  *
  * Coverage matrix:
- *   1. Off-state flag — every gated route returns 404 when the flag is
- *      off (anti-disclosure). 404 fires BEFORE auth.
- *   2. On-state flag — list + mark-read + mark-all-read happy paths,
- *      RFC 9457 problem+json on 404.
- *   3. RLS isolation — Tenant A can never see Tenant B's notifications
+ *   1. List + mark-read + mark-all-read happy paths, RFC 9457
+ *      problem+json on 404.
+ *   2. RLS isolation — Tenant A can never see Tenant B's notifications
  *      (cross-tenant cursor probe + cross-tenant mark-read attempt).
- *   4. Recipient isolation — within the SAME tenant, user A can't read
+ *   3. Recipient isolation — within the SAME tenant, user A can't read
  *      user B's notifications.
- *   5. Preferences — list returns the closed type set with defaults
+ *   4. Preferences — list returns the closed type set with defaults
  *      merged; PATCH upserts; unknown type returns 404.
- *   6. Registry parity — DB row matches FEATURE_FLAG_REGISTRY for the
- *      new flag (drift guard).
  */
 
-import { FEATURE_FLAG_KEYS, FEATURE_FLAG_REGISTRY } from "@givernance/shared/constants";
-import { featureFlags, notifications } from "@givernance/shared/schema";
+import { notifications } from "@givernance/shared/schema";
 import { eq, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { flagService } from "../../lib/flags/flag-service.js";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createServer } from "../../server.js";
 import {
   authHeader,
@@ -35,8 +29,6 @@ import {
 } from "../helpers/auth.js";
 import { db } from "../helpers/db.js";
 
-const FLAG_KEY = FEATURE_FLAG_KEYS.COMMUNICATION_NOTIFICATIONS_CENTER;
-
 let app: FastifyInstance;
 
 beforeAll(async () => {
@@ -46,30 +38,16 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await db.update(featureFlags).set({ enabled: false }).where(eq(featureFlags.key, FLAG_KEY));
-  await flagService.invalidate();
   await app.close();
 });
 
 beforeEach(async () => {
-  // Reset DB state — no notifications, no preferences, flag off.
+  // Reset DB state — no notifications, no preferences.
   await db.execute(sql`DELETE FROM notification_preferences`);
   await db.execute(sql`DELETE FROM notifications`);
-  await db.update(featureFlags).set({ enabled: false }).where(eq(featureFlags.key, FLAG_KEY));
-  await flagService.invalidate();
-});
-
-afterEach(async () => {
-  await db.update(featureFlags).set({ enabled: false }).where(eq(featureFlags.key, FLAG_KEY));
-  await flagService.invalidate();
 });
 
 // ─── Helpers ──────────────────────────────────────────────────────────
-
-async function setFlag(enabled: boolean): Promise<void> {
-  await db.update(featureFlags).set({ enabled }).where(eq(featureFlags.key, FLAG_KEY));
-  await flagService.invalidate();
-}
 
 async function seedNotification(opts: {
   orgId: string;
@@ -125,93 +103,9 @@ async function seedSecondUserInTenantA(): Promise<string> {
   return USER_A2;
 }
 
-// ─── 1. Off-state flag — every gated route is 404 ─────────────────────
+// ─── 1. Happy paths + RFC 9457 ─────────────────────────────────────────
 
-describe("Notifications — off-state flag (anti-disclosure)", () => {
-  // Parametrise over every gated route so a refactor that drops the
-  // `requireFlag` preHandler is caught here, not in production.
-  const gatedRoutes: Array<{
-    method: "GET" | "POST" | "PATCH" | "DELETE";
-    url: string;
-    payload?: unknown;
-  }> = [
-    { method: "GET", url: "/v1/notifications" },
-    { method: "GET", url: "/v1/notifications/unread-count" },
-    // SSE endpoint — `app.inject` resolves the response before any
-    // streaming, so this exercises the flag gate (QA H1).
-    { method: "GET", url: "/v1/notifications/stream" },
-    {
-      method: "PATCH",
-      url: "/v1/notifications/00000000-0000-0000-0000-000000000001/read",
-    },
-    { method: "POST", url: "/v1/notifications/read-all" },
-    {
-      method: "POST",
-      url: "/v1/notifications/mark-read-by-link",
-      payload: { linkUrl: "/donations/00000000-0000-0000-0000-000000000aaa" },
-    },
-    {
-      method: "DELETE",
-      url: "/v1/notifications/00000000-0000-0000-0000-000000000001",
-    },
-    { method: "GET", url: "/v1/notification-preferences" },
-    {
-      method: "PATCH",
-      url: "/v1/notification-preferences/donation.received",
-      payload: { inApp: true, emailDigest: false },
-    },
-  ];
-
-  for (const route of gatedRoutes) {
-    it(`returns 404 on ${route.method} ${route.url} when flag is off`, async () => {
-      const token = signToken(app);
-      const res = await app.inject({
-        method: route.method,
-        url: route.url,
-        headers: authHeader(token),
-        payload: route.payload as Record<string, unknown> | undefined,
-      });
-      expect(res.statusCode).toBe(404);
-    });
-
-    it(`unauthenticated ${route.method} ${route.url} also returns 404 (no auth-vs-flag disclosure)`, async () => {
-      const res = await app.inject({
-        method: route.method,
-        url: route.url,
-        payload: route.payload as Record<string, unknown> | undefined,
-      });
-      // requireFlag is first preHandler — runs before auth, so
-      // unauthenticated callers hit the gate 404 (not 401).
-      expect(res.statusCode).toBe(404);
-    });
-  }
-
-  // Pin RFC 9457 body shape on at least one off-state 404 per
-  // `feedback_lock_rfc9457_body_in_tests`. The flag gate returns a
-  // problem+json body via `problemDetail()` — assert the well-known
-  // members rather than a plain-string body.
-  it("off-state 404 body conforms to RFC 9457 (status + title members)", async () => {
-    const token = signToken(app);
-    const res = await app.inject({
-      method: "GET",
-      url: "/v1/notifications",
-      headers: authHeader(token),
-    });
-    expect(res.statusCode).toBe(404);
-    const body = res.json<{ status?: number; title?: string }>();
-    expect(body.status).toBe(404);
-    expect(typeof body.title).toBe("string");
-    expect(body.title?.length ?? 0).toBeGreaterThan(0);
-  });
-});
-
-// ─── 2. On-state flag — happy paths + RFC 9457 ─────────────────────────
-
-describe("Notifications — list + mark + delete (flag on)", () => {
-  beforeEach(async () => {
-    await setFlag(true);
-  });
-
+describe("Notifications — list + mark + delete", () => {
   it("GET /v1/notifications returns caller's own rows", async () => {
     const id1 = await seedNotification({ orgId: ORG_A, userId: USER_A_ROW_ID });
     const id2 = await seedNotification({ orgId: ORG_A, userId: USER_A_ROW_ID });
@@ -427,10 +321,6 @@ describe("Notifications — list + mark + delete (flag on)", () => {
 // ─── 3. RLS / cross-tenant + cross-user isolation ──────────────────────
 
 describe("Notifications — isolation (RLS + recipient)", () => {
-  beforeEach(async () => {
-    await setFlag(true);
-  });
-
   it("Tenant A user can NEVER see Tenant B notifications via list", async () => {
     const tenantBId = await seedNotification({ orgId: ORG_B, userId: USER_B_ROW_ID });
 
@@ -576,10 +466,6 @@ describe("Notifications — isolation (RLS + recipient)", () => {
 // level flag that carries the write-time decision.
 
 describe("Notifications — panel_visible (digest-only rows)", () => {
-  beforeEach(async () => {
-    await setFlag(true);
-  });
-
   it("GET /v1/notifications excludes panel_visible = false rows", async () => {
     const visible = await seedNotification({ orgId: ORG_A, userId: USER_A_ROW_ID });
     const digestOnly = await seedNotification({
@@ -677,10 +563,6 @@ describe("Notifications — panel_visible (digest-only rows)", () => {
 // on every pathname change.
 
 describe("Notifications — mark-read-by-link", () => {
-  beforeEach(async () => {
-    await setFlag(true);
-  });
-
   it("marks every panel-visible unread notification pointing at the link as read", async () => {
     const one = await seedNotification({ orgId: ORG_A, userId: USER_A_ROW_ID });
     const two = await seedNotification({ orgId: ORG_A, userId: USER_A_ROW_ID });
@@ -803,10 +685,6 @@ describe("Notifications — mark-read-by-link", () => {
 // ─── 4. Preferences ────────────────────────────────────────────────────
 
 describe("Notifications — preferences", () => {
-  beforeEach(async () => {
-    await setFlag(true);
-  });
-
   it("GET /v1/notification-preferences returns the closed set with defaults merged", async () => {
     const token = signToken(app);
     const res = await app.inject({
@@ -871,38 +749,5 @@ describe("Notifications — preferences", () => {
       payload: { inApp: true, emailDigest: true },
     });
     expect(res.statusCode).toBe(400);
-  });
-});
-
-// ─── 5. Registry parity — DB row matches FEATURE_FLAG_REGISTRY ─────────
-
-describe("Notifications — feature-flag registry parity", () => {
-  it("FEATURE_FLAG_REGISTRY has the notifications-center entry", () => {
-    const entry = FEATURE_FLAG_REGISTRY.find((e) => e.key === FLAG_KEY);
-    expect(entry).toBeDefined();
-    expect(entry?.defaultEnabled).toBe(false);
-    expect(entry?.scope).toBe("tenant");
-    expect(entry?.tenantOverrideAllowed).toBe(false);
-    expect(entry?.public).toBe(true);
-  });
-
-  it("DB seed row matches the registry label / description / scope / public", async () => {
-    const [row] = await db
-      .select({
-        label: featureFlags.label,
-        description: featureFlags.description,
-        scope: featureFlags.scope,
-        tenantOverrideAllowed: featureFlags.tenantOverrideAllowed,
-        public: featureFlags.public,
-      })
-      .from(featureFlags)
-      .where(eq(featureFlags.key, FLAG_KEY));
-    expect(row).toBeDefined();
-    const entry = FEATURE_FLAG_REGISTRY.find((e) => e.key === FLAG_KEY)!;
-    expect(row?.label).toBe(entry.label);
-    expect(row?.description).toBe(entry.description);
-    expect(row?.scope).toBe(entry.scope);
-    expect(row?.tenantOverrideAllowed).toBe(entry.tenantOverrideAllowed);
-    expect(row?.public).toBe(entry.public);
   });
 });

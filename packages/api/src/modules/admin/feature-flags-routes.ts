@@ -1,13 +1,11 @@
 /**
  * Feature-flag routes (issue #326 / PR #352, expanded by Epic #365 PR #366).
  *
- * Surface map (every new Phase-2 route is gated by
- * `ADMIN_FEATURE_FLAGS_PHASE2` as the FIRST preHandler — before
- * role guards — so an off-state 404 leaks no role info per the
- * Feature-flag-first rule in CLAUDE.md):
+ * Surface map (each route is guarded by its role guard —
+ * `requireSuperAdmin` / `requireOrgAdmin` / `requireAuth`):
  *
  *   GET    /v1/feature-flags                                — public projection (public=true only)
- *   GET    /v1/admin/feature-flags                          — super-admin list (+ overrideStats when phase2 on)
+ *   GET    /v1/admin/feature-flags                          — super-admin list (+ overrideStats)
  *   PATCH  /v1/admin/feature-flags/:key                     — super-admin platform-default flip
  *   GET    /v1/admin/tenants/:tenantId/feature-flags        — super-admin tenant-detail tab
  *   PUT    /v1/admin/tenants/:tenantId/feature-flags/:key   — super-admin upsert override
@@ -27,13 +25,11 @@
  * Platform-default flips still call `flagService.invalidate()`.
  */
 
-import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
 import { tenants } from "@givernance/shared/schema";
 import { Type } from "@sinclair/typebox";
 import { eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { db } from "../../lib/db.js";
-import { requireFlag } from "../../lib/flags/flag-guard.js";
 import { flagService } from "../../lib/flags/flag-service.js";
 import { requireAuth, requireOrgAdmin, requireSuperAdmin } from "../../lib/guards.js";
 import {
@@ -85,10 +81,9 @@ const FlagRowSchema = Type.Object({
   createdAt: Type.String(),
   updatedAt: Type.String(),
   /**
-   * Present only when the caller is super-admin AND the
-   * `admin.feature_flags_phase2` flag is on. Null otherwise — the
-   * field stays in the schema so the frontend doesn't have to branch
-   * on undefined vs. missing.
+   * Per-tenant override counts. Null for platform-scoped flags that
+   * never carry overrides; the field stays in the schema so the
+   * frontend doesn't have to branch on undefined vs. missing.
    */
   overrideStats: Type.Union([Type.Null(), OverrideStatsSchema]),
 });
@@ -160,12 +155,11 @@ const PublicFlagRowSchema = Type.Object({
 });
 
 /**
- * Resolve `overrideStats` for a given flag key against the current
- * Phase-2 self-flag state. Used by both `GET /admin/feature-flags`
- * (list) and `PATCH /admin/feature-flags/:key` (single-row update)
- * so the response shape stays identical across endpoints — without
- * this, the PATCH used to return `overrideStats: null` and the FE
- * would optimistically replace the row, losing the
+ * Resolve `overrideStats` for a given flag key. Used by both
+ * `GET /admin/feature-flags` (list) and `PATCH /admin/feature-flags/:key`
+ * (single-row update) so the response shape stays identical across
+ * endpoints — without this, the PATCH used to return `overrideStats: null`
+ * and the FE would optimistically replace the row, losing the
  * "Manage per organisation" button until the page reloaded.
  *
  * Accepts a pre-fetched stats map when the caller already has one
@@ -174,10 +168,8 @@ const PublicFlagRowSchema = Type.Object({
  */
 async function resolveOverrideStatsFor(
   flagKey: string,
-  phase2On: boolean,
   statsByKey?: Map<string, { enabledCount: number; disabledCount: number }>,
-): Promise<{ enabledCount: number; disabledCount: number } | null> {
-  if (!phase2On) return null;
+): Promise<{ enabledCount: number; disabledCount: number }> {
   if (statsByKey) {
     return statsByKey.get(flagKey) ?? { enabledCount: 0, disabledCount: 0 };
   }
@@ -237,24 +229,19 @@ export async function featureFlagsRoutes(app: FastifyInstance) {
         },
       },
     },
-    async (request) => {
+    async () => {
       const rows = await flagService.list();
-      const phase2On = await flagService.isEnabled(FEATURE_FLAG_KEYS.ADMIN_FEATURE_FLAGS_PHASE2, {
-        orgId: request.auth?.orgId ?? null,
-      });
-      const statsByKey = phase2On
-        ? new Map(
-            (await flagService.overrideStats()).map((s) => [
-              s.flagKey,
-              { enabledCount: s.enabledCount, disabledCount: s.disabledCount },
-            ]),
-          )
-        : undefined;
+      const statsByKey = new Map(
+        (await flagService.overrideStats()).map((s) => [
+          s.flagKey,
+          { enabledCount: s.enabledCount, disabledCount: s.disabledCount },
+        ]),
+      );
       return {
         data: await Promise.all(
           rows.map(async (row) => ({
             ...row,
-            overrideStats: await resolveOverrideStatsFor(row.key, phase2On, statsByKey),
+            overrideStats: await resolveOverrideStatsFor(row.key, statsByKey),
           })),
         ),
       };
@@ -310,10 +297,7 @@ export async function featureFlagsRoutes(app: FastifyInstance) {
       // Same shape as `GET /admin/feature-flags` so the FE can
       // optimistically replace the row without losing the
       // override-stats badges + the Manage button.
-      const phase2On = await flagService.isEnabled(FEATURE_FLAG_KEYS.ADMIN_FEATURE_FLAGS_PHASE2, {
-        orgId: request.auth?.orgId ?? null,
-      });
-      const overrideStats = await resolveOverrideStatsFor(key, phase2On);
+      const overrideStats = await resolveOverrideStatsFor(key);
       return { data: { ...result.row, overrideStats } };
     },
   );
@@ -336,7 +320,7 @@ export async function featureFlagsRoutes(app: FastifyInstance) {
   app.get(
     "/admin/feature-flags/:key/tenants",
     {
-      preHandler: [requireFlag(FEATURE_FLAG_KEYS.ADMIN_FEATURE_FLAGS_PHASE2), requireSuperAdmin],
+      preHandler: requireSuperAdmin,
       schema: {
         tags: ["Admin"],
         params: FlagKeyParams,
@@ -367,7 +351,7 @@ export async function featureFlagsRoutes(app: FastifyInstance) {
   app.get(
     "/admin/tenants/:tenantId/feature-flags",
     {
-      preHandler: [requireFlag(FEATURE_FLAG_KEYS.ADMIN_FEATURE_FLAGS_PHASE2), requireSuperAdmin],
+      preHandler: requireSuperAdmin,
       schema: {
         tags: ["Admin"],
         params: TenantParams,
@@ -421,7 +405,7 @@ export async function featureFlagsRoutes(app: FastifyInstance) {
   app.put(
     "/admin/tenants/:tenantId/feature-flags/:key",
     {
-      preHandler: [requireFlag(FEATURE_FLAG_KEYS.ADMIN_FEATURE_FLAGS_PHASE2), requireSuperAdmin],
+      preHandler: requireSuperAdmin,
       config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
       schema: {
         tags: ["Admin"],
@@ -506,7 +490,7 @@ export async function featureFlagsRoutes(app: FastifyInstance) {
   app.delete(
     "/admin/tenants/:tenantId/feature-flags/:key",
     {
-      preHandler: [requireFlag(FEATURE_FLAG_KEYS.ADMIN_FEATURE_FLAGS_PHASE2), requireSuperAdmin],
+      preHandler: requireSuperAdmin,
       config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
       schema: {
         tags: ["Admin"],
@@ -557,7 +541,7 @@ export async function featureFlagsRoutes(app: FastifyInstance) {
   app.get(
     "/org/feature-flags",
     {
-      preHandler: [requireFlag(FEATURE_FLAG_KEYS.ADMIN_FEATURE_FLAGS_PHASE2), requireOrgAdmin],
+      preHandler: requireOrgAdmin,
       schema: {
         tags: ["Org"],
         response: {
@@ -607,7 +591,7 @@ export async function featureFlagsRoutes(app: FastifyInstance) {
   app.patch(
     "/org/feature-flags/:key",
     {
-      preHandler: [requireFlag(FEATURE_FLAG_KEYS.ADMIN_FEATURE_FLAGS_PHASE2), requireOrgAdmin],
+      preHandler: requireOrgAdmin,
       config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
       schema: {
         tags: ["Org"],
@@ -685,7 +669,7 @@ export async function featureFlagsRoutes(app: FastifyInstance) {
   app.delete(
     "/org/feature-flags/:key",
     {
-      preHandler: [requireFlag(FEATURE_FLAG_KEYS.ADMIN_FEATURE_FLAGS_PHASE2), requireOrgAdmin],
+      preHandler: requireOrgAdmin,
       config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
       schema: {
         tags: ["Org"],

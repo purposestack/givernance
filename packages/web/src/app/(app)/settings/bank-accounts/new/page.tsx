@@ -4,14 +4,12 @@ import { BankAccountForm } from "@/components/settings/bank-account-form";
 import { SettingsNavigation } from "@/components/settings/settings-navigation";
 import { PageHeader } from "@/components/shared/page-header";
 import { requireAuth } from "@/lib/auth/guards";
-import { isFeatureFlagsPhase2Enabled } from "@/lib/feature-flags/server";
 
 export default async function NewBankAccountPage() {
   const auth = await requireAuth();
   const t = await getTranslations("settings.bankAccounts");
   const tSettings = await getTranslations("settings");
   const tForm = await getTranslations("settings.bankAccounts.form");
-  const showFeatureFlags = await isFeatureFlagsPhase2Enabled();
 
   return (
     <>
@@ -25,7 +23,7 @@ export default async function NewBankAccountPage() {
           { label: tForm("breadcrumbNew") },
         ]}
       />
-      <SettingsNavigation showFeatureFlags={showFeatureFlags} />
+      <SettingsNavigation />
       <BankAccountForm mode="create" canManage={auth.roles.includes("org_admin")} />
     </>
   );

@@ -13,18 +13,14 @@
  *     startup with `{ mode: "backfill" }` walks the last 12 calendar
  *     months and idempotently triggers any that are missing.
  *
- * Both paths are gated by the `admin.finance_dashboard` feature flag —
- * the same early-return posture as every other cron-gated processor.
- *
  * De-dup (issue #443): the request flow lives in the shared
  * `@givernance/shared/finance/reporting` module so the API (manual
  * report + dashboard) and this cron drive the SAME idempotent
  * `requestMonthlyReport` / `backfillLast12Months`. This processor is
- * the thin worker adapter — it gates on the flag, then injects the
- * worker's owner-pool `db` and a PLATFORM_REPORTS enqueue closure.
+ * the thin worker adapter — it injects the worker's owner-pool `db`
+ * and a PLATFORM_REPORTS enqueue closure.
  */
 
-import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
 import {
   backfillLast12Months,
   type MonthlyReportDeps,
@@ -39,7 +35,6 @@ import { env } from "../env.js";
 // Owner pool — `platform_finance_reports` is a platform-level table
 // (no org_id, no RLS), same as `generate-monthly-finance-report.ts`.
 import { db as systemDb } from "../lib/db.js";
-import { isFlagEnabled } from "../lib/flags.js";
 import { jobLogger } from "../lib/logger.js";
 
 export interface PlatformReportTriggerPayload {
@@ -80,12 +75,6 @@ export async function processPlatformReportAutoTrigger(
   job: Job<PlatformReportTriggerPayload>,
 ): Promise<void> {
   const log = jobLogger({ jobId: job.id });
-
-  const flagOn = await isFlagEnabled(FEATURE_FLAG_KEYS.ADMIN_FINANCE_DASHBOARD);
-  if (!flagOn) {
-    log.info("platform_report_trigger: flag admin.finance_dashboard off — no-op");
-    return;
-  }
 
   const mode = job.data?.mode ?? "single";
 

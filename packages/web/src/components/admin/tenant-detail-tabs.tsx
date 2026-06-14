@@ -11,11 +11,9 @@ interface TenantDetailTabsProps {
   users: ReactNode;
   audit: ReactNode;
   /**
-   * Feature-flags tab content. Phase 2 (Epic #365) addition. The
-   * super-admin tenant detail page passes `null` when the
-   * `admin.feature_flags_phase2` self-flag is off so the tab is
-   * absent end-to-end (matches the off-state QA requirement that
-   * the whole surface disappears, not just the tab body).
+   * Feature-flags tab content (Epic #365). The super-admin tenant
+   * detail page passes `null` when the per-tenant flag fetch fails so
+   * the tab degrades to absent rather than 500-ing the whole page.
    */
   featureFlags?: ReactNode | null;
 }

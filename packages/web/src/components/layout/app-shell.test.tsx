@@ -2,8 +2,14 @@
  * AppShell tests — focused on the global Cmd+K listener wiring added by
  * Epic #364 (GLO-001). The shell composes Sidebar / Topbar / Banners /
  * CommandPalette; this suite only asserts behaviours the shell itself
- * owns (the keydown listener + off-state mounting). The downstream
+ * owns (the keydown listener + conditional mounting). The downstream
  * components have their own tests.
+ *
+ * The tenant chrome (command palette + bell) is derived from
+ * `isSuperAdmin`: tenant users (`isSuperAdmin={false}`) get the palette,
+ * super-admins (`isSuperAdmin={true}`) do not — they live in
+ * `platform_admins` with no org_id (ADR-022), so a tenant-scoped search
+ * surface is meaningless for them.
  *
  * Mocks every collaborator that fetches or routes so the test exercises
  * just the AppShell wiring.
@@ -67,36 +73,36 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function renderShell(props: { commandPaletteEnabled: boolean }) {
+function renderShell(props: { isSuperAdmin: boolean }) {
   return render(
     <AppShell
       impersonation={undefined}
       impersonationUserName={undefined}
-      commandPaletteEnabled={props.commandPaletteEnabled}
+      isSuperAdmin={props.isSuperAdmin}
     >
       <main data-testid="children">child</main>
     </AppShell>,
   );
 }
 
-describe("AppShell — command palette off-state", () => {
-  it("does not render the CommandPalette component when the flag is off", () => {
-    renderShell({ commandPaletteEnabled: false });
+describe("AppShell — command palette absent for super-admin", () => {
+  it("does not render the CommandPalette component for a super-admin", () => {
+    renderShell({ isSuperAdmin: true });
     expect(screen.queryByTestId("cmdk-palette")).toBeNull();
     expect(mockCommandPalette).not.toHaveBeenCalled();
   });
 
-  it("Cmd+K is a no-op when the flag is off (listener not mounted)", () => {
-    renderShell({ commandPaletteEnabled: false });
+  it("Cmd+K is a no-op for a super-admin (listener not mounted)", () => {
+    renderShell({ isSuperAdmin: true });
     fireKeydown({ key: "k", metaKey: true });
     expect(screen.queryByTestId("cmdk-palette")).toBeNull();
     expect(mockCommandPalette).not.toHaveBeenCalled();
   });
 });
 
-describe("AppShell — command palette on-state", () => {
-  it("renders the CommandPalette component (closed) when the flag is on", () => {
-    renderShell({ commandPaletteEnabled: true });
+describe("AppShell — command palette present for tenant users", () => {
+  it("renders the CommandPalette component (closed) for a tenant user", () => {
+    renderShell({ isSuperAdmin: false });
     // Mount = the mock was called once with open=false; the sentinel
     // is absent because open=false.
     expect(mockCommandPalette).toHaveBeenCalledWith(expect.objectContaining({ open: false }));
@@ -104,31 +110,31 @@ describe("AppShell — command palette on-state", () => {
   });
 
   it("opens the palette when Meta+K is pressed", () => {
-    renderShell({ commandPaletteEnabled: true });
+    renderShell({ isSuperAdmin: false });
     fireKeydown({ key: "k", metaKey: true });
     expect(screen.getByTestId("cmdk-palette")).toBeDefined();
   });
 
   it("opens the palette when Ctrl+K is pressed (non-Mac)", () => {
-    renderShell({ commandPaletteEnabled: true });
+    renderShell({ isSuperAdmin: false });
     fireKeydown({ key: "k", ctrlKey: true });
     expect(screen.getByTestId("cmdk-palette")).toBeDefined();
   });
 
   it("does NOT open on Meta+Shift+K (devtools chord)", () => {
-    renderShell({ commandPaletteEnabled: true });
+    renderShell({ isSuperAdmin: false });
     fireKeydown({ key: "k", metaKey: true, shiftKey: true });
     expect(screen.queryByTestId("cmdk-palette")).toBeNull();
   });
 
   it("does NOT open on Alt+K alone", () => {
-    renderShell({ commandPaletteEnabled: true });
+    renderShell({ isSuperAdmin: false });
     fireKeydown({ key: "k", altKey: true });
     expect(screen.queryByTestId("cmdk-palette")).toBeNull();
   });
 
   it("toggles closed when Meta+K is pressed a second time", () => {
-    renderShell({ commandPaletteEnabled: true });
+    renderShell({ isSuperAdmin: false });
     fireKeydown({ key: "k", metaKey: true });
     expect(screen.getByTestId("cmdk-palette")).toBeDefined();
     fireKeydown({ key: "k", metaKey: true });

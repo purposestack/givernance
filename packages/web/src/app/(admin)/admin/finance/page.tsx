@@ -1,10 +1,8 @@
 /**
  * Super-admin platform finance dashboard (Epic #434 · issue #206).
  *
- * Route: /admin/finance — gated by:
- *   1. `(admin)` layout: requires `super_admin` realm role (else 404).
- *   2. This page: requires `admin.finance_dashboard` feature flag on
- *      (else notFound() — never 403, per feedback_authenticated_unauthorized_uses_404).
+ * Route: /admin/finance — gated by the `(admin)` layout, which requires
+ * the `super_admin` realm role (else 404).
  *
  * The page is the i18n boundary: all translated strings are resolved
  * here and passed as `labels` props to the presentational components
@@ -16,10 +14,7 @@
  * `FinanceDashboard` via the existing ApiClient.
  */
 
-import { notFound } from "next/navigation";
-
 import { createServerApiClient } from "@/lib/api/client-server";
-import { isFinanceDashboardEnabled } from "@/lib/feature-flags/server";
 import type { FinanceSummary } from "@/models/superadmin-finance";
 import { SuperAdminFinanceService } from "@/services/SuperAdminFinanceService";
 
@@ -28,13 +23,6 @@ import { FinanceDashboard } from "./finance-dashboard";
 export const dynamic = "force-dynamic";
 
 export default async function FinancePage() {
-  // Flag-gate FIRST — non-flagged probe gets 404 without revealing
-  // anything (the super_admin role check has already passed in the
-  // layout, but we keep this 404 so off-state QA is uniform).
-  if (!(await isFinanceDashboardEnabled())) {
-    notFound();
-  }
-
   // i18n (labels) is built inside the client component — the labels
   // shape carries function fields (`foot(count, period)`, `footnote`,
   // `format.shortDate`, …) that RSC cannot serialise across the

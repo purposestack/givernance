@@ -4,7 +4,6 @@ import { getTranslations } from "next-intl/server";
 
 import { PerFlagTenants } from "@/components/admin/per-flag-tenants";
 import { createServerApiClient } from "@/lib/api/client-server";
-import { isFeatureFlagsPhase2Enabled } from "@/lib/feature-flags/server";
 import {
   type FeatureFlagRow,
   FeatureFlagsService,
@@ -19,17 +18,12 @@ export const dynamic = "force-dynamic";
  * `/admin/feature-flags` — lets the operator manage "5 enabled across
  * 45 tenants" without navigating the per-tenant detail page 45 times.
  *
- * Gated by `admin.feature_flags_phase2` (off-state: 404, same posture
- * as the rest of the Epic). Also 404s when the flag key is unknown —
- * that's a hand-typed URL, not a navigable mistake.
+ * 404s when the flag key is unknown — that's a hand-typed URL, not a
+ * navigable mistake.
  */
 export default async function PerFlagTenantsPage({ params }: { params: Promise<{ key: string }> }) {
   const t = await getTranslations("admin.featureFlags.perFlagTenants");
   const { key } = await params;
-
-  if (!(await isFeatureFlagsPhase2Enabled())) {
-    notFound();
-  }
 
   const api = await createServerApiClient();
 

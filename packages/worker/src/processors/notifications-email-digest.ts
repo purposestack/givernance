@@ -13,11 +13,6 @@
  * from the preferences page before any email is sent. This matches
  * `feedback_feature_flag_first` defence-in-depth posture.
  *
- * Feature-flag-first: every invocation checks
- * `communication.notifications_center` and short-circuits if off. If
- * a tenant's flag was flipped off mid-cycle the worker silently
- * skips them.
- *
  * Out of scope (deferred):
  *   - Per-tenant DKIM / sending domain (depends on Epic #279) —
  *     today the digest goes from the platform-default `from` address.
@@ -36,7 +31,6 @@
  */
 
 import {
-  FEATURE_FLAG_KEYS,
   getNotificationDescriptor,
   isNotificationType,
   type NotificationType,
@@ -47,7 +41,6 @@ import { and, eq, gt, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { env } from "../env.js";
 import { db, withWorkerContext } from "../lib/db.js";
 import { defaultEmailSender, type EmailSender } from "../lib/email.js";
-import { isFlagEnabled } from "../lib/flags.js";
 import { jobLogger } from "../lib/logger.js";
 
 /** Per-tenant work budget — Worker SRE MED-1. A pathological tenant
@@ -67,9 +60,9 @@ export interface EmailDigestDeps {
 }
 
 /**
- * Process one tick of the daily digest. Iterates tenants the
- * notifications flag is on for, and for each, collects unread rows
- * since the cursor and sends one digest per recipient.
+ * Process one tick of the daily digest. Iterates active tenants and,
+ * for each, collects unread rows since the cursor and sends one digest
+ * per recipient.
  */
 export async function processNotificationsEmailDigest(
   job: Job<EmailDigestJobData>,
@@ -77,13 +70,6 @@ export async function processNotificationsEmailDigest(
 ): Promise<void> {
   const log = jobLogger({ jobId: job.id });
   const sender = deps.sender ?? defaultEmailSender;
-
-  // Feature-flag-first defence in depth — see file header.
-  const enabled = await isFlagEnabled(FEATURE_FLAG_KEYS.COMMUNICATION_NOTIFICATIONS_CENTER);
-  if (!enabled) {
-    log.info("Notifications flag off — skipping digest");
-    return;
-  }
 
   // Default cursor: 24h ago. If the caller passes an older value
   // we clamp to MAX_SINCE_WINDOW_MS so a hand-enqueued job can't

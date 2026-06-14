@@ -19,9 +19,9 @@ import { type FeatureFlagRow, FeatureFlagsService } from "@/services/FeatureFlag
  * platform default?" at a glance.
  *
  * The override-stats badge renders only when `row.overrideStats`
- * is non-null — the API returns `null` when the Phase-2 self-flag
- * (`admin.feature_flags_phase2`) is off, so the column gracefully
- * vanishes in the kill-switch case without an empty UI element.
+ * is non-null — the API returns `null` for platform-scoped flags that
+ * never carry per-tenant overrides, so the badge gracefully vanishes
+ * for those rows without an empty UI element.
  */
 interface FeatureFlagsTableProps {
   rows: FeatureFlagRow[];

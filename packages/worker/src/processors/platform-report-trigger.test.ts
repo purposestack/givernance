@@ -3,10 +3,9 @@
  * adapter around the shared monthly-report request flow (issue #443).
  *
  * No DB / Redis / BullMQ: the shared `requestMonthlyReport` /
- * `backfillLast12Months` and the `isFlagEnabled` gate are mocked so the
- * adapter's branching (flag-gate, single vs. backfill mode) is verified
- * in isolation. `previousMonth` is kept real (it's pure) so the
- * single-mode month assertion is meaningful.
+ * `backfillLast12Months` are mocked so the adapter's branching (single
+ * vs. backfill mode) is verified in isolation. `previousMonth` is kept
+ * real (it's pure) so the single-mode month assertion is meaningful.
  */
 
 import type { Job } from "bullmq";
@@ -23,9 +22,6 @@ vi.mock("@givernance/shared/finance/reporting", async (importOriginal) => {
     backfillLast12Months,
   };
 });
-
-const isFlagEnabled = vi.fn();
-vi.mock("../lib/flags.js", () => ({ isFlagEnabled }));
 
 // Imported AFTER the mocks are registered (vi.mock is hoisted, but the
 // dynamic import keeps intent explicit).
@@ -47,18 +43,7 @@ describe("processPlatformReportAutoTrigger", () => {
     backfillLast12Months.mockResolvedValue({ enqueued: [], skipped: [] });
   });
 
-  it("flag off → no-op (neither request nor backfill called)", async () => {
-    isFlagEnabled.mockResolvedValue(false);
-
-    await processPlatformReportAutoTrigger(jobFor({ mode: "single" }));
-
-    expect(requestMonthlyReport).not.toHaveBeenCalled();
-    expect(backfillLast12Months).not.toHaveBeenCalled();
-  });
-
-  it("single mode (flag on) → requestMonthlyReport once for the previous month", async () => {
-    isFlagEnabled.mockResolvedValue(true);
-
+  it("single mode → requestMonthlyReport once for the previous month", async () => {
     await processPlatformReportAutoTrigger(jobFor({ mode: "single" }));
 
     expect(requestMonthlyReport).toHaveBeenCalledTimes(1);
@@ -73,17 +58,13 @@ describe("processPlatformReportAutoTrigger", () => {
   });
 
   it("default mode (no mode field) → treated as single", async () => {
-    isFlagEnabled.mockResolvedValue(true);
-
     await processPlatformReportAutoTrigger(jobFor({}));
 
     expect(requestMonthlyReport).toHaveBeenCalledTimes(1);
     expect(backfillLast12Months).not.toHaveBeenCalled();
   });
 
-  it("backfill mode (flag on) → backfillLast12Months once", async () => {
-    isFlagEnabled.mockResolvedValue(true);
-
+  it("backfill mode → backfillLast12Months once", async () => {
     await processPlatformReportAutoTrigger(jobFor({ mode: "backfill" }));
 
     expect(backfillLast12Months).toHaveBeenCalledTimes(1);

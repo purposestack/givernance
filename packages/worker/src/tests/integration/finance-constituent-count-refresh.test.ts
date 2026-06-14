@@ -7,7 +7,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { featureFlags, tenants } from "@givernance/shared/schema";
+import { tenants } from "@givernance/shared/schema";
 import type { Job } from "bullmq";
 import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -23,23 +23,6 @@ function mockJob(): Job {
 }
 
 beforeAll(async () => {
-  // Ensure the feature flag is on for these tests (the cron is a no-op
-  // when off). Restore default-off in afterAll.
-  await db
-    .insert(featureFlags)
-    .values({
-      key: "admin.finance_dashboard",
-      enabled: true,
-      label: "finance",
-      description: "finance",
-      scope: "platform",
-      public: true,
-    })
-    .onConflictDoUpdate({
-      target: featureFlags.key,
-      set: { enabled: true },
-    });
-
   await db.execute(sql`
     INSERT INTO tenants (id, name, slug, status)
     VALUES
@@ -78,10 +61,6 @@ afterAll(async () => {
   await db.execute(
     sql`DELETE FROM tenants WHERE id IN (${TENANT_EMPTY}, ${TENANT_WITH_THREE}, ${TENANT_ARCHIVED})`,
   );
-  await db
-    .update(featureFlags)
-    .set({ enabled: false })
-    .where(eq(featureFlags.key, "admin.finance_dashboard"));
 });
 
 describe("processConstituentCountRefresh", () => {
@@ -117,36 +96,5 @@ describe("processConstituentCountRefresh", () => {
       .from(tenants)
       .where(eq(tenants.id, TENANT_ARCHIVED));
     expect(arch?.ts).toBeNull();
-  });
-
-  it("no-op when the admin.finance_dashboard flag is off", async () => {
-    await db
-      .update(featureFlags)
-      .set({ enabled: false })
-      .where(eq(featureFlags.key, "admin.finance_dashboard"));
-    // Mark a sentinel timestamp; if the job no-ops the column should
-    // stay NULL.
-    await db
-      .update(tenants)
-      .set({ constituentCountCached: 99, constituentCountRefreshedAt: null })
-      .where(eq(tenants.id, TENANT_WITH_THREE));
-
-    await processConstituentCountRefresh(mockJob());
-
-    const [three] = await db
-      .select({
-        count: tenants.constituentCountCached,
-        ts: tenants.constituentCountRefreshedAt,
-      })
-      .from(tenants)
-      .where(eq(tenants.id, TENANT_WITH_THREE));
-    expect(three?.count).toBe(99);
-    expect(three?.ts).toBeNull();
-
-    // Restore for the next test in the file (if any).
-    await db
-      .update(featureFlags)
-      .set({ enabled: true })
-      .where(eq(featureFlags.key, "admin.finance_dashboard"));
   });
 });

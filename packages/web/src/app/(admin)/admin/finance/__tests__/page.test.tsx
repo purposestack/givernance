@@ -1,11 +1,12 @@
 /**
  * Smoke tests for the super-admin finance page (issue #206).
  *
- * Covers the two flag-gate code paths:
- *   1. Flag-off → `notFound()` (per the off-state QA rule).
- *   2. Flag-on with seed data → dashboard renders with the page title.
- *   3. Flag-on with no data → empty-state copy renders without
- *      throwing (charts must not crash on a zero-volume window).
+ * The page is gated only by the `(admin)` layout's super_admin check —
+ * there is no per-feature flag any more (retired in issue #493).
+ * Remaining coverage:
+ *   1. Seed data → dashboard renders with the page title.
+ *   2. No data → empty-state copy renders without throwing (charts must
+ *      not crash on a zero-volume window).
  */
 
 import { render, screen, waitFor } from "@testing-library/react";
@@ -13,25 +14,12 @@ import { vi } from "vitest";
 
 import type { FinanceSummary } from "@/models/superadmin-finance";
 
-const notFoundMock = vi.fn(() => {
-  throw new Error("__NEXT_NOT_FOUND__");
-});
-
-const isFinanceDashboardEnabledMock = vi.fn<() => Promise<boolean>>();
 const fetchSummaryMock = vi.fn<(client: unknown, params: unknown) => Promise<FinanceSummary>>();
-
-vi.mock("next/navigation", () => ({
-  notFound: () => notFoundMock(),
-}));
 
 vi.mock("next-intl/server", () => ({
   getTranslations: async () => (key: string, values?: Record<string, string | number>) =>
     values ? `${key} ${JSON.stringify(values)}` : key,
   getLocale: async () => "en",
-}));
-
-vi.mock("@/lib/feature-flags/server", () => ({
-  isFinanceDashboardEnabled: () => isFinanceDashboardEnabledMock(),
 }));
 
 vi.mock("@/lib/api/client-server", () => ({
@@ -173,17 +161,8 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe("/admin/finance — flag gate", () => {
-  it("calls notFound() when the admin.finance_dashboard flag is off", async () => {
-    isFinanceDashboardEnabledMock.mockResolvedValue(false);
-    const { default: FinancePage } = await import("../page");
-    await expect(FinancePage()).rejects.toThrow("__NEXT_NOT_FOUND__");
-    expect(notFoundMock).toHaveBeenCalledTimes(1);
-    expect(fetchSummaryMock).not.toHaveBeenCalled();
-  });
-
-  it("renders the dashboard when the flag is on and the summary fetch succeeds", async () => {
-    isFinanceDashboardEnabledMock.mockResolvedValue(true);
+describe("/admin/finance — dashboard render", () => {
+  it("renders the dashboard when the summary fetch succeeds", async () => {
     fetchSummaryMock.mockResolvedValue(buildSummary());
     const { default: FinancePage } = await import("../page");
     const tree = await FinancePage();
@@ -199,7 +178,6 @@ describe("/admin/finance — flag gate", () => {
   });
 
   it("Export button click builds the CSV URL with current filters + triggers anchor download (#442)", async () => {
-    isFinanceDashboardEnabledMock.mockResolvedValue(true);
     fetchSummaryMock.mockResolvedValue(buildSummary());
     const { default: FinancePage } = await import("../page");
     const tree = await FinancePage();
@@ -235,7 +213,6 @@ describe("/admin/finance — flag gate", () => {
 
 describe("/admin/finance — empty state", () => {
   it("renders the friendly empty-state copy when the period has no data", async () => {
-    isFinanceDashboardEnabledMock.mockResolvedValue(true);
     fetchSummaryMock.mockResolvedValue(emptySummary());
     const { default: FinancePage } = await import("../page");
     const tree = await FinancePage();

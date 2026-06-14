@@ -106,80 +106,6 @@ export const FEATURE_FLAG_KEYS = {
   DONATION_PUBLIC_PAGE_STYLES: "donation.public_page_styles",
 
   /**
-   * Gates the in-app notification centre (Epic #363, GLO-004).
-   *
-   * The Epic ships the bell icon + side-panel + per-user preferences
-   * page + outbox-fanout producer + SSE stream + email-digest worker.
-   * With the flag OFF the topbar has no bell at all, the gated routes
-   * (`/v1/notifications/*`, `/v1/notification-preferences*`) return
-   * 404 not 403, the outbox-fanout worker silently no-ops, and the
-   * digest worker skips its tick. End result: a tenant with the flag
-   * off is indistinguishable from one before the Epic shipped.
-   *
-   * `scope='tenant'`: every NPO is independent. A noisy fundraising
-   * team that wants notifications shouldn't force a quiet operational
-   * team to turn them on too.
-   *
-   * `tenant_override_allowed=false` for the initial rollout: super-
-   * admin keeps the gate per tenant until the UX is verified end-to-
-   * end on staging. Flips to `true` in a follow-up once preferences
-   * + SSE prove stable (no policy reason to keep org-admins out
-   * beyond "let's see how the panel lands first").
-   *
-   * `public=true`: the appShell layout SSR-fetches `/v1/feature-flags`
-   * to decide whether to render the bell icon in the topbar AND
-   * whether to mount the polling/SSE client. A private value would
-   * unconditionally hide the entry and defeat the Epic.
-   *
-   * Surfaces gated by this key:
-   *   - API: GET / POST / PATCH / DELETE on `/v1/notifications*`
-   *   - API: GET / PATCH on `/v1/notification-preferences*`
-   *   - API: GET /v1/notifications/stream (SSE)
-   *   - Worker: outbox-event fanout into notification rows silently
-   *     no-ops (defence in depth — second wall behind the API gate).
-   *   - Worker: weekly email-digest BullMQ tick skips if off.
-   *   - Web: bell icon + panel + filter chips + `/settings/notifications`
-   *     page + sidebar entry + polling/SSE client all hidden.
-   *
-   * Emergency rollback: see `docs/runbooks/feature-flag-rollback.md`
-   * if the Back Office is unavailable.
-   */
-  COMMUNICATION_NOTIFICATIONS_CENTER: "communication.notifications_center",
-
-  /**
-   * Gates the Feature flags Phase 2 work itself (Epic #365 / PR #366).
-   *
-   * Even flag-administration tooling gets a flag — the new tenant-
-   * override endpoints, the "Feature flags" tab on the tenant detail
-   * page, and the org-admin `/settings/feature-flags` page are all
-   * net-new user-facing surfaces and deserve the same kill-switch
-   * pattern as every other feature.
-   *
-   * `scope='platform'`: only Givernance staff decide when the
-   * Phase 2 surface ships; tenants can't opt themselves in.
-   *
-   * `public=true`: the org-admin layout reads `/v1/feature-flags`
-   * via SSR to decide whether to render the "Feature flags" sidebar
-   * entry. A private value here would unconditionally hide the
-   * entry, defeating the Epic.
-   *
-   * The evaluator's precedence change (deprecated → platform-locked
-   * → tenant override → default) and the `tenant_flag_overrides`
-   * table itself land UN-flagged because they're internal mechanics
-   * with no user-observable behaviour change while no overrides
-   * exist, and gating the evaluator on a flag is circular.
-   *
-   * Surfaces gated by this key:
-   *   - API: GET/PUT/DELETE /v1/admin/tenants/:id/feature-flags*
-   *   - API: GET /v1/org/feature-flags + PATCH /v1/org/feature-flags/:key
-   *   - API: `overrideStats` field on GET /v1/admin/feature-flags
-   *   - Web: "Feature flags" tab on /admin/tenants/[id]
-   *   - Web: /settings/feature-flags page + sidebar entry
-   *   - Web: tenant-override count column on /admin/feature-flags
-   */
-  ADMIN_FEATURE_FLAGS_PHASE2: "admin.feature_flags_phase2",
-
-  /**
    * Gates the bulk-import-constituents feature (Epic #373, PR #385).
    *
    * Off by default until we've watched a few real-world imports go
@@ -204,97 +130,6 @@ export const FEATURE_FLAG_KEYS = {
   CONSTITUENTS_BULK_IMPORT: "constituents.bulk_import",
 
   /**
-   * Gates the one-click "Replicate" row-action on the Back Office
-   * impersonation list (issue #428).
-   *
-   * The Epic adds a Replicate button next to every past-session row.
-   * Click → re-POST `/v1/admin/impersonation` with the original
-   * target / mode / reason. If the operator's MFA step-up is still
-   * fresh (Keycloak `auth_time` ≤ 5 min, the existing
-   * `STEP_UP_AUTH_TIME_WINDOW_SECONDS` window), the new session
-   * starts in a single click; otherwise the same stash + bounce-through
-   * `/admin/impersonation/new` machinery the start-form already uses
-   * picks the request up after the MFA round-trip. With the flag OFF
-   * the past-sessions list looks identical to what it shipped — no
-   * extra column, no extra DOM, no extra keybinding.
-   *
-   * `scope='platform'`: this is a dev-/staff-speed feature, not a
-   * tenant-facing capability. Only Givernance staff (super-admins)
-   * see the button at all; the gate is global, not per-tenant.
-   *
-   * `tenant_override_allowed=false`: tenants have no business with
-   * this flag — it sits behind `super_admin` anyway.
-   *
-   * `public=true`: the Back Office list page SSR-fetches
-   * `/v1/feature-flags` to decide whether to render the Replicate
-   * cell. A private projection would unconditionally hide the
-   * surface and defeat the Epic.
-   *
-   * Surfaces gated by this key:
-   *   - Web: Replicate column on the past-sessions table at
-   *     `/admin/impersonation`.
-   *
-   * No backend route or schema is gated — Replicate is a pure client
-   * wrapper over the existing `POST /v1/admin/impersonation`. The
-   * five-step flag pattern still applies (registry + seed migration +
-   * parity test + SSR gate + off-state QA) but step 3 (`requireFlag`
-   * preHandler) and step 4 (worker `isFlagEnabled`) don't have a
-   * surface here.
-   *
-   * Emergency rollback: see `docs/runbooks/feature-flag-rollback.md`
-   * if the Back Office is unavailable.
-   */
-  ADMIN_IMPERSONATION_REPLICATE: "admin.impersonation_replicate",
-
-  /**
-   * Gates the global search / command palette feature (Epic #364, GLO-001).
-   *
-   * Adds a `Cmd+K` / `Ctrl+K` keyboard binding that opens a `cmdk` overlay
-   * with grouped, RLS-scoped cross-entity search across constituents,
-   * donations, and campaigns, plus static "go to …" navigation commands and
-   * RBAC-aware quick-create actions (new constituent, new donation,
-   * new campaign).
-   *
-   * `scope='tenant'`: every NPO is independent. A tenant on Postgres FTS
-   * is the entire feature today, but if Givernance later swaps to an
-   * external search engine (Meilisearch / Typesense, hosted EU on
-   * Scaleway), the per-tenant gate is the rollout knob — we can pilot
-   * the new backend with a single tenant override before flipping the
-   * platform default.
-   *
-   * `tenant_override_allowed=true`: there is no platform-level
-   * precondition (no DKIM-style external dependency); each org-admin can
-   * self-serve the toggle from `/settings/feature-flags` once we're past
-   * the initial rollout.
-   *
-   * `public=true`: the topbar's `Cmd+K` button + keyboard binding +
-   * SSR-rendered overlay shell all need to know the effective value at
-   * page-load time. A private projection would unconditionally hide the
-   * surface and defeat the Epic.
-   *
-   * Surfaces gated by this key:
-   *   - API: GET /v1/search (`requireFlag` is the FIRST preHandler — a
-   *     disabled tenant gets 404, indistinguishable from a typo'd URL,
-   *     so a scanner can't enumerate the feature).
-   *   - Web: the topbar `Cmd+K` button is completely absent when the
-   *     flag is off (no greyed-out placeholder).
-   *   - Web: the global `Cmd+K` / `Ctrl+K` keydown listener is NOT
-   *     mounted when the flag is off (off-state QA: pressing the
-   *     shortcut does nothing).
-   *   - Web: the command palette overlay component is not loaded at
-   *     all when the flag is off.
-   *
-   * Public-projection caveat: per the CLAUDE.md feature-flag-first
-   * rule, the key name `productivity.command_palette` is intentionally
-   * descriptive and not teasing an unannounced surprise, so its
-   * presence in `/v1/feature-flags` for every authenticated tenant
-   * user is acceptable.
-   *
-   * Emergency rollback: see `docs/runbooks/feature-flag-rollback.md`.
-   */
-  PRODUCTIVITY_COMMAND_PALETTE: "productivity.command_palette",
-
-  /**
    * Advanced constituent filtering with complex queries and pattern detection
    * (issue #422). Enables DSL-based filtering with aggregations, patterns
    * (LYBUNT, SYBUNT, recurring, lapsed, major donors), and campaign targeting.
@@ -307,54 +142,6 @@ export const FEATURE_FLAG_KEYS = {
    * filter controls in the constituents module.
    */
   ADVANCED_FILTERS: "advanced_filters",
-
-  /**
-   * Gates the super-admin platform finance + tenant-health dashboard
-   * (Epic #434, route `/admin/finance`).
-   *
-   * The epic ships the entire super-admin operational nerve-centre:
-   * real-time finance signals (volume, Revenu Givernance, MRR, frais
-   * Stripe), portfolio risk (HHI concentration, active-tenants ratio,
-   * payment-failure rate), Mobilisation Score per tenant (A+ → D), and
-   * Tenant Health via the in-house survey infrastructure (PMF Sean
-   * Ellis, NPS, CSAT) with the data-freshness pattern that surfaces
-   * stale survey data with inline refresh actions.
-   *
-   * Default-off until the dashboard's numbers have been validated
-   * against ground-truth on at least one live tenant. The KPIs
-   * aggregate cross-tenant data through `systemDb` (the only legitimate
-   * super-admin BYPASSRLS path); an off-by-one in the SQL is invisible
-   * to QA until real money is in the table, so the safe rollout is to
-   * deploy the schema + worker + API + page behind a flag and flip it
-   * per super-admin session for validation before the platform-wide
-   * enable.
-   *
-   * `scope='platform'`: the dashboard is super-admin-only by product
-   * design. Tenants have no per-tenant override semantics here — they
-   * never see this surface at all.
-   *
-   * `tenant_override_allowed=false`: follows from `scope='platform'`.
-   *
-   * `public=true`: the super-admin appShell SSR-fetches
-   * `/v1/feature-flags` to decide whether to render the "Finance
-   * plateforme" sidebar entry. A private projection would
-   * unconditionally hide the nav entry and defeat the epic.
-   *
-   * Surfaces gated by this key:
-   *   - API: GET /v1/superadmin/finance/summary (`requireFlag` is the
-   *     FIRST preHandler — disabled returns 404 so a scanner can't
-   *     enumerate role requirements).
-   *   - API: POST /v1/superadmin/surveys/:slug/launch (email|in_app)
-   *     + POST /v1/superadmin/surveys/:slug/schedule.
-   *   - Worker: Stripe BalanceTransaction enrichment job no-ops when
-   *     the flag is off; the daily constituent-count refresh job
-   *     no-ops too.
-   *   - Web: "Finance plateforme" sidebar entry hidden; `/admin/finance`
-   *     route returns 404.
-   *
-   * Emergency rollback: see `docs/runbooks/feature-flag-rollback.md`.
-   */
-  ADMIN_FINANCE_DASHBOARD: "admin.finance_dashboard",
 
   /**
    * Gates the merged single multi-page PDF option for postal exports
@@ -462,51 +249,11 @@ export const FEATURE_FLAG_REGISTRY: ReadonlyArray<{
     public: true,
   },
   {
-    key: FEATURE_FLAG_KEYS.ADMIN_FEATURE_FLAGS_PHASE2,
-    defaultEnabled: false,
-    label: "Per-organisation feature flag controls",
-    description:
-      "Lets Givernance staff turn features on or off for one organisation at a time, and lets each organisation's admin manage their own feature settings from the Settings menu. Off by default until the new pages have been verified end-to-end.",
-    scope: "platform",
-    tenantOverrideAllowed: false,
-    public: true,
-  },
-  {
-    key: FEATURE_FLAG_KEYS.COMMUNICATION_NOTIFICATIONS_CENTER,
-    defaultEnabled: false,
-    label: "In-app notification centre",
-    description:
-      "Adds a bell icon to the top bar with a panel that lists what happened in your organisation — new donations, postal-export downloads, team invitations, and more. Each member can choose which alerts they want from the Settings menu. Off by default until Givernance staff confirm the bell, panel, and per-member preferences for your organisation.",
-    scope: "tenant",
-    tenantOverrideAllowed: false,
-    public: true,
-  },
-  {
     key: FEATURE_FLAG_KEYS.CONSTITUENTS_BULK_IMPORT,
     defaultEnabled: false,
     label: "Bulk import constituents from CSV / Excel",
     description:
       "Lets operators upload a CSV or Excel file (max 10 MB) to create constituents in bulk, with duplicate detection and a per-row progress view. Off by default while we monitor the first real-world imports — flip it on from this page when you're ready.",
-    scope: "tenant",
-    tenantOverrideAllowed: true,
-    public: true,
-  },
-  {
-    key: FEATURE_FLAG_KEYS.ADMIN_IMPERSONATION_REPLICATE,
-    defaultEnabled: false,
-    label: "One-click Replicate on the Back Office support sessions list",
-    description:
-      "Adds a Replicate action next to each past support session on the Back Office, so support staff can re-enter the same session in one click without retyping the target and reason. The same security checks still apply on every replicate.",
-    scope: "platform",
-    tenantOverrideAllowed: false,
-    public: true,
-  },
-  {
-    key: FEATURE_FLAG_KEYS.PRODUCTIVITY_COMMAND_PALETTE,
-    defaultEnabled: false,
-    label: "Keyboard quick search (Cmd+K / Ctrl+K)",
-    description:
-      "Adds a quick search panel that opens with Cmd+K (Mac) or Ctrl+K (Windows / Linux) from any page. Type to find a constituent, donation, or campaign, jump to a section, or start a new record. Off by default while we monitor performance and search quality — flip it on from this page when you're ready.",
     scope: "tenant",
     tenantOverrideAllowed: true,
     public: true,
@@ -519,16 +266,6 @@ export const FEATURE_FLAG_REGISTRY: ReadonlyArray<{
       "Enables powerful filtering capabilities with complex queries, aggregations, and pattern detection (LYBUNT, SYBUNT, recurring donors, lapsed donors, major donors). Performance-intensive feature that requires database indexes. Enable gradually to monitor impact.",
     scope: "tenant",
     tenantOverrideAllowed: true,
-    public: true,
-  },
-  {
-    key: FEATURE_FLAG_KEYS.ADMIN_FINANCE_DASHBOARD,
-    defaultEnabled: false,
-    label: "Admin · Platform finance dashboard",
-    description:
-      "Cross-tenant super-admin dashboard aggregating donation volume, revenue, Stripe fees, and tenant health signals (Mobilisation Score + PMF/NPS/CSAT). Off by default until live tenant numbers are validated against ground truth.",
-    scope: "platform",
-    tenantOverrideAllowed: false,
     public: true,
   },
   {

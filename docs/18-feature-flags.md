@@ -8,16 +8,18 @@
 
 Phase 1 (PR #352) shipped the global-flag subset; Phase 2 (PR #366 / Epic #365) added tenant overrides, scope-based gating, and the public-projection filter. The table below is the live status as of PR #366 (status banner at the top of [`.claude/agents/feature-flag-engineer.md`](../.claude/agents/feature-flag-engineer.md) carries the same summary for agent briefings):
 
+> **Retired flags (issue #493).** Five validated flags were retired — their features are now permanently part of the product, with the gating code deleted (no `requireFlag`, no worker `isFlagEnabled`, no SSR `xEnabled`) and their seed rows dropped by migration `0082`: `admin.feature_flags_phase2`, `admin.finance_dashboard`, `admin.impersonation_replicate`, `communication.notifications_center`, `productivity.command_palette`. The per-organisation flag-administration tooling that `admin.feature_flags_phase2` once gated **stays** — only its own gate was removed; the remaining flags still use it. See § 8 "Flag Lifecycle → REMOVED". The flags still in active rollout are `communication.bulk_email`, `donation.public_page_styles`, `constituents.bulk_import`, `advanced_filters`, `campaign.postal_merged_pdf`.
+
 | Surface | Status | Notes |
 |---|---|---|
 | `feature_flags` table | ✅ shipped (`0047` + `0051`) | Phase 2 added `scope` (enum platform/tenant), `tenant_override_allowed` boolean, `public` boolean. Partial index on `WHERE public = TRUE` for the hot projection path. |
 | `tenant_flag_overrides` table | ✅ shipped (`0051`) | Per-org overrides. RLS forced via `tenant_id = app_current_organization_id()`. `UNIQUE (tenant_id, flag_key)`. `reason` free-text + `set_by SET NULL ON DELETE`. `expires_at` reserved (UI deferred). |
-| `FEATURE_FLAG_REGISTRY` const (`packages/shared/src/constants/feature-flags.ts`) | ✅ shipped | Typed `FeatureFlagKey` union; entries now declare `scope` + `tenantOverrideAllowed` + `public`. Keys: `communication.bulk_email`, `admin.feature_flags_phase2`, `constituents.bulk_import` (the first key shipped with `scope='tenant'` AND `tenant_override_allowed=true`, driving the first real row on the org-admin `/settings/feature-flags` page — Epic #373, PR #385). |
+| `FEATURE_FLAG_REGISTRY` const (`packages/shared/src/constants/feature-flags.ts`) | ✅ shipped | Typed `FeatureFlagKey` union; entries declare `scope` + `tenantOverrideAllowed` + `public`. Live keys after issue #493: `communication.bulk_email`, `donation.public_page_styles`, `constituents.bulk_import`, `advanced_filters`, `campaign.postal_merged_pdf` (all `scope='tenant'`). `constituents.bulk_import` was the first key with `tenant_override_allowed=true`, driving the first real row on the org-admin `/settings/feature-flags` page — Epic #373, PR #385. |
 | `flagService.isEnabled(key, ctx?)` + Redis cache | ✅ shipped (Phase 2) | `ctx.orgId` activates tenant overrides for `scope='tenant'` flags. Caches: `flags:global:v2` (Map<key, {enabled, scope}>) + per-tenant `flags:tenant:{orgId}:v1`. TTL 60 s. v2 because Phase-1 shape was `Record<key, boolean>` and the evaluator now needs `scope`. |
 | Precedence algorithm | ✅ shipped (Phase 2) | unknown key → false; `scope='platform'` → platform default (overrides ignored even if rows exist); `scope='tenant'` + orgId → override row if present else default; `scope='tenant'` + no orgId → default (worker / platform path). Section 5 below is the live spec. |
 | `requireFlag(key)` preHandler | ✅ shipped | 404 on disabled, runs FIRST in the preHandler chain so a scanner can't enumerate role requirements. Now passes `request.auth.orgId` so tenant-scoped flags evaluate against the caller's org (backward-compatible: public/unauthenticated routes get a null orgId and fall back to platform default, identical to the Phase-1 no-context call). |
 | Worker-side `isFlagEnabled(key)` | ✅ shipped | `packages/worker/src/lib/flags.ts` — defence-in-depth at job pickup. Workers operate without an `orgId` context (platform path) — fine for `scope='platform'` flags, which are the only thing workers gate on today. |
-| `GET /v1/admin/feature-flags` | ✅ shipped | Super-admin global view. Response now carries `overrideStats` per row (count of tenants overriding to true / false) when `admin.feature_flags_phase2` is on — null otherwise so the JSON shape stays stable across flag flips. |
+| `GET /v1/admin/feature-flags` | ✅ shipped | Super-admin global view. Response carries `overrideStats` per row (count of tenants overriding to true / false) for tenant-scoped flags; `null` for platform-scoped flags that never carry overrides so the JSON shape stays stable. |
 | `PATCH /v1/admin/feature-flags/:key` | ✅ shipped | Super-admin platform-default flip. Unchanged from Phase 1. |
 | `GET /v1/admin/tenants/:tenantId/feature-flags` | ✅ shipped (Phase 2) | Super-admin tenant-detail tab. Returns each flag with platform default + effective value + override row (if any). `scope='platform'` flags surface as read-only context. |
 | `PUT /v1/admin/tenants/:tenantId/feature-flags/:key` | ✅ shipped (Phase 2) | Super-admin upsert override. 404 on missing flag (anti-disclosure), 422 on `scope='platform'` attempt (operator picked the wrong tool). Idempotent — re-PUT with same payload refreshes `set_by` / `reason` / `updated_at`. |
@@ -26,7 +28,7 @@ Phase 1 (PR #352) shipped the global-flag subset; Phase 2 (PR #366 / Epic #365) 
 | `PATCH /v1/org/feature-flags/:key` | ✅ shipped (Phase 2) | Org-admin self-service toggle. 404 (anti-disclosure) for every rejection — platform-scoped flags, admin-gated flags, missing keys all look identical to the caller. |
 | `GET /v1/feature-flags` (public projection) | ✅ shipped (Phase 2) | Now filtered by `public=true` — unreleased flag names no longer leak via DevTools. Evaluator overlays the caller's tenant overrides on each value. Resolves the public-projection caveat from prior § 0. |
 | Audit trail | ✅ shipped | The existing `audit-plugin` (`packages/api/src/plugins/audit.ts`) auto-records every mutating request including the new override CRUD. `action` (e.g. `PUT:/v1/admin/tenants/:tenantId/feature-flags/:key`), `org_id`, `actor_id`, `resource_type`, `resource_id`, impersonation context — all captured. Satisfies § 4.3 with zero new audit code. |
-| `admin.feature_flags_phase2` self-flag | ✅ shipped (Phase 2) | All Phase-2 endpoints + UI surfaces are gated by this flag — kill-switch for the whole Epic. Off-state: every new endpoint 404s, new UI surfaces absent. `scope='platform'` so tenants can't opt themselves in; `public=true` so the org-admin SSR layout can decide to render the sidebar entry. |
+| `admin.feature_flags_phase2` self-flag | ♻️ retired (issue #493) | The Phase-2 tooling is now always reachable; only the self-flag gate was removed. The override endpoints, the per-tenant "Feature flags" tab, the org-admin `/settings/feature-flags` page, and `overrideStats` all stay — the remaining flags rely on them. Seed row dropped by migration `0082`. |
 | Back Office page `/admin/feature-flags` | ✅ shipped Phase 1; 🚧 Phase 2 tenant-override column lands on PR #366 | Existing toggle UI for platform defaults. Tenant-override count column + drill-down side-panel land on this PR. |
 | Super-admin "Feature flags" tab on `/admin/tenants/[id]` | 🚧 in progress (PR #366) | Lands on this PR. |
 | Org-admin `/settings/feature-flags` page | 🚧 in progress (PR #366) | Lands on this PR. |
@@ -63,38 +65,31 @@ Why DB-stored text (vs i18n-keyed): the registry is small (<10 keys foreseeable)
 
 If the Back Office page is unavailable and a flag needs to come down NOW, see `docs/runbooks/feature-flag-rollback.md` — the canonical procedure is `UPDATE feature_flags SET enabled = false WHERE key = ?;` + `redis-cli DEL flags:global`.
 
-### How to verify Phase 2 surfaces locally
+### How to verify the per-organisation override surfaces locally
 
-Because every Phase-2 surface is gated by `admin.feature_flags_phase2` (off by default — the kill-switch pattern), a fresh local checkout shows **no visible change** until that flag is flipped on. Symptoms of "I don't see anything": (a) the new "Feature flags" tab is absent from `/admin/tenants/[id]`, (b) the `/settings/feature-flags` route returns 404, (c) the Feature flags entry is missing from the org-admin settings nav strip.
+The flag-administration tooling is always reachable (the `admin.feature_flags_phase2` self-flag that once gated it was retired in issue #493). On a fresh local checkout the surfaces are present immediately: the **Feature flags** tab on `/admin/tenants/[id]`, the `/settings/feature-flags` org-admin page, and the Feature flags entry in the org-admin settings nav strip.
 
-To see the Phase-2 UI end-to-end:
+To see the override UI end-to-end:
 
-1. **Apply migration 0051** on the local DB:
+1. **Apply migrations** on the local DB:
    ```bash
    DATABASE_URL="postgresql://givernance:givernance_dev@localhost:5432/givernance" \
      pnpm --filter @givernance/api run db:migrate
    ```
 
-2. **Verify the seed**:
+2. **Verify the seed** (the retired keys are gone after migration `0082`):
    ```bash
    psql "postgresql://givernance:givernance_dev@localhost:5432/givernance" \
      -c "SELECT key, enabled, scope, tenant_override_allowed, public FROM feature_flags;"
    ```
-   Three rows are expected: `communication.bulk_email` (scope=tenant, override=false), `admin.feature_flags_phase2` (scope=platform), and `constituents.bulk_import` (scope=tenant, override=true) — all `enabled=false` at first deploy.
+   The live keys are `communication.bulk_email`, `donation.public_page_styles`, `constituents.bulk_import`, `advanced_filters`, `campaign.postal_merged_pdf` — all `scope='tenant'`, all `enabled=false` at first deploy.
 
-3. **Flip the self-flag on**. Either toggle it from the Back Office (`/admin/feature-flags`), or via SQL:
-   ```bash
-   psql "postgresql://givernance:givernance_dev@localhost:5432/givernance" \
-     -c "UPDATE feature_flags SET enabled=true WHERE key='admin.feature_flags_phase2';"
-   redis-cli DEL flags:global:v2      # bypass the 60 s TTL
-   ```
+3. **Reload + observe**:
+   - **Super-admin** `/admin/feature-flags` — `Per-organisation` scope badges per row + plain-language scope hint; "Organisations overriding the default" line renders (zeros until overrides exist).
+   - **Super-admin** `/admin/tenants/[id]` — the **Feature flags** tab to the right of Audit.
+   - **Org-admin** `/settings/feature-flags` — page renders with a row for `constituents.bulk_import` (scope='tenant', override-allowed). Toggling it on activates the "Bulk import" button on the constituents page.
 
-4. **Reload + observe**:
-   - **Super-admin** `/admin/feature-flags` — `Platform-wide` / `Per-organisation` scope badges per row + plain-language scope hint; "Organisations overriding the default" line renders (zeros until overrides exist).
-   - **Super-admin** `/admin/tenants/[id]` — new **Feature flags** tab to the right of Audit. `scope='platform'` flags render read-only with a "use the global page" hint.
-   - **Org-admin** `/settings/feature-flags` — page renders with a row for `constituents.bulk_import` (scope='tenant', override-allowed) — the first registry entry of that shape. Toggling it on activates the "Bulk import" button on the constituents page.
-
-5. **To see the real override controls** (the per-tenant toggle on the super-admin tenant tab + the toggle row on the org-admin page), insert a demo flag that's actually tenant-overridable. This is **local-only**; do not seed it in a shipped migration:
+4. **To see the real override controls** (the per-tenant toggle on the super-admin tenant tab + the toggle row on the org-admin page), insert a demo flag that's actually tenant-overridable. This is **local-only**; do not seed it in a shipped migration:
    ```bash
    psql "postgresql://givernance:givernance_dev@localhost:5432/givernance" <<'SQL'
    INSERT INTO feature_flags (key, enabled, label, description, scope, tenant_override_allowed, public)
@@ -390,6 +385,8 @@ PROPOSED → ACTIVE (off) → TEST_TENANT → GA_ROLLOUT → GA (on by default) 
 - ✅ QA test suite includes both "flag on" and "flag off" paths
 - ✅ No open HIGH issues in the feature's spike doc
 - ✅ Security Architect sign-off if the feature handles PII or payments
+
+**`REMOVED` — worked example (issue #493).** Once a flag has been GA + on everywhere long enough to be permanent, the gate is dead code. Retirement is a single PR that: (1) deletes every `requireFlag` / worker `isFlagEnabled` / SSR `xEnabled` consumer, keeping only the enabled code path; (2) removes the `FEATURE_FLAG_KEYS` + `FEATURE_FLAG_REGISTRY` entries (the shrinking `FeatureFlagKey` union makes the compiler list every orphaned reference); (3) ships a new migration that `DELETE`s the `tenant_flag_overrides` rows **before** the `feature_flags` rows (FK order) — original seed migrations stay immutable; (4) updates the parity + off-state tests so they pass with the rows gone. Issue #493 retired `admin.feature_flags_phase2`, `admin.finance_dashboard`, `admin.impersonation_replicate`, `communication.notifications_center`, and `productivity.command_palette` this way (migration `0082`). Note the special case: `admin.feature_flags_phase2` gated the per-org flag *tooling itself*, so its retirement removed **only its own gate** — the tooling stays, because the surviving flags still need it.
 
 ## 9. Flag Administration API
 
