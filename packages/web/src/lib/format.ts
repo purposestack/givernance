@@ -81,6 +81,28 @@ export function formatMonthYear(month: string, locale: string): string {
   return formatted.charAt(0).toUpperCase() + formatted.slice(1);
 }
 
+/**
+ * Format a `YYYY-MM` period string to just the localized, capitalized month
+ * name — `2026-05` → `Mai` (fr) / `May` (en). Intended for lists already
+ * grouped under a year heading, where repeating the year on every row is
+ * redundant. Returns the input unchanged if it is not a well-formed
+ * `YYYY-MM` string.
+ */
+export function formatMonthName(month: string, locale: string): string {
+  const match = /^(\d{4})-(\d{2})$/.exec(month);
+  if (!match) return month;
+
+  const monthIndex = Number(match[2]) - 1;
+  if (monthIndex < 0 || monthIndex > 11) return month;
+
+  const formatted = new Intl.DateTimeFormat(locale, {
+    month: "long",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(2000, monthIndex, 1, 12)));
+
+  return formatted.charAt(0).toUpperCase() + formatted.slice(1);
+}
+
 /** Format a number with locale-appropriate thousands separators. */
 export function formatNumber(value: number, locale: string): string {
   return new Intl.NumberFormat(locale).format(value);

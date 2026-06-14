@@ -1080,6 +1080,8 @@
           "ariaLabel": "Archive des rapports mensuels",
           "title": "Archive · derniers rapports",
           "subtitle": "Un rapport par mois · le plus récent en premier",
+          "yearCount": "{count, plural, one {# rapport} other {# rapports}}",
+          "yearGroupLabel": "Année {year} · {count, plural, one {# rapport} other {# rapports}}",
           "empty": "Aucun rapport pour l'instant. Clique « Rapport mensuel » ou « Backfill 12 mois ».",
           "rgpdNoticeTitle": "Régénération & conformité RGPD",
           "rgpdNoticeBody": "Chaque rapport est figé au moment de sa génération (Art. 5.2, principe d'exactitude et de traçabilité). Une régénération crée un nouveau document ; l'ancien est conservé dans le système et reste consultable via le journal d'audit. Toute action est tracée (qui, quand, depuis quelle IP).",

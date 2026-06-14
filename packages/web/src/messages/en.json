@@ -1080,6 +1080,8 @@
           "ariaLabel": "Monthly reports archive",
           "title": "Archive · recent reports",
           "subtitle": "One report per month · most recent first",
+          "yearCount": "{count, plural, one {# report} other {# reports}}",
+          "yearGroupLabel": "Year {year} · {count, plural, one {# report} other {# reports}}",
           "empty": "No report yet. Click \"Monthly report\" or \"Backfill 12 months\".",
           "rgpdNoticeTitle": "Regeneration & GDPR compliance",
           "rgpdNoticeBody": "Each report is frozen at generation time (Art. 5.2, accuracy and traceability principle). Regenerating creates a new document; the previous one is kept in the system and remains accessible via the audit log. Every action is tracked (who, when, from which IP).",
