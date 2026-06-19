@@ -1,6 +1,6 @@
 /** Dashboard service — month-over-month KPI aggregates */
 
-import type { FxRateService } from "@givernance/shared";
+import type { FxRateService } from "@givernance/shared/finance";
 import {
   campaigns,
   constituents,

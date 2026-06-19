@@ -1,4 +1,4 @@
-import { ExchangeRateService as SharedExchangeRateService } from "@givernance/shared";
+import { ExchangeRateService as SharedExchangeRateService } from "@givernance/shared/finance";
 import pino from "pino";
 import { env } from "../../env.js";
 import { db } from "../../lib/db.js";

@@ -1,6 +1,5 @@
 /** Job processor — handle Stripe webhook events asynchronously */
 
-import { ExchangeRateService } from "@givernance/shared";
 import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
 import type { ProcessStripeWebhookJob } from "@givernance/shared/jobs";
 import {
@@ -21,6 +20,7 @@ import { and, eq, sql } from "drizzle-orm";
 import Stripe from "stripe";
 import { env } from "../env.js";
 import { db, withWorkerContext } from "../lib/db.js";
+import { ExchangeRateService } from "../lib/exchange-rate-service.js";
 import { isFlagEnabled } from "../lib/flags.js";
 import { jobLogger } from "../lib/logger.js";
 
@@ -464,11 +464,7 @@ async function handlePaymentIntentSucceeded(
   } = await fetchBalanceTxnFx(intent, accountId, log);
 
   await withWorkerContext(orgId, async (tx) => {
-    const exchangeRateService = new ExchangeRateService({
-      apiKey: env.EXCHANGE_RATE_API_KEY,
-      dbClient: tx,
-      logger: log,
-    });
+    const exchangeRateService = new ExchangeRateService({ dbClient: tx, logger: log });
     const baseCurrency = await exchangeRateService.getOrgBaseCurrency(orgId);
     const convertedAmount = await exchangeRateService.convertAmountCents(
       amountCents,

@@ -1,11 +1,10 @@
 /** Dashboard routes — month-over-month KPI aggregates for the home screen */
 
-import { FEATURE_FLAG_KEYS, FxRateService } from "@givernance/shared";
+import { FEATURE_FLAG_KEYS } from "@givernance/shared";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
-import { env } from "../../env.js";
+import { makeFxRateService } from "../../lib/fx-rate-service.js";
 import { requireAuth } from "../../lib/guards.js";
-import { redis } from "../../lib/redis.js";
 import { DataResponse, ErrorResponses, problemDetail } from "../../lib/schemas.js";
 import { getDashboardStats, getMultiCurrencyTotal } from "./service.js";
 
@@ -28,7 +27,7 @@ const DashboardStatsSchema = Type.Object({
 });
 
 /** Shared FxRateService instance — reads from Redis cache populated by worker. */
-const fxService = new FxRateService({ redis, apiKey: env.FIXER_API_KEY });
+const fxService = makeFxRateService();
 
 export async function dashboardRoutes(app: FastifyInstance) {
   app.get(

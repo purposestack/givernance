@@ -19,7 +19,7 @@
  * the first wall; the worker is the second).
  */
 
-import { FEATURE_FLAG_KEYS, FxRateService } from "@givernance/shared";
+import { FEATURE_FLAG_KEYS } from "@givernance/shared";
 import {
   FX_CACHE_JOBS,
   FX_CACHE_QUEUE_NAME,
@@ -33,6 +33,7 @@ import Redis from "ioredis";
 import { env } from "../env.js";
 import { db } from "../lib/db.js";
 import { isFlagEnabled } from "../lib/flags.js";
+import { makeFxRateService } from "../lib/fx-rate-service.js";
 import { jobLogger } from "../lib/logger.js";
 
 /** Create the fx_cache queue handle for enqueuing the backfill job. */
@@ -92,20 +93,8 @@ export async function processRefreshFxCache(job: Job<RefreshFxCachePayload>): Pr
     return;
   }
 
-  // ── Initialise FxRateService with a dedicated ioredis client ───────────────
-  const redis = new Redis(env.REDIS_URL, {
-    maxRetriesPerRequest: null,
-    enableReadyCheck: false,
-  });
-
-  const fxService = new FxRateService({
-    apiKey: env.FIXER_API_KEY,
-    redis,
-    logger: {
-      warn: (obj: unknown, msg?: unknown) => log.warn(obj, String(msg ?? "")),
-      info: (obj: unknown, msg?: unknown) => log.info(obj, String(msg ?? "")),
-    },
-  });
+  // FxRateService bound to the worker's shared Redis + FIXER_API_KEY (issue #480).
+  const fxService = makeFxRateService(log);
 
   // ── Refresh each currency ───────────────────────────────────────────────────
   let successCount = 0;
@@ -131,8 +120,6 @@ export async function processRefreshFxCache(job: Job<RefreshFxCachePayload>): Pr
       );
     }
   }
-
-  await redis.quit();
 
   log.info(
     { triggeredBy, successCount, total: currencies.length },
