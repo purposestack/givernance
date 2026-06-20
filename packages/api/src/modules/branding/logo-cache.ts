@@ -6,22 +6,19 @@
  * PDF without re-fetching the same `pdf-letterhead` variant from S3
  * on every request. Scope is the API process; entries TTL after 1h
  * to bound memory across long-lived API workers.
+ *
+ * The LRU shape itself lives in `@givernance/shared/lib/lru-fetch-cache`
+ * (issue #294); this module owns only the API-specific resolution +
+ * fetch closure.
  */
 
+import { createLruFetchCache } from "@givernance/shared/lib/lru-fetch-cache";
 import { orgBrandingAssets, tenants } from "@givernance/shared/schema";
 import { and, eq } from "drizzle-orm";
-import { LRUCache } from "lru-cache";
 import { systemDb } from "../../lib/db.js";
 import { getBrandingObject } from "../../lib/s3.js";
 
-const ONE_HOUR_MS = 60 * 60 * 1000;
-
-const cache = new LRUCache<string, Buffer>({
-  max: 50,
-  ttl: ONE_HOUR_MS,
-  sizeCalculation: (value) => value.byteLength,
-  maxSize: 50 * 1024 * 1024,
-});
+const cache = createLruFetchCache();
 
 /**
  * Resolve and cache the `pdf-letterhead` variant for a tenant's
@@ -40,35 +37,30 @@ export async function getActivePdfLetterhead(orgId: string): Promise<Buffer | nu
 
   if (!tenant?.logoAssetId) return null;
 
-  const cached = cache.get(tenant.logoAssetId);
-  if (cached) return cached;
+  return cache.get(tenant.logoAssetId, async (assetId) => {
+    // Issue #430 — scope the asset lookup by orgId even though we use
+    // `systemDb` (owner pool, BYPASSRLS). The tenant pointer
+    // `tenants.logo_asset_id` should never reference a foreign tenant's
+    // asset, but a drifted/corrupted pointer would otherwise embed the
+    // wrong logo in receipt PDFs. The explicit predicate keeps the
+    // tenant boundary load-bearing on the application code.
+    const [asset] = await systemDb
+      .select({
+        id: orgBrandingAssets.id,
+        status: orgBrandingAssets.status,
+        variants: orgBrandingAssets.variants,
+        deletedAt: orgBrandingAssets.deletedAt,
+      })
+      .from(orgBrandingAssets)
+      .where(and(eq(orgBrandingAssets.id, assetId), eq(orgBrandingAssets.orgId, orgId)));
 
-  // Issue #430 — scope the asset lookup by orgId even though we use
-  // `systemDb` (owner pool, BYPASSRLS). The tenant pointer
-  // `tenants.logo_asset_id` should never reference a foreign tenant's
-  // asset, but a drifted/corrupted pointer would otherwise embed the
-  // wrong logo in receipt PDFs. The explicit predicate keeps the
-  // tenant boundary load-bearing on the application code.
-  const [asset] = await systemDb
-    .select({
-      id: orgBrandingAssets.id,
-      status: orgBrandingAssets.status,
-      variants: orgBrandingAssets.variants,
-      deletedAt: orgBrandingAssets.deletedAt,
-    })
-    .from(orgBrandingAssets)
-    .where(and(eq(orgBrandingAssets.id, tenant.logoAssetId), eq(orgBrandingAssets.orgId, orgId)));
+    if (asset?.status !== "ready" || asset.deletedAt) return null;
 
-  if (!asset || asset.status !== "ready" || asset.deletedAt) return null;
+    const pdfVariant = asset.variants?.["pdf-letterhead"];
+    if (!pdfVariant?.key) return null;
 
-  const pdfVariant = asset.variants?.["pdf-letterhead"];
-  if (!pdfVariant?.key) return null;
-
-  const buffer = await getBrandingObject(pdfVariant.key);
-  if (!buffer) return null;
-
-  cache.set(tenant.logoAssetId, buffer);
-  return buffer;
+    return getBrandingObject(pdfVariant.key);
+  });
 }
 
 /** Test hook — clear the cache between Vitest runs. */
