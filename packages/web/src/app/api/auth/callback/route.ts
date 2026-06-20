@@ -3,6 +3,8 @@ import { type NextRequest, NextResponse } from "next/server";
 import { buildCsrfCookieOptions, getCsrfCookieName } from "@/lib/auth/csrf";
 import {
   APP_URL,
+  authScopedCookieOptions,
+  deleteLegacyRootSessionCookies,
   ID_TOKEN_COOKIE_NAME,
   JWT_COOKIE_NAME,
   jwtCookieOptions,
@@ -204,11 +206,20 @@ export async function GET(request: NextRequest) {
     jar.delete(OIDC_RETURN_TO_COOKIE);
     jar.set(JWT_COOKIE_NAME, tokens.access_token, jwtCookieOptions(sessionMaxAge));
     jar.set(getCsrfCookieName(), crypto.randomUUID(), buildCsrfCookieOptions(sessionMaxAge));
+    // Issue #296: id_token + refresh_token are scoped to `/api/auth` so the
+    // browser never attaches them to `/api/v1/*` or page requests — only the
+    // logout + refresh/restore-session routes (all under `/api/auth`) read them.
+    // Expire any pre-#296 `Path=/` copies so a re-login migrates cleanly.
+    deleteLegacyRootSessionCookies(jar);
     if (tokens.id_token) {
-      jar.set(ID_TOKEN_COOKIE_NAME, tokens.id_token, jwtCookieOptions(sessionMaxAge));
+      jar.set(ID_TOKEN_COOKIE_NAME, tokens.id_token, authScopedCookieOptions(sessionMaxAge));
     }
     if (tokens.refresh_token) {
-      jar.set(REFRESH_TOKEN_COOKIE_NAME, tokens.refresh_token, jwtCookieOptions(sessionMaxAge));
+      jar.set(
+        REFRESH_TOKEN_COOKIE_NAME,
+        tokens.refresh_token,
+        authScopedCookieOptions(sessionMaxAge),
+      );
     }
 
     return NextResponse.redirect(selectPostLoginRedirect(returnTo, isSuperAdmin));

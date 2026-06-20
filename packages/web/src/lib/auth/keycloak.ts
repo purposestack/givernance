@@ -3,6 +3,7 @@ import "server-only";
 import { createHash, randomBytes } from "node:crypto";
 import { KEYCLOAK_DEFAULT_CLIENT_ID } from "@givernance/shared/constants";
 import {
+  authScopedCookieOptions,
   COOKIE_MAX_AGE_S,
   ID_TOKEN_COOKIE_NAME,
   JWT_COOKIE_NAME,
@@ -49,6 +50,7 @@ export const TOKEN_ENDPOINT = `${KEYCLOAK_INTERNAL_URL}/realms/${KEYCLOAK_REALM}
 export const LOGOUT_ENDPOINT = `${KEYCLOAK_URL}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/logout`;
 
 export {
+  authScopedCookieOptions,
   COOKIE_MAX_AGE_S,
   ID_TOKEN_COOKIE_NAME,
   JWT_COOKIE_NAME,
@@ -56,6 +58,24 @@ export {
   REFRESH_TOKEN_COOKIE_NAME,
   resolveSessionMaxAge,
 };
+
+/**
+ * Issue #296 cookie-path migration. Before #296, `id_token` +
+ * `refresh_token` were set at `Path=/`; after the cutover they live at
+ * `Path=/api/auth`. A browser holding a pre-cutover session carries BOTH
+ * copies until the root-path ones expire — and the stale root-path
+ * refresh cookie can shadow the scoped one on `/api/auth/refresh`,
+ * producing a spurious `invalid_grant` logout. Expiring the legacy
+ * `Path=/` pair whenever we write or clear the session makes the
+ * migration seamless within a single response. Typed structurally so this
+ * server-only module doesn't pull in `next/headers`.
+ */
+export function deleteLegacyRootSessionCookies(jar: {
+  delete: (opts: { name: string; path: string }) => void;
+}): void {
+  jar.delete({ name: ID_TOKEN_COOKIE_NAME, path: "/" });
+  jar.delete({ name: REFRESH_TOKEN_COOKIE_NAME, path: "/" });
+}
 
 /**
  * Same-origin path validator for the OIDC `return_to` parameter / cookie

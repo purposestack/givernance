@@ -3,6 +3,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { getCsrfCookieName } from "@/lib/auth/csrf";
 import {
   APP_URL,
+  deleteLegacyRootSessionCookies,
   ID_TOKEN_COOKIE_NAME,
   JWT_COOKIE_NAME,
   KEYCLOAK_CLIENT_ID,
@@ -28,8 +29,12 @@ export async function POST(request: NextRequest) {
   const jar = await cookies();
   const idToken = jar.get(ID_TOKEN_COOKIE_NAME)?.value;
   jar.delete(JWT_COOKIE_NAME);
-  jar.delete(ID_TOKEN_COOKIE_NAME);
-  jar.delete(REFRESH_TOKEN_COOKIE_NAME);
+  // id_token + refresh_token live at `Path=/api/auth` (issue #296); a delete
+  // only clears a cookie whose path matches, so target the scoped path. Also
+  // expire any legacy `Path=/` copies from a pre-#296 session.
+  jar.delete({ name: ID_TOKEN_COOKIE_NAME, path: "/api/auth" });
+  jar.delete({ name: REFRESH_TOKEN_COOKIE_NAME, path: "/api/auth" });
+  deleteLegacyRootSessionCookies(jar);
   jar.delete(getCsrfCookieName());
 
   const postLogoutRedirectUri = await resolvePostLogoutRedirectUri(request);

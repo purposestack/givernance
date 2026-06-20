@@ -162,14 +162,14 @@ Data residency is **not a per-tenant choice** in the onboarding flow. All SaaS t
 5. **Token Exchange**: Next.js exchanges the `code` + `code_verifier` for an Access Token (JWT) via backend server-to-server call.
 6. **Session Establishment**:
    - Next.js verifies the Keycloak access token against the realm JWKS and ensures the `org_id` claim is present before trusting it.
-   - The raw Keycloak Access Token is saved in the `givernance_jwt` cookie (`httpOnly`, `Secure`, `SameSite=Strict`).
-   - The Keycloak Refresh Token is saved in the `givernance_refresh_token` cookie with the same attributes and is never exposed to browser JavaScript.
-   - A secondary `csrf-token` cookie (non-httpOnly) is set for the browser to read.
+   - The raw Keycloak Access Token is saved in the `givernance_jwt` cookie (`httpOnly`, `Secure`, `SameSite=Strict`, `Path=/`) — it is the credential the Fastify API reads on every `/v1/*` call.
+   - The Keycloak Refresh Token (`givernance_refresh_token`) and ID Token (`givernance_id_token`) are saved with the same security attributes but scoped to **`Path=/api/auth`** (issue #296). The browser therefore only attaches them to the `/api/auth/*` routes that actually consume them (`refresh`, `restore-session`, `logout`) — never to `/api/v1/*` (the API rewrite) or page navigations. This keeps ~2.3 KB of token payload, including the ID token's PII claims (`email`, `name`, …), off every request that reaches the API. See §6.1.
+   - A secondary `csrf-token` cookie (non-httpOnly, `Path=/`) is set for the browser to read.
    - The web app resolves the tenant from the signed JWT claims and redirects the browser to `https://<org_slug>.givernance.app/dashboard` (or `.org` where appropriate). If the user started locally with `?namespace=<tenant>`, the local redirect remains on `localhost` and preserves the namespace for routing only.
 7. **Silent Renewal On Activity**:
-   - The Next.js front-door `proxy.ts` inspects the JWT `exp` claim on each request.
-   - When the token is within a short grace window of expiry, the proxy exchanges the refresh token for a fresh access token server-side and rotates the auth cookies before forwarding the request.
-   - If the refresh fails and the access token is already expired, the cookies are cleared and the next protected navigation returns to `/login`.
+   - The primary mechanism is **client-side** (`auth-context.tsx`): a timer refreshes the access token shortly before `exp` via `POST /api/auth/refresh`, with a `visibilitychange` handler that fires an immediate refresh when a backgrounded tab regains focus past-due.
+   - The Next.js front-door `proxy.ts` no longer refreshes tokens inline (issue #296 — it can't, now that `refresh_token` is `/api/auth`-scoped). Instead, when a **full-page navigation** to a protected route arrives with an absent or already-expired `givernance_jwt` (a cold tab, or the operator's session right after impersonation ends), the proxy 307-redirects to `GET /api/auth/restore-session?return=<path>`, which performs the refresh server-side from the scoped refresh cookie and 303-redirects onward.
+   - If the refresh fails (refresh token also gone/expired), `restore-session` clears the session cookies and redirects to `/login` (preserving the original path as `?redirect=`).
 
 ## 4. Sign-Out Flow
 
@@ -265,8 +265,9 @@ To narrow the blocklist window (and the worst-case "compromised access token" li
 
 | Component | Role |
 |---|---|
-| `POST /api/auth/refresh` (`packages/web/src/app/api/auth/refresh/route.ts`) | Reads the `givernance_refresh_token` cookie, calls Keycloak's token endpoint with `grant_type=refresh_token`, rotates `givernance_jwt` + `givernance_id_token` + `givernance_refresh_token` on success. On `invalid_grant` (session revoked, refresh token expired) clears all session cookies and returns 401. |
-| `AuthProvider` (`packages/web/src/lib/auth/auth-context.tsx`) | Schedules a refresh ~240s after the user hydrates; on success, re-schedules using the server's `expires_in`. On failure, clears local auth state so the next protected navigation hits middleware → `/login`. |
+| `POST /api/auth/refresh` (`packages/web/src/app/api/auth/refresh/route.ts`) | Client-driven refresh. Reads the `givernance_refresh_token` cookie, calls Keycloak's token endpoint with `grant_type=refresh_token`, rotates `givernance_jwt` (`Path=/`) + `givernance_id_token` + `givernance_refresh_token` (`Path=/api/auth`) on success. On `invalid_grant` (session revoked, refresh token expired) clears all session cookies and returns 401. |
+| `GET /api/auth/restore-session` (`packages/web/src/app/api/auth/restore-session/route.ts`) | Navigation-driven refresh (issue #296). Same Keycloak exchange (shared via `lib/auth/refresh-session.ts`), but redirect-based: on success 303s to the validated `?return=` path with rotated cookies; on failure 303s to `/login`. The proxy and the impersonation-expiry interceptor redirect here. |
+| `AuthProvider` (`packages/web/src/lib/auth/auth-context.tsx`) | Schedules a refresh ~240s after the user hydrates; on success, re-schedules using the server's `expires_in`. A `visibilitychange` handler fires an immediate refresh when a backgrounded tab regains focus past-due. On failure, clears local auth state so the next protected navigation hits the proxy → `restore-session` → `/login`. |
 
 CSRF: the refresh endpoint does not require the double-submit token. The refresh cookie is httpOnly, the only side effect is rotating the victim's own tokens, and the response goes to the same origin. Adding CSRF would block legitimate cross-tab refreshes without adding security.
 
@@ -276,13 +277,52 @@ CSRF: the refresh endpoint does not require the double-submit token. The refresh
 
 ## 5. Cookies Set by the Flow
 
-| Cookie | Purpose | httpOnly | SameSite | Lifetime |
-|--------|---------|:--------:|:--------:|----------|
-| `givernance_jwt` | Access token used by web server components and sent to the API | Yes | Strict | Keycloak `expires_in` (rotated on activity) |
-| `givernance_id_token` | ID token kept only to pass as `id_token_hint` on logout | Yes | Strict | Session lifetime |
-| `givernance_refresh_token` | Refresh token used only server-side for silent renewal | Yes | Strict | Keycloak `refresh_expires_in` |
-| `csrf-token` | Double-submit CSRF token (readable by JS via `<meta>`) | No | Strict | session |
-| `oidc_state`, `oidc_code_verifier`, `oidc_nonce` | Short-lived OIDC flow state | Yes | Lax | 5 min |
+| Cookie | Purpose | httpOnly | SameSite | Path | Lifetime |
+|--------|---------|:--------:|:--------:|:----:|----------|
+| `givernance_jwt` | Access token used by web server components and sent to the API | Yes | Strict | `/` | Keycloak `expires_in` (rotated on activity) |
+| `givernance_id_token` | ID token kept only to pass as `id_token_hint` on logout | Yes | Strict | `/api/auth` | Session lifetime |
+| `givernance_refresh_token` | Refresh token used only server-side for silent renewal | Yes | Strict | `/api/auth` | Keycloak `refresh_expires_in` |
+| `csrf-token` | Double-submit CSRF token (readable by JS via `<meta>`) | No | Strict | `/` | session |
+| `oidc_state`, `oidc_code_verifier`, `oidc_nonce` | Short-lived OIDC flow state | Yes | Lax | `/` | 5 min |
+| `oidc_return_to` | Post-callback landing path (issue #250) | Yes | Lax | `/api/auth` | 5 min |
+
+> **Path-scoping (issue #296)**: `givernance_id_token` and `givernance_refresh_token` are scoped to `Path=/api/auth` so the browser never attaches them to `/api/v1/*` or page requests — only the `/api/auth/*` routes that read them. See §5.1.
+
+### 5.1 Header-size hardening — keeping tokens off the API path (issue #296)
+
+**Symptom**: platform-admin sessions hit `431 HPE_HEADER_OVERFLOW` on every authenticated `/v1/*` call. Three Keycloak tokens (`jwt` + `id_token` + `refresh_token` ≈ 4.4 KB of cookies) plus a redundant `Authorization: Bearer <jwt>` the proxy injected, plus the `x-middleware-request-*` overrides Next.js serialises when the proxy rewrites request headers, pushed the request reaching Fastify past Node's default 16 KB `--max-http-header-size`.
+
+**Fix (three parts, all in this PR)**:
+
+1. **Drop the redundant `Authorization` injection.** The API's `extractToken` reads `Authorization` first but falls back to the `givernance_jwt` cookie, which the same-origin proxy path always carries — so the injected header was pure overhead. The proxy now forwards request headers untouched.
+2. **Stop re-writing the `cookie` header on every request.** The steady-state proxy path returns `NextResponse.next()` with no `request: { headers }` argument, so Next.js emits no `x-middleware-request-*` overrides.
+3. **Scope `id_token` + `refresh_token` to `Path=/api/auth`.** Path-scoping is mechanism-independent: the browser simply does not send a cookie whose `Path` doesn't match, so these two tokens never reach `/api/v1/*` regardless of how Next.js forwards headers. Authenticated API requests now carry only `givernance_jwt` + `csrf-token`.
+
+Because the proxy can no longer read the (now `/api/auth`-scoped) refresh token, the silent-refresh-on-navigation it used to perform inline moved to a dedicated route:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant B as Browser
+    participant P as Next proxy (proxy.ts)
+    participant R as GET /api/auth/restore-session
+    participant KC as Keycloak
+
+    Note over B,P: Full-page nav to a protected route with an<br/>absent or EXPIRED givernance_jwt
+    B->>P: GET /dashboard (cookie: givernance_jwt expired)
+    P-->>B: 307 → /api/auth/restore-session?return=/dashboard
+    B->>R: GET (cookie: givernance_refresh_token — sent, Path=/api/auth matches)
+    R->>KC: POST grant_type=refresh_token
+    alt refresh ok
+        KC-->>R: new access / id / refresh tokens
+        R-->>B: 303 → /dashboard (rotated cookies: jwt Path=/, id+refresh Path=/api/auth)
+    else refresh rejected / no refresh cookie
+        KC-->>R: invalid_grant
+        R-->>B: 303 → /login?redirect=/dashboard (session cookies cleared)
+    end
+```
+
+The impersonation-expiry recovery (`client-browser.ts`) navigates to the same `restore-session` route (`?return=/admin/impersonation`) so an operator whose short-lived impersonation token 401s is restored to their platform-admin session. `restore-session` is CSRF-exempt for the same reasons as `/api/auth/refresh` (httpOnly refresh cookie, only rotates the caller's own tokens, redirect target validated same-origin via `safeReturnToPath`) and responds `no-store`.
 
 ## 6. Local Development Setup
 

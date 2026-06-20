@@ -90,6 +90,24 @@ describe("RBAC — authenticated access", () => {
     });
   });
 
+  it("GET with ONLY the givernance_jwt cookie (no Authorization header) returns 200 (issue #296)", async () => {
+    // Issue #296: the Next.js proxy no longer injects `Authorization:
+    // Bearer <jwt>` — the API must authenticate from the `givernance_jwt`
+    // cookie alone (the proxy's same-origin path always carries it). This
+    // is the regression guard for dropping that redundant header.
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/constituents",
+      headers: { cookie: authCookieHeader(signToken(app)) },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      data: expect.any(Array),
+      pagination: expect.objectContaining({ page: 1 }),
+    });
+  });
+
   it("rejects cookie-authenticated mutating requests without a matching CSRF token", async () => {
     const token = signToken(app);
     const res = await app.inject({

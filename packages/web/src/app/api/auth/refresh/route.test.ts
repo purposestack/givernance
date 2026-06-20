@@ -35,8 +35,10 @@ vi.mock("next/headers", () => ({
     set: (name: string, value: string) => {
       jar.set(name, value);
     },
-    delete: (name: string) => {
-      jar.delete(name);
+    // Next's `cookies().delete` accepts a name or `{ name, path }`; the
+    // scoped session cookies (issue #296) are deleted via the object form.
+    delete: (nameOrOpts: string | { name: string }) => {
+      jar.delete(typeof nameOrOpts === "string" ? nameOrOpts : nameOrOpts.name);
     },
   }),
 }));
