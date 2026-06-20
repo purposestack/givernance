@@ -3,7 +3,7 @@
 import { Check, ChevronDown, Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
+import { CheckboxVisual } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
@@ -266,12 +266,7 @@ export function FilterCondition({ condition, onChange, onRemove, isFirst }: Filt
                     className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-surface-container-low focus-visible:outline-none focus-visible:bg-surface-container-low"
                     aria-pressed={checked}
                   >
-                    <Checkbox
-                      checked={checked}
-                      aria-hidden="true"
-                      tabIndex={-1}
-                      className="pointer-events-none"
-                    />
+                    <CheckboxVisual checked={checked} />
                     <span className="flex-1 truncate">{trDynamic(t, option.label)}</span>
                     {checked ? <Check size={14} aria-hidden="true" className="opacity-60" /> : null}
                   </button>

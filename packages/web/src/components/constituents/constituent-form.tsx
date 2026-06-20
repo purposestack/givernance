@@ -25,7 +25,7 @@ import {
 } from "@/components/shared/form-field";
 import { FormSection } from "@/components/shared/form-section";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
+import { CheckboxVisual } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -511,9 +511,10 @@ interface TypeChipGroupProps {
  * Chip-style multiselect for constituent `types` (issue #465). A toggle-button
  * group — each known type is a pill the operator clicks to add/remove. At least
  * one is required (enforced on submit). Mirrors the `.type-multiselect` /
- * `.type-chip` art in `docs/design/constituents/new.html`; built from the
- * design-system `Checkbox` so hover/focus/checked states stay uniform and no
- * raw `<button>` / inline `style` is hand-rolled.
+ * `.type-chip` art in `docs/design/constituents/new.html`. Each chip IS the
+ * toggle `<button>`, so the box uses the presentational `CheckboxVisual`
+ * (a `<span>`, not a Radix `<button>`) — a real `Checkbox` would nest
+ * `<button>` in `<button>` and crash with a focus-scope update loop (#465).
  */
 function TypeChipGroup({ value, onChange, invalid, labels }: TypeChipGroupProps) {
   const selected = new Set(value);
@@ -547,12 +548,7 @@ function TypeChipGroup({ value, onChange, invalid, labels }: TypeChipGroupProps)
                 : "border-outline-variant bg-surface-container-lowest text-on-surface hover:border-primary",
             )}
           >
-            <Checkbox
-              checked={checked}
-              aria-hidden="true"
-              tabIndex={-1}
-              className="pointer-events-none"
-            />
+            <CheckboxVisual checked={checked} />
             <span>{labels.option(type)}</span>
           </button>
         );
