@@ -520,10 +520,38 @@ function buildPostalAddress(): {
   };
 }
 
+// Weighted pool for the PRIMARY type (donor-heavy, mirrors a real NPO base).
+const PRIMARY_TYPE_POOL: ConstituentType[] = [
+  "donor",
+  "donor",
+  "donor",
+  "volunteer",
+  "member",
+  "partner",
+];
+// Full distinct value set — used to pick a guaranteed-different SECOND type so
+// the multi-type seed is reliable (and surfaces `beneficiary`, which is absent
+// from the weighted primary pool).
+const ALL_CONSTITUENT_TYPES: ConstituentType[] = [
+  "donor",
+  "volunteer",
+  "member",
+  "beneficiary",
+  "partner",
+];
+
 function buildConstituent(index: number) {
   const isOrganization = index % 5 === 0;
-  const types: ConstituentType[] = ["donor", "donor", "donor", "volunteer", "member", "partner"];
-  const type: ConstituentType = isOrganization ? "partner" : randomPick(types);
+  const primary: ConstituentType = isOrganization ? "partner" : randomPick(PRIMARY_TYPE_POOL);
+  // Issue #465 — give ~30% of individuals a genuine second type (e.g. a donor
+  // who also volunteers) so the multi-badge UI has realistic demo data. The
+  // second value is drawn from the set EXCLUDING the primary, so the branch
+  // always yields two distinct types rather than silently collapsing.
+  const types: ConstituentType[] = [primary];
+  if (!isOrganization && Math.random() > 0.7) {
+    const candidates = ALL_CONSTITUENT_TYPES.filter((t) => t !== primary);
+    types.push(randomPick(candidates));
+  }
 
   const firstName = isOrganization
     ? randomPick(ORGANIZATION_PREFIXES)
@@ -554,7 +582,9 @@ function buildConstituent(index: number) {
     postalCode: address?.postalCode ?? null,
     city: address?.city ?? null,
     countryCode: address?.countryCode ?? null,
-    type,
+    // `type` (singular) is the back-compat shadow = `types[0]` (issue #465).
+    type: types[0],
+    types,
     tags: tags.length > 0 ? [...new Set(tags)] : null,
   };
 }

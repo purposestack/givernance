@@ -25,6 +25,7 @@ import {
 } from "@/components/shared/form-field";
 import { FormSection } from "@/components/shared/form-section";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -44,6 +45,7 @@ import {
 import { toast } from "@/components/ui/toast";
 import { ApiProblem } from "@/lib/api";
 import { createClientApiClient } from "@/lib/api/client-browser";
+import { cn } from "@/lib/utils";
 import type { Constituent, ConstituentType } from "@/models/constituent";
 import { type ConstituentCreateInput, ConstituentService } from "@/services/ConstituentService";
 
@@ -56,7 +58,13 @@ const CONSTITUENT_TYPES: readonly ConstituentType[] = [
 ] as const;
 
 interface ConstituentFormValues {
-  type: ConstituentType;
+  /**
+   * Canonical multi-valued type (issue #465). Always holds ≥1 value. When the
+   * `constituents.multi_type` flag is off, the single `Select` keeps this array
+   * at exactly one element; when on, the multiselect lets it hold several.
+   * Submitted as `types` so the API contract is uniform across both states.
+   */
+  types: ConstituentType[];
   firstName: string;
   lastName: string;
   email: string;
@@ -86,16 +94,34 @@ interface DuplicateCandidate {
 type CreateMode = { mode: "create"; constituent?: undefined };
 type EditMode = { mode: "edit"; constituent: Constituent };
 
-export type ConstituentFormProps = CreateMode | EditMode;
+/**
+ * `multiTypeEnabled` is SSR-fetched from `/v1/feature-flags`
+ * (`constituents.multi_type`, issue #465) in the page server component and
+ * threaded down. On → multiselect type control; off → single `Select`.
+ */
+export type ConstituentFormProps = (CreateMode | EditMode) & { multiTypeEnabled: boolean };
+
+/** Coerce the constituent's stored types into a non-empty form-default array. */
+function defaultTypes(constituent: Constituent | undefined): ConstituentType[] {
+  const stored = constituent?.types?.filter((t): t is ConstituentType =>
+    (CONSTITUENT_TYPES as readonly string[]).includes(t),
+  );
+  if (stored && stored.length > 0) return stored;
+  const legacy = constituent?.type;
+  if (legacy && (CONSTITUENT_TYPES as readonly string[]).includes(legacy)) {
+    return [legacy as ConstituentType];
+  }
+  return ["donor"];
+}
 
 export function ConstituentForm(props: ConstituentFormProps) {
-  const { mode } = props;
+  const { mode, multiTypeEnabled } = props;
   const router = useRouter();
   const t = useTranslations("constituentForm");
   const tType = useTranslations("constituents.types");
 
   const defaultValues: DefaultValues<ConstituentFormValues> = {
-    type: (props.constituent?.type as ConstituentType | undefined) ?? "donor",
+    types: defaultTypes(props.constituent),
     firstName: props.constituent?.firstName ?? "",
     lastName: props.constituent?.lastName ?? "",
     email: props.constituent?.email ?? "",
@@ -123,6 +149,13 @@ export function ConstituentForm(props: ConstituentFormProps) {
 
   async function onSubmit(values: ConstituentFormValues) {
     form.clearErrors("root");
+    // At least one type is required (issue #465). The single Select can never
+    // be empty, but the multiselect can — guard before hitting the API so the
+    // operator gets an inline field error instead of a 422 round-trip.
+    if (!values.types || values.types.length === 0) {
+      form.setError("types", { type: "manual", message: t("errors.typesRequired") });
+      return;
+    }
     try {
       if (mode === "create") {
         const created = await ConstituentService.createConstituent(
@@ -200,24 +233,49 @@ export function ConstituentForm(props: ConstituentFormProps) {
           >
             <FormField
               control={form.control}
-              name="type"
+              name="types"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel required>{t("fields.type")}</FormLabel>
-                  <Select value={field.value} onValueChange={field.onChange}>
+                  {multiTypeEnabled ? (
+                    // Flag on — chip-style checkbox group (≥1 required). Matches
+                    // docs/design/constituents/new.html's `.type-multiselect`.
                     <FormControl>
-                      <SelectTrigger aria-invalid={Boolean(form.formState.errors.type)}>
-                        <SelectValue />
-                      </SelectTrigger>
+                      <TypeChipGroup
+                        value={field.value ?? []}
+                        onChange={field.onChange}
+                        invalid={Boolean(form.formState.errors.types)}
+                        labels={{
+                          group: t("fields.type"),
+                          option: (type: ConstituentType) => tType(type),
+                        }}
+                      />
                     </FormControl>
-                    <SelectContent>
-                      {CONSTITUENT_TYPES.map((type) => (
-                        <SelectItem key={type} value={type}>
-                          {tType(type)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  ) : (
+                    // Flag off — single Select, identical to today. The value is
+                    // still stored as a one-element `types` array so the submit
+                    // path is uniform.
+                    <Select
+                      value={field.value?.[0] ?? "donor"}
+                      onValueChange={(next) => field.onChange([next as ConstituentType])}
+                    >
+                      <FormControl>
+                        <SelectTrigger aria-invalid={Boolean(form.formState.errors.types)}>
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {CONSTITUENT_TYPES.map((type) => (
+                          <SelectItem key={type} value={type}>
+                            {tType(type)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  {multiTypeEnabled ? (
+                    <p className="text-xs text-on-surface-variant">{t("fields.typesHint")}</p>
+                  ) : null}
                   <FormMessage />
                 </FormItem>
               )}
@@ -439,6 +497,70 @@ export function ConstituentForm(props: ConstituentFormProps) {
   );
 }
 
+interface TypeChipGroupProps {
+  value: ConstituentType[];
+  onChange: (next: ConstituentType[]) => void;
+  invalid?: boolean;
+  labels: {
+    group: string;
+    option: (type: ConstituentType) => string;
+  };
+}
+
+/**
+ * Chip-style multiselect for constituent `types` (issue #465). A toggle-button
+ * group — each known type is a pill the operator clicks to add/remove. At least
+ * one is required (enforced on submit). Mirrors the `.type-multiselect` /
+ * `.type-chip` art in `docs/design/constituents/new.html`; built from the
+ * design-system `Checkbox` so hover/focus/checked states stay uniform and no
+ * raw `<button>` / inline `style` is hand-rolled.
+ */
+function TypeChipGroup({ value, onChange, invalid, labels }: TypeChipGroupProps) {
+  const selected = new Set(value);
+  const toggle = (type: ConstituentType) => {
+    const next = new Set(selected);
+    if (next.has(type)) next.delete(type);
+    else next.add(type);
+    onChange(CONSTITUENT_TYPES.filter((t) => next.has(t)));
+  };
+
+  return (
+    <fieldset
+      aria-label={labels.group}
+      aria-invalid={invalid}
+      className="flex flex-wrap gap-2 rounded-[var(--radius-md)] border border-outline-variant bg-surface-container p-3 aria-[invalid=true]:border-error"
+    >
+      {CONSTITUENT_TYPES.map((type) => {
+        const checked = selected.has(type);
+        return (
+          <button
+            key={type}
+            type="button"
+            onClick={() => toggle(type)}
+            aria-pressed={checked}
+            className={cn(
+              "inline-flex items-center gap-2 rounded-[var(--radius-pill)] border px-3 py-1 text-sm",
+              "transition-colors duration-normal ease-out",
+              "focus-visible:outline-none focus-visible:shadow-ring",
+              checked
+                ? "border-primary bg-primary/10 text-primary"
+                : "border-outline-variant bg-surface-container-lowest text-on-surface hover:border-primary",
+            )}
+          >
+            <Checkbox
+              checked={checked}
+              aria-hidden="true"
+              tabIndex={-1}
+              className="pointer-events-none"
+            />
+            <span>{labels.option(type)}</span>
+          </button>
+        );
+      })}
+    </fieldset>
+  );
+}
+
 function DuplicateDialog({
   open,
   candidates,
@@ -526,7 +648,10 @@ function toApiPayload(
   // `null` (edit) rather than a 1-char string that fails the validator.
   const trimmedCountry = values.countryCode?.trim().toUpperCase() ?? "";
   return {
-    type: values.type,
+    // Issue #465 — submit the canonical `types` array. Deduped + non-empty
+    // (the form guards against an empty selection before reaching here). The
+    // API derives the legacy `type` mirror from `types[0]` server-side.
+    types: Array.from(new Set(values.types ?? [])),
     firstName: values.firstName?.trim() ?? "",
     lastName: values.lastName?.trim() ?? "",
     email: values.email?.trim() || emptyOptional,
@@ -550,7 +675,7 @@ function parseDuplicates(raw: unknown): DuplicateCandidate[] {
 }
 
 const MAPPED_FIELDS = [
-  "type",
+  "types",
   "firstName",
   "lastName",
   "email",

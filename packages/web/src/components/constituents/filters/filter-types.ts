@@ -17,7 +17,12 @@ export type FilterOperator =
   | "startsWith"
   | "endsWith"
   | "exists"
-  | "notExists";
+  | "notExists"
+  // Array-column operators (issue #465). `constituent.type` migrated from a
+  // scalar to a `text[]`; these map to Drizzle `arrayContains` (all-of) /
+  // `arrayOverlaps` (any-of) BE-side.
+  | "arrayContains"
+  | "arrayOverlaps";
 
 export type LogicalOperator = "AND" | "OR";
 

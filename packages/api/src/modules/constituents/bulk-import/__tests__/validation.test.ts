@@ -69,7 +69,19 @@ describe("validateRow", () => {
   it("accepts a valid type, case-insensitively", () => {
     const out = validateRow({ firstName: "A", lastName: "B", type: "Donor" });
     expect(out.ok).toBe(true);
-    if (out.ok) expect(out.payload.type).toBe("donor");
+    if (out.ok) expect(out.payload.types).toEqual(["donor"]);
+  });
+
+  it("splits a multi-value type cell and deduplicates (issue #465)", () => {
+    const out = validateRow({ firstName: "A", lastName: "B", type: "donor; Volunteer|donor" });
+    expect(out.ok).toBe(true);
+    if (out.ok) expect(out.payload.types).toEqual(["donor", "volunteer"]);
+  });
+
+  it("rejects the whole row when any type in a multi-value cell is invalid", () => {
+    const out = validateRow({ firstName: "A", lastName: "B", type: "donor;sponsor" });
+    expect(out.ok).toBe(false);
+    if (!out.ok) expect(out.errors.map((e) => e.code)).toContain("INVALID_TYPE");
   });
 
   it("splits comma-separated tags and deduplicates", () => {

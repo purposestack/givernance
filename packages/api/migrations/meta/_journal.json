@@ -582,6 +582,20 @@
       "when": 1958180000000,
       "tag": "0082_retire_validated_feature_flags",
       "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1968180000000,
+      "tag": "0083_constituent_types_array",
+      "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1978180000000,
+      "tag": "0084_constituents_multi_type_flag",
+      "breakpoints": true
     }
   ]
 }

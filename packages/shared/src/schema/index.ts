@@ -793,7 +793,22 @@ export const constituents = pgTable("constituents", {
   city: varchar("city", { length: 255 }),
   /** ISO 3166-1 alpha-2 country code. Same convention as `tenants.country`. */
   countryCode: varchar("country_code", { length: 2 }),
+  /**
+   * Legacy single-value type. Issue #465 moved the canonical store to the
+   * `types` array below; this column is now a back-compat SHADOW kept equal
+   * to `types[0]` (written by the service on every create/update) so an
+   * un-migrated reader never breaks during the rollout window. A follow-up
+   * migration drops it once all readers consume `types`.
+   */
   type: varchar("type", { length: 50 }).notNull().default("donor"),
+  /**
+   * Multi-valued constituent type (issue #465). A constituent can be a
+   * donor AND a volunteer AND a beneficiary at once. Closed picklist of the
+   * same five values as the legacy `type` column. GIN-indexed
+   * (`0083_constituent_types_array`) so `types && ARRAY[...]` overlap
+   * filters stay index-backed. Always has ≥1 element; defaults to `{donor}`.
+   */
+  types: text("types").array().notNull().default(sql`'{donor}'::text[]`),
   tags: text("tags").array(),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

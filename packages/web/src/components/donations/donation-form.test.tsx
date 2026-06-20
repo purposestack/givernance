@@ -38,6 +38,7 @@ describe("DonationForm", () => {
           postalCode: null,
           city: null,
           countryCode: null,
+          types: ["donor"],
           type: "donor",
           tags: null,
           deletedAt: null,

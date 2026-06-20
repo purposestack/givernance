@@ -161,10 +161,14 @@ export const FIELD_REGISTRY: Record<string, FieldMetadata> = {
   },
   "constituent.type": {
     name: "constituent.type",
-    type: "string",
+    // Issue #465 — now the `types text[]` array. Legacy scalar operators
+    // (eq/neq/in) are kept so persisted segments built before the migration
+    // keep working: the query builder translates them to array semantics
+    // against the `types` column (eq → contains, in → overlaps).
+    type: "array",
     table: "constituents",
-    column: "type",
-    operators: ["eq", "neq", "in"],
+    column: "types",
+    operators: ["arrayContains", "arrayOverlaps", "eq", "neq", "in", "isNull", "isNotNull"],
   },
   "constituent.tags": {
     name: "constituent.tags",

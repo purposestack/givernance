@@ -194,18 +194,21 @@ export class FilterService {
     const result = await withTenantContext(this.orgId, async (db) => {
       switch (field) {
         case "constituent.type": {
-          const types = await db
-            .selectDistinct({ value: constituents.type })
-            .from(constituents)
-            .where(
-              and(
-                eq(constituents.orgId, this.orgId),
-                search ? sql`${constituents.type} ILIKE ${`%${search}%`}` : undefined,
-              ),
-            )
-            .limit(limit)
-            .execute();
-          return types.map((t) => t.value).filter((v): v is string => v !== null);
+          // Issue #465 — `type` is now the `types` array. Unnest so a value
+          // that only appears as a non-first type still surfaces as a
+          // suggestion. `eq(org_id)` keeps the tenant filter explicit even
+          // though RLS also scopes it (issue #430).
+          const rows = await db.execute(sql`
+            SELECT DISTINCT unnest(types) AS value
+            FROM ${constituents}
+            WHERE org_id = ${this.orgId}
+              ${search ? sql`AND EXISTS (SELECT 1 FROM unnest(types) AS t WHERE t ILIKE ${`%${search}%`})` : sql``}
+            ORDER BY value
+            LIMIT ${limit}
+          `);
+          return (rows as unknown as Array<{ value: string | null }>)
+            .map((r) => r.value)
+            .filter((v): v is string => v !== null);
         }
 
         case "constituent.tags": {

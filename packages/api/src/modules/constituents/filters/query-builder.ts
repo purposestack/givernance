@@ -18,6 +18,7 @@ import {
   lt,
   lte,
   ne,
+  not,
   or,
   type SQL,
   sql,
@@ -117,6 +118,30 @@ export class FilterQueryBuilder {
   }
 
   /**
+   * Translate a legacy SCALAR operator (eq/neq/in) into array semantics when
+   * the field migrated from a scalar column to an array one (issue #465 —
+   * `constituent.type` → `types text[]`). Persisted segments built before the
+   * migration still carry these operators; without translation they error on
+   * `text = text[]`. Returns `undefined` when no translation applies so the
+   * caller falls through to the normal operator switch.
+   */
+  private translateScalarOperatorForArray(
+    column: SQL,
+    operator: FilterOperator,
+    value: unknown,
+    fieldMeta: FieldMetadata,
+  ): SQL | undefined {
+    if (fieldMeta.type !== "array") return undefined;
+    if (operator === "eq" || operator === "neq") {
+      const contains = arrayContains(column, [value]);
+      return operator === "eq" ? contains : not(contains);
+    }
+    // "is any of" on an array column = overlap.
+    if (operator === "in" && Array.isArray(value)) return arrayOverlaps(column, value);
+    return undefined;
+  }
+
+  /**
    * Build SQL condition based on operator type
    */
   private buildOperatorCondition(
@@ -125,6 +150,13 @@ export class FilterQueryBuilder {
     value: unknown,
     fieldMeta: FieldMetadata,
   ): SQL | undefined {
+    const arrayTranslation = this.translateScalarOperatorForArray(
+      column,
+      operator,
+      value,
+      fieldMeta,
+    );
+    if (arrayTranslation) return arrayTranslation;
     switch (operator) {
       case "eq":
         return eq(column, value);

@@ -2188,12 +2188,14 @@
       "volunteer": "Bénévole",
       "member": "Membre",
       "beneficiary": "Bénéficiaire",
-      "partner": "Partenaire"
+      "partner": "Partenaire",
+      "overflow": "+{count}"
     },
     "filters": {
       "searchPlaceholder": "Rechercher un contact…",
       "typeLabel": "Type",
       "allTypes": "Tous les types",
+      "typesSelectedCount": "{count} types",
       "advancedLabel": "Plus de filtres",
       "advanced": {
         "title": "Filtres avancés",
@@ -2264,7 +2266,9 @@
         "startsWith": "commence par",
         "endsWith": "se termine par",
         "exists": "renseigné",
-        "notExists": "non renseigné"
+        "notExists": "non renseigné",
+        "arrayContains": "contient tous",
+        "arrayOverlaps": "contient l'un de"
       },
       "validation": {
         "incomplete": "Veuillez compléter toutes les conditions de filtre",
@@ -3299,6 +3303,7 @@
     "fields": {
       "type": "Type",
       "typeHint": "Choisissez le lien entre cette personne et votre organisation.",
+      "typesHint": "Sélectionnez un ou plusieurs types. Un constituant peut être à la fois donateur, bénévole, membre, etc.",
       "firstName": "Prénom",
       "firstNamePlaceholder": "Marie",
       "lastName": "Nom",
@@ -3334,7 +3339,8 @@
     },
     "errors": {
       "generic": "Une erreur est survenue lors de l'enregistrement. Réessayez.",
-      "validation": "Corrigez les champs en surbrillance."
+      "validation": "Corrigez les champs en surbrillance.",
+      "typesRequired": "Sélectionnez au moins un type."
     },
     "success": {
       "created": "Constituant créé.",

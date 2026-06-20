@@ -8,8 +8,12 @@ type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 export interface RequestOptions {
   headers?: Record<string, string>;
   signal?: AbortSignal;
-  /** Query parameters appended to the URL. */
-  params?: Record<string, string | number | boolean | undefined>;
+  /**
+   * Query parameters appended to the URL. Array values are serialised as
+   * repeatable params (`?types=donor&types=volunteer`) so the API's
+   * `Type.Array` query schemas (e.g. constituents `?types`) receive a list.
+   */
+  params?: Record<string, string | number | boolean | string[] | undefined>;
 }
 
 /** Configuration for the ApiClient factory. */
@@ -134,7 +138,7 @@ export class ApiClient {
 
   private buildUrl(
     path: string,
-    params?: Record<string, string | number | boolean | undefined>,
+    params?: Record<string, string | number | boolean | string[] | undefined>,
   ): string {
     // Server-side always receives an absolute URL (API_URL). Browser-side may
     // receive a relative path (/api) — resolve it against the current origin.
@@ -151,7 +155,14 @@ export class ApiClient {
     const url = new URL(relativePath, `${base}/`);
     if (params) {
       for (const [key, value] of Object.entries(params)) {
-        if (value !== undefined) {
+        if (value === undefined) continue;
+        if (Array.isArray(value)) {
+          // Repeatable param: `?types=donor&types=volunteer`. Empty arrays
+          // append nothing so the key is simply absent.
+          for (const item of value) {
+            url.searchParams.append(key, item);
+          }
+        } else {
           url.searchParams.set(key, String(value));
         }
       }

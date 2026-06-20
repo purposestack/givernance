@@ -110,6 +110,18 @@ const NullablePostalAddressSchemaFields = {
   ),
 };
 
+/**
+ * Closed picklist of constituent types (issue #465). Single source for both
+ * the canonical `types` array and the legacy singular `type` field.
+ */
+export const ConstituentTypeLiteralUnion = Type.Union([
+  Type.Literal("donor"),
+  Type.Literal("volunteer"),
+  Type.Literal("member"),
+  Type.Literal("beneficiary"),
+  Type.Literal("partner"),
+]);
+
 /** Schema for creating a new constituent */
 export const ConstituentCreateSchema = Type.Object({
   firstName: Type.String({ minLength: 1, maxLength: 255 }),
@@ -117,16 +129,15 @@ export const ConstituentCreateSchema = Type.Object({
   email: Type.Optional(Type.String({ format: "email", maxLength: 255 })),
   phone: Type.Optional(Type.String({ maxLength: 50 })),
   ...PostalAddressSchemaFields,
-  type: Type.Union(
-    [
-      Type.Literal("donor"),
-      Type.Literal("volunteer"),
-      Type.Literal("member"),
-      Type.Literal("beneficiary"),
-      Type.Literal("partner"),
-    ],
-    { default: "donor" },
+  // Canonical multi-valued type (issue #465). At least one, no duplicates.
+  // The API rejects >1 element unless the `constituents.multi_type` flag is
+  // on for the tenant. Defaults to `["donor"]`.
+  types: Type.Optional(
+    Type.Array(ConstituentTypeLiteralUnion, { minItems: 1, uniqueItems: true, default: ["donor"] }),
   ),
+  // Legacy single-value type. Kept for back-compat (Salesforce ETL, older
+  // clients); coerced into `types` server-side when `types` is omitted.
+  type: Type.Optional(ConstituentTypeLiteralUnion),
   tags: Type.Optional(Type.Array(Type.String())),
 });
 
@@ -149,15 +160,13 @@ export const ConstituentUpdateSchema = Type.Object({
   email: Type.Optional(Type.Union([Type.Null(), Type.String({ format: "email", maxLength: 255 })])),
   phone: Type.Optional(Type.Union([Type.Null(), Type.String({ maxLength: 50 })])),
   ...NullablePostalAddressSchemaFields,
-  type: Type.Optional(
-    Type.Union([
-      Type.Literal("donor"),
-      Type.Literal("volunteer"),
-      Type.Literal("member"),
-      Type.Literal("beneficiary"),
-      Type.Literal("partner"),
-    ]),
-  ),
+  // Canonical multi-valued type (issue #465). Omitted = leave alone; when
+  // present it must hold ≥1 unique value. The API rejects >1 element unless
+  // the `constituents.multi_type` flag is on for the tenant.
+  types: Type.Optional(Type.Array(ConstituentTypeLiteralUnion, { minItems: 1, uniqueItems: true })),
+  // Legacy single-value type — coerced into `types` server-side when `types`
+  // is omitted.
+  type: Type.Optional(ConstituentTypeLiteralUnion),
   tags: Type.Optional(Type.Array(Type.String())),
 });
 

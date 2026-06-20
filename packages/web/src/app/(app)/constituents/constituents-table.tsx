@@ -3,6 +3,8 @@
 
 import type { ColumnDef, SortingState } from "@tanstack/react-table";
 import {
+  Check,
+  ChevronDown,
   History,
   Mail,
   MoreHorizontal,
@@ -17,7 +19,10 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
-import { ConstituentTypeBadge } from "@/components/constituents/constituent-type-badge";
+import {
+  ConstituentTypeBadge,
+  ConstituentTypeBadges,
+} from "@/components/constituents/constituent-type-badge";
 import { EmptyState } from "@/components/shared/empty-state";
 import {
   AlertDialog,
@@ -30,6 +35,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { DataTable } from "@/components/ui/data-table";
 import {
   Dialog,
@@ -46,6 +52,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -91,10 +98,20 @@ interface ConstituentsTableProps {
    * off — this prop is the UI half of the same gate.
    */
   bulkEmailEnabled: boolean;
+  /**
+   * `true` when the `constituents.multi_type` flag is on (issue #465). Off →
+   * the type cell shows a single badge (`types[0]`) and the quick filter is a
+   * single-value `Select` writing `?type=`. On → the cell renders every type
+   * (with a `+N` overflow) and the quick filter is a multi-select writing
+   * repeatable `?types=`.
+   */
+  multiTypeEnabled: boolean;
   /** Server-resolved sort/order — see donations-table.tsx for rationale. */
   sort: ConstituentSortField;
   order: ConstituentSortOrder;
 }
+
+const QUICK_FILTER_TYPES = ["donor", "volunteer", "member", "beneficiary", "partner"] as const;
 
 export function ConstituentsTable({
   constituents,
@@ -102,6 +119,7 @@ export function ConstituentsTable({
   canManageAdminActions,
   canWrite,
   bulkEmailEnabled,
+  multiTypeEnabled,
   sort,
   order,
 }: ConstituentsTableProps) {
@@ -116,6 +134,8 @@ export function ConstituentsTable({
   const [isDeleting, setIsDeleting] = useState(false);
   const initialSearch = searchParams.get("search") ?? "";
   const initialType = searchParams.get("type") ?? "all";
+  // Multi-value type filter (issue #465) — the repeatable `?types=` param.
+  const initialTypes = searchParams.getAll("types");
   const [searchTerm, setSearchTerm] = useState(initialSearch);
   // Epic #274 — bulk-select state lives here, not in the URL: unlike search/
   // sort/page, a selection is per-tab and not deep-linkable.
@@ -172,6 +192,27 @@ export function ConstituentsTable({
         params.set("type", next);
       } else {
         params.delete("type");
+      }
+      params.delete("page");
+      const query = params.toString();
+      startTransition(() => {
+        router.replace(query ? `${pathname}?${query}` : pathname);
+      });
+    },
+    [pathname, router, searchParams],
+  );
+
+  // Multi-value type filter (issue #465). Rewrites the repeatable `?types=`
+  // param to the full selected set so the URL stays the single source of
+  // truth (same `router.replace` posture as `updateType`).
+  const updateTypes = useCallback(
+    (next: string[]) => {
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete("types");
+      // Legacy single-value param is mutually exclusive with the multi filter.
+      params.delete("type");
+      for (const value of next) {
+        params.append("types", value);
       }
       params.delete("page");
       const query = params.toString();
@@ -331,7 +372,15 @@ export function ConstituentsTable({
         accessorKey: "type",
         header: () => t("columns.type"),
         enableSorting: true,
-        cell: ({ row }) => <ConstituentTypeBadge type={String(row.original.type)} />,
+        // Flag on → render every type with a `+1` overflow chip past 2 (the
+        // tight table cell stays scannable; matches docs/design/.../list.html).
+        // Flag off → the single legacy badge on `types[0]`, identical to today.
+        cell: ({ row }) =>
+          multiTypeEnabled ? (
+            <ConstituentTypeBadges types={row.original.types} maxVisible={2} />
+          ) : (
+            <ConstituentTypeBadge type={String(row.original.type)} />
+          ),
       },
       {
         id: "email",
@@ -415,6 +464,7 @@ export function ConstituentsTable({
       canManageAdminActions,
       canWrite,
       locale,
+      multiTypeEnabled,
       selectedIds,
       t,
       togglePageSelection,
@@ -437,19 +487,32 @@ export function ConstituentsTable({
             className="pl-9"
           />
         </div>
-        <Select value={initialType} onValueChange={updateType}>
-          <SelectTrigger className="w-full sm:w-[180px]" aria-label={tFilters("typeLabel")}>
-            <SelectValue placeholder={tFilters("allTypes")} />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{tFilters("allTypes")}</SelectItem>
-            <SelectItem value="donor">{tType("donor")}</SelectItem>
-            <SelectItem value="volunteer">{tType("volunteer")}</SelectItem>
-            <SelectItem value="member">{tType("member")}</SelectItem>
-            <SelectItem value="beneficiary">{tType("beneficiary")}</SelectItem>
-            <SelectItem value="partner">{tType("partner")}</SelectItem>
-          </SelectContent>
-        </Select>
+        {multiTypeEnabled ? (
+          <TypeMultiFilter
+            selected={initialTypes}
+            onChange={updateTypes}
+            labels={{
+              all: tFilters("allTypes"),
+              aria: tFilters("typeLabel"),
+              count: (count: number) => tFilters("typesSelectedCount", { count }),
+              option: (value: (typeof QUICK_FILTER_TYPES)[number]) => tType(value),
+            }}
+          />
+        ) : (
+          <Select value={initialType} onValueChange={updateType}>
+            <SelectTrigger className="w-full sm:w-[180px]" aria-label={tFilters("typeLabel")}>
+              <SelectValue placeholder={tFilters("allTypes")} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{tFilters("allTypes")}</SelectItem>
+              <SelectItem value="donor">{tType("donor")}</SelectItem>
+              <SelectItem value="volunteer">{tType("volunteer")}</SelectItem>
+              <SelectItem value="member">{tType("member")}</SelectItem>
+              <SelectItem value="beneficiary">{tType("beneficiary")}</SelectItem>
+              <SelectItem value="partner">{tType("partner")}</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
         <Button
           type="button"
           variant={hasActiveAdvancedFilters ? "primary" : "secondary"}
@@ -1098,5 +1161,85 @@ function ConstituentRowActions({
         ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+interface TypeMultiFilterProps {
+  selected: string[];
+  onChange: (next: string[]) => void;
+  labels: {
+    all: string;
+    aria: string;
+    count: (count: number) => string;
+    option: (value: (typeof QUICK_FILTER_TYPES)[number]) => string;
+  };
+}
+
+/**
+ * Multi-value type quick filter (issue #465). A Popover-anchored checkbox list
+ * whose committed value is a `string[]` written to the repeatable `?types=`
+ * URL param. Mirrors the design-system pattern in
+ * `constituents/filters/FilterCondition.tsx` (Popover + Checkbox). Only
+ * rendered when the `constituents.multi_type` flag is on.
+ */
+function TypeMultiFilter({ selected, onChange, labels }: TypeMultiFilterProps) {
+  const selectedSet = new Set(selected);
+  const toggle = (value: string) => {
+    const next = new Set(selectedSet);
+    if (next.has(value)) next.delete(value);
+    else next.add(value);
+    onChange(QUICK_FILTER_TYPES.filter((t) => next.has(t)));
+  };
+
+  const triggerLabel =
+    selected.length === 0
+      ? labels.all
+      : selected.length <= 2
+        ? QUICK_FILTER_TYPES.filter((t) => selectedSet.has(t))
+            .map((t) => labels.option(t))
+            .join(", ")
+        : labels.count(selected.length);
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          className="w-full justify-between sm:w-[180px]"
+          aria-label={labels.aria}
+        >
+          <span className="truncate text-left">{triggerLabel}</span>
+          <ChevronDown size={16} aria-hidden="true" className="shrink-0 opacity-60" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-1" align="start">
+        <ul className="max-h-64 overflow-y-auto">
+          {QUICK_FILTER_TYPES.map((value) => {
+            const checked = selectedSet.has(value);
+            return (
+              <li key={value}>
+                <button
+                  type="button"
+                  onClick={() => toggle(value)}
+                  className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-surface-container-low focus-visible:bg-surface-container-low focus-visible:outline-none"
+                  aria-pressed={checked}
+                >
+                  <Checkbox
+                    checked={checked}
+                    aria-hidden="true"
+                    tabIndex={-1}
+                    className="pointer-events-none"
+                  />
+                  <span className="flex-1 truncate">{labels.option(value)}</span>
+                  {checked ? <Check size={14} aria-hidden="true" className="opacity-60" /> : null}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </PopoverContent>
+    </Popover>
   );
 }
