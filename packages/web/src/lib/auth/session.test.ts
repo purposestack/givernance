@@ -4,7 +4,6 @@ import {
   isJwtExpired,
   jwtCookieOptions,
   resolveSessionMaxAge,
-  shouldRefreshToken,
 } from "@/lib/auth/session";
 
 function buildToken(payload: Record<string, unknown>) {
@@ -24,23 +23,19 @@ describe("auth session helpers", () => {
     expect(resolveSessionMaxAge({ expires_in: 900 })).toBe(900);
   });
 
-  it("decodes JWT expiry and refreshes only near expiration", () => {
-    const token = buildToken({ exp: 2_000 });
-
-    expect(decodeJwtExp(token)).toBe(2_000);
-    expect(shouldRefreshToken(token, 1_500, 60)).toBe(false);
-    expect(shouldRefreshToken(token, 1_950, 60)).toBe(true);
+  it("decodes JWT expiry from the payload", () => {
+    expect(decodeJwtExp(buildToken({ exp: 2_000 }))).toBe(2_000);
+    expect(decodeJwtExp("not-a-jwt")).toBeUndefined();
+    expect(decodeJwtExp(buildToken({ sub: "x" }))).toBeUndefined();
   });
 
-  it("isJwtExpired uses hard expiry, not the refresh grace window (issue #296)", () => {
+  it("isJwtExpired uses hard expiry, not a near-expiry grace window (issue #296)", () => {
     const token = buildToken({ exp: 2_000 });
 
     // Absent token is treated as expired (forces the restore-session detour).
     expect(isJwtExpired(undefined)).toBe(true);
-    // Still valid one second before exp — even though shouldRefreshToken
-    // (5-min grace) would already be true on a short-lived token.
+    // Still valid one second before exp.
     expect(isJwtExpired(token, 1_999)).toBe(false);
-    expect(shouldRefreshToken(token, 1_999, 300)).toBe(true);
     // Expired exactly at and past exp.
     expect(isJwtExpired(token, 2_000)).toBe(true);
     expect(isJwtExpired(token, 2_001)).toBe(true);

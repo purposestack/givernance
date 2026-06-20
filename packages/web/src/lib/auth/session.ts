@@ -5,9 +5,6 @@ export const REFRESH_TOKEN_COOKIE_NAME = "givernance_refresh_token";
 /** Default session TTL when Keycloak omits explicit expiry metadata. */
 export const COOKIE_MAX_AGE_S = 8 * 60 * 60;
 
-/** Refresh slightly before the access token expires to avoid race conditions. */
-export const SESSION_REFRESH_GRACE_S = 5 * 60;
-
 export function resolveSessionMaxAge(tokens: {
   refresh_expires_in?: number;
   expires_in?: number;
@@ -71,23 +68,12 @@ export function decodeJwtExp(token: string): number | undefined {
   }
 }
 
-export function shouldRefreshToken(
-  token: string | undefined,
-  nowS = Math.floor(Date.now() / 1000),
-  graceS = SESSION_REFRESH_GRACE_S,
-): boolean {
-  if (!token) return false;
-  const exp = decodeJwtExp(token);
-  if (!exp) return false;
-  return exp - nowS <= graceS;
-}
-
 /**
- * Whether an access token is already past its `exp`. Distinct from
- * `shouldRefreshToken` (which fires within a 5-min *grace* window — on a
- * 5-min-lifespan token that is essentially always true and so must not
- * gate a redirect). The proxy uses this hard-expiry check to decide when
- * a full-page navigation must detour through `/api/auth/restore-session`:
+ * Whether an access token is already past its `exp`. Deliberately a
+ * *hard*-expiry check, not a near-expiry/grace one: on a ~5-min-lifespan
+ * access token a grace-window check would be true on nearly every request
+ * and so must not gate a redirect. The proxy uses this to decide when a
+ * full-page navigation must detour through `/api/auth/restore-session`:
  * a token that is merely near-expiry is still usable and the client-side
  * silent-refresh timer keeps it fresh — only an *expired* (or absent)
  * token forces the server-side restore (issue #296). A token with no
