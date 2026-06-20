@@ -298,6 +298,8 @@ CSRF: the refresh endpoint does not require the double-submit token. The refresh
 2. **Stop re-writing the `cookie` header on every request.** The steady-state proxy path returns `NextResponse.next()` with no `request: { headers }` argument, so Next.js emits no `x-middleware-request-*` overrides.
 3. **Scope `id_token` + `refresh_token` to `Path=/api/auth`.** Path-scoping is mechanism-independent: the browser simply does not send a cookie whose `Path` doesn't match, so these two tokens never reach `/api/v1/*` regardless of how Next.js forwards headers. Authenticated API requests now carry only `givernance_jwt` + `csrf-token`.
 
+> **Migration of already-live sessions**: a session established *before* this change holds `id_token`/`refresh_token` at `Path=/`. Those legacy copies keep riding on API/page requests until the browser drops them — which happens on the next callback (re-login), logout, or session-clear, where `deleteLegacyRootSessionCookies` expires them. So the full header-size relief is immediate for new logins and lands for existing sessions on their next re-auth; in the interim the request is still well under 16 KB because parts 1+2 already removed the larger `Authorization` + `x-middleware-request-*` contributors. Per RFC 6265 §5.4 the more-specific `/api/auth` copy is sent first, so a lingering `Path=/` copy never shadows the authoritative one.
+
 Because the proxy can no longer read the (now `/api/auth`-scoped) refresh token, the silent-refresh-on-navigation it used to perform inline moved to a dedicated route:
 
 ```mermaid
