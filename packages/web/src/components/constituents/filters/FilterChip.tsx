@@ -5,7 +5,7 @@ import { Sparkles, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { getOperatorLabel } from "./filter-presets";
+import { filterFields, getOperatorLabel } from "./filter-presets";
 import type { FilterChipData } from "./filter-types";
 
 interface FilterChipProps {
@@ -53,29 +53,51 @@ function trDynamicWithFallback(t: StrictTranslator, key: string): string {
 }
 
 /**
- * Format an array value (e.g. `["donor", "volunteer"]` from an `in` operator,
- * or `[{value, label}]` from a multiselect) into a human-readable string.
- * Avoids leaking `[object Object]` when the runtime hands us an option-shape
- * array — we prefer `label`, then `value`, then the primitive. Capitalises
- * lowercase enum tokens so "donor, volunteer" reads as "Donor, Volunteer".
- * The chip already has `max-w-full truncate`, so long joined strings are
- * clipped with an ellipsis (full text in the title tooltip).
+ * Resolve a single filter value token to a display string, preferring the
+ * field's catalogued i18n option label (issue #465 — so `constituent.type`
+ * values like `donor`/`beneficiary` render as "Donateur"/"Bénéficiaire", not
+ * the raw English enum). Order: option-shape object → translated option label
+ * for this field → capitalised lowercase enum token → primitive.
  */
-function formatArrayValue(value: unknown[]): string {
-  return value
-    .map((v) => {
-      if (v && typeof v === "object" && !Array.isArray(v)) {
-        const obj = v as Record<string, unknown>;
-        if (typeof obj.label === "string") return obj.label;
-        if (typeof obj.value === "string") return obj.value;
-        return String(v);
-      }
-      if (typeof v === "string" && v.length > 0 && v === v.toLowerCase()) {
-        return v.charAt(0).toUpperCase() + v.slice(1);
-      }
-      return String(v);
-    })
-    .join(", ");
+export function resolveValueToken(
+  field: string,
+  v: unknown,
+  translate: (key: string) => string,
+): string {
+  if (v && typeof v === "object" && !Array.isArray(v)) {
+    const obj = v as Record<string, unknown>;
+    if (typeof obj.label === "string") return obj.label;
+    if (typeof obj.value === "string") return obj.value;
+    return String(v);
+  }
+  if (typeof v === "string") {
+    const meta = filterFields.find((f) => f.name === field);
+    const optionLabel = meta?.options?.find((o) => o.value === v)?.label;
+    if (optionLabel) {
+      const resolved = translate(optionLabel);
+      // `translate` falls back to the key itself for unknown messages — only
+      // use it when it actually resolved to something other than the key.
+      if (resolved && resolved !== optionLabel) return resolved;
+    }
+    if (v.length > 0 && v === v.toLowerCase()) {
+      return v.charAt(0).toUpperCase() + v.slice(1);
+    }
+  }
+  return String(v);
+}
+
+/**
+ * Format an array value (e.g. `["donor", "volunteer"]` from an `in` operator,
+ * or `[{value, label}]` from a multiselect) into a human-readable string via
+ * `resolveValueToken`. The chip already has `max-w-full truncate`, so long
+ * joined strings are clipped with an ellipsis (full text in the title tooltip).
+ */
+function formatArrayValue(
+  field: string,
+  value: unknown[],
+  translate: (key: string) => string,
+): string {
+  return value.map((v) => resolveValueToken(field, v, translate)).join(", ");
 }
 
 /**
@@ -123,6 +145,8 @@ export function FilterChip({ filter, onRemove }: FilterChipProps) {
     );
   }
 
+  const translateToken = (key: string) => trDynamicWithFallback(t, key);
+
   const formatValue = (value: unknown): string => {
     if (Array.isArray(value)) {
       if (value.length === 2 && filter.operator === "between") {
@@ -132,7 +156,7 @@ export function FilterChip({ filter, onRemove }: FilterChipProps) {
         }
         return `${value[0]} - ${value[1]}`;
       }
-      return formatArrayValue(value);
+      return formatArrayValue(filter.field, value, translateToken);
     }
 
     if (typeof value === "boolean") {
@@ -143,7 +167,9 @@ export function FilterChip({ filter, onRemove }: FilterChipProps) {
       return new Date(value).toLocaleDateString();
     }
 
-    return String(value);
+    // Single-value condition (e.g. legacy `eq donor`) — resolve through the
+    // field's option labels too, so the type reads localised.
+    return resolveValueToken(filter.field, value, translateToken);
   };
 
   const operatorLabel = trDynamicWithFallback(t, getOperatorLabel(filter.operator));

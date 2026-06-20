@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { FilterChip } from "./FilterChip";
+import { FilterChip, resolveValueToken } from "./FilterChip";
 import type { FilterChipData } from "./filter-types";
 
 describe("FilterChip", () => {
@@ -88,5 +88,51 @@ describe("FilterChip", () => {
     render(<FilterChip filter={patternFilter} />);
 
     expect(screen.getByText("Donateurs récurrents")).toBeInTheDocument();
+  });
+
+  it("renders a constituent.type value via the field's i18n option label", () => {
+    // Regression (issue #465): the campaign "Constituants liés" chip showed
+    // raw "Donor, Beneficiary" instead of the localised labels. The chip must
+    // map each value through the field's catalogued option label, not just
+    // capitalise the raw enum token.
+    const typeFilter: FilterChipData = {
+      id: "type-1",
+      label: "fields.constituent.type",
+      field: "constituent.type",
+      operator: "arrayOverlaps",
+      value: ["donor", "beneficiary"],
+    };
+
+    render(<FilterChip filter={typeFilter} />);
+
+    // English mock messages: option labels resolve to "Donor"/"Beneficiary".
+    expect(screen.getByText("Donor, Beneficiary")).toBeInTheDocument();
+  });
+});
+
+describe("resolveValueToken", () => {
+  // A fake French translator proves the OPTION-LABEL path is taken — not the
+  // capitalise fallback. The English option labels happen to equal the
+  // capitalised tokens, which is exactly why an English-only assertion can't
+  // catch the bug and it only surfaced in French.
+  const fr = (key: string): string =>
+    ({
+      "fieldOptions.constituent.type.donor": "Donateur",
+      "fieldOptions.constituent.type.beneficiary": "Bénéficiaire",
+    })[key] ?? key;
+
+  it("localises a constituent.type token through the field option label", () => {
+    expect(resolveValueToken("constituent.type", "donor", fr)).toBe("Donateur");
+    expect(resolveValueToken("constituent.type", "beneficiary", fr)).toBe("Bénéficiaire");
+  });
+
+  it("falls back to a capitalised token when the field has no catalogued option", () => {
+    expect(resolveValueToken("address.city", "donor", fr)).toBe("Donor");
+  });
+
+  it("prefers an option-shape object's own label", () => {
+    expect(
+      resolveValueToken("constituent.type", { value: "donor", label: "Donateur" }, () => "x"),
+    ).toBe("Donateur");
   });
 });
