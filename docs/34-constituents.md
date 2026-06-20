@@ -120,8 +120,10 @@ No new endpoints — the change rides existing constituent routes; guards are un
 
 ## 6. Out of scope (explicit MVP/roadmap split)
 
-- **Dropping the legacy `type` column.** Kept this release as a back-compat shadow; a follow-up migration removes it once every reader consumes `types`.
-- **Per-type metadata** (e.g. "volunteer since", "donor tier"). `types` is a flat set; richer per-role attributes would need a junction table — deliberately not built.
-- **Type-change history / audit timeline.** Changes are captured coarsely by `constituent.updated`; a dedicated per-type assignment audit is not in scope.
+> Tracked as follow-up **#515** — blocked until the `constituents.multi_type` flag is enabled everywhere and cleaned up (every reader consumes `types`).
+
+- **Dropping the legacy `type` column.** Kept this release as a back-compat shadow; a follow-up migration removes it once every reader consumes `types` (#515).
+- **Per-type metadata** (e.g. "volunteer since", "donor tier"). `types` is a flat set; richer per-role attributes would need a junction table — deliberately not built (#515).
+- **Type-change history / audit timeline.** Changes are captured coarsely by `constituent.updated`; a dedicated per-type assignment audit is not in scope (#515).
 - **Reworking `tags`.** `tags` (free-form) stays separate from `types` (closed picklist); they are not merged.
 - **Public-projection hardening of the flag name.** Same caveat as every public flag (see doc 18) — out of scope here.
