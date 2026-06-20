@@ -7,8 +7,19 @@ const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 /** Key for globalThis singleton — survives Next.js Fast Refresh in dev. */
 const GLOBAL_KEY = Symbol.for("givernance.browserApiClient");
 
-/** Where to land an operator whose impersonation session has expired. */
-const IMPERSONATION_RECOVERY_PATH = "/admin/impersonation";
+/**
+ * Where to send an operator whose impersonation session has expired.
+ *
+ * Issue #296: this routes through `/api/auth/restore-session` (rather than
+ * straight to `/admin/impersonation`) because the proxy no longer refreshes
+ * tokens inline. The restore route reads the operator's `/api/auth`-scoped
+ * refresh cookie, mints a fresh platform-admin access token, then redirects
+ * to the impersonation session list. Going through it unconditionally (vs.
+ * relying on the proxy detecting an expired impersonation token) avoids a
+ * reload loop when the impersonation token is revoked while still within
+ * its `exp`.
+ */
+const IMPERSONATION_RECOVERY_PATH = "/api/auth/restore-session?return=%2Fadmin%2Fimpersonation";
 
 /**
  * Whether the current browser session is an impersonation session.
@@ -25,11 +36,12 @@ let recoveryRedirecting = false;
  * Wired from `ImpersonationBanner` so the browser fetch wrapper can tell,
  * on a 401, whether to trigger impersonation-expiry recovery. When the
  * impersonation token reaches its TTL mid-session on a client-side page,
- * the API returns 401 and there is no full-page navigation to trigger the
- * proxy's session-refresh path — leaving the operator dead-ended. The
- * interceptor below forces a full navigation to `/admin/impersonation`,
- * which the proxy uses to restore the operator's platform-admin session
- * from their still-valid Keycloak refresh token.
+ * the API returns 401 and there is no full-page navigation to restore the
+ * operator session — leaving the operator dead-ended. The interceptor
+ * below forces a full navigation to `/api/auth/restore-session`, which
+ * mints a fresh platform-admin access token from the operator's
+ * still-valid Keycloak refresh token and lands them back on the session
+ * list (issue #296).
  */
 export function setImpersonationActive(active: boolean): void {
   impersonationActive = active;
@@ -66,8 +78,8 @@ export function createBrowserFetch(fetchImpl: typeof fetch = fetch): typeof fetc
 
     // Impersonation-expiry recovery: a 401 on a client-side fetch while the
     // operator is impersonating means the short-lived impersonation token
-    // has expired. A full-page navigation hits the Next.js proxy, which
-    // restores the operator's platform-admin session from their still-valid
+    // has expired. A full-page navigation to `/api/auth/restore-session`
+    // refreshes the operator's platform-admin session from their still-valid
     // Keycloak refresh token and lands them back on the session list. We
     // still return the response so the caller's normal error handling runs.
     if (

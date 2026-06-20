@@ -2,6 +2,8 @@ import { cookies } from "next/headers";
 import { type NextRequest, NextResponse } from "next/server";
 import { buildCsrfCookieOptions, getCsrfCookieName } from "@/lib/auth/csrf";
 import {
+  authScopedCookieOptions,
+  deleteLegacyRootSessionCookies,
   ID_TOKEN_COOKIE_NAME,
   JWT_COOKIE_NAME,
   jwtCookieOptions,
@@ -102,11 +104,22 @@ export async function POST(_request: NextRequest) {
 
   const sessionMaxAge = resolveSessionMaxAge(tokens);
   jar.set(JWT_COOKIE_NAME, tokens.access_token, jwtCookieOptions(sessionMaxAge));
+  // Issue #296: id_token + refresh_token stay scoped to `/api/auth` (see
+  // `authScopedCookieOptions`) so a rotated pair never starts leaking onto
+  // API/page requests after a refresh. A lingering pre-#296 `Path=/` copy is
+  // harmless here — RFC 6265 §5.4 sends the more-specific `/api/auth` cookie
+  // first, so it's authoritative — and is expired on the next logout / clear
+  // / re-login (callback). We deliberately don't delete it on the success
+  // path so a refresh that omits a new refresh_token can't drop the scoped one.
   if (tokens.id_token) {
-    jar.set(ID_TOKEN_COOKIE_NAME, tokens.id_token, jwtCookieOptions(sessionMaxAge));
+    jar.set(ID_TOKEN_COOKIE_NAME, tokens.id_token, authScopedCookieOptions(sessionMaxAge));
   }
   if (tokens.refresh_token) {
-    jar.set(REFRESH_TOKEN_COOKIE_NAME, tokens.refresh_token, jwtCookieOptions(sessionMaxAge));
+    jar.set(
+      REFRESH_TOKEN_COOKIE_NAME,
+      tokens.refresh_token,
+      authScopedCookieOptions(sessionMaxAge),
+    );
   }
 
   // PR #360 review (Security m6 + Architect m6): re-mint the CSRF
@@ -142,8 +155,12 @@ function clearAndReturn(
   reason: string,
 ): NextResponse {
   jar.delete(JWT_COOKIE_NAME);
-  jar.delete(ID_TOKEN_COOKIE_NAME);
-  jar.delete(REFRESH_TOKEN_COOKIE_NAME);
+  // id_token + refresh_token were set with `Path=/api/auth` (issue #296);
+  // a `delete` only clears a cookie when its path matches, so target it.
+  // Also expire any legacy `Path=/` copies from a pre-#296 session.
+  jar.delete({ name: ID_TOKEN_COOKIE_NAME, path: "/api/auth" });
+  jar.delete({ name: REFRESH_TOKEN_COOKIE_NAME, path: "/api/auth" });
+  deleteLegacyRootSessionCookies(jar);
   jar.delete(getCsrfCookieName());
   return NextResponse.json({ error: reason }, { status, headers: { "cache-control": "no-store" } });
 }

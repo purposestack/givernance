@@ -71,13 +71,18 @@ describe("createBrowserFetch — impersonation-expiry recovery", () => {
     return vi.fn().mockResolvedValue(new Response(null, { status }));
   }
 
-  it("navigates to /admin/impersonation on a 401 when impersonation is active", async () => {
+  it("navigates to restore-session on a 401 when impersonation is active (issue #296)", async () => {
     setImpersonationActive(true);
     const browserFetch = createBrowserFetch(fetchReturning(401) as typeof fetch);
 
     const response = await browserFetch("https://example.test/v1/example");
 
-    expect(assignMock).toHaveBeenCalledWith("/admin/impersonation");
+    // Routes through restore-session (which refreshes the operator session
+    // from the /api/auth-scoped refresh cookie) rather than straight to the
+    // impersonation list — see client-browser.ts IMPERSONATION_RECOVERY_PATH.
+    expect(assignMock).toHaveBeenCalledWith(
+      "/api/auth/restore-session?return=%2Fadmin%2Fimpersonation",
+    );
     // The response is still returned so the caller's error handling runs.
     expect(response.status).toBe(401);
   });
