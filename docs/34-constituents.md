@@ -80,7 +80,7 @@ Allowed `types` values (closed set): `donor`, `volunteer`, `member`, `beneficiar
 | Concern | Location | Notes |
 |---|---|---|
 | Schema | [`packages/shared/src/schema/index.ts`](../packages/shared/src/schema/index.ts) `constituents` | `types: text[] NOT NULL DEFAULT '{donor}'` + legacy `type` shadow |
-| Migration | `0083_constituent_types_array.sql` | additive: add column → backfill `ARRAY[type]` → GIN index; keeps `type` |
+| Migration | `0083_constituent_types_array.sql` (+ `0085_constituent_types_partial_gin.sql`) | additive: add column → backfill `ARRAY[type]` → GIN index; keeps `type`. `0085` makes the GIN index partial (`WHERE deleted_at IS NULL`) to match every sibling constituent index |
 | Flag seed | `0084_constituents_multi_type_flag.sql` | `constituents.multi_type`, tenant scope, default-off, public |
 | Validators | [`packages/shared/src/validators/index.ts`](../packages/shared/src/validators/index.ts) | `ConstituentCreate/Update` accept `types` (≥1, unique) + legacy `type` |
 | Type↔column reconcile | [`packages/api/.../constituents/service.ts`](../packages/api/src/modules/constituents/service.ts) `reconcileTypeColumns` | always writes both columns; `type = types[0]` |
@@ -89,11 +89,13 @@ Allowed `types` values (closed set): `donor`, `volunteer`, `member`, `beneficiar
 | Sort by type | `service.ts` `buildConstituentOrderBy` | orders on `types[1]` (first element) |
 | Advanced filter DSL | `constituents/filters/{types,query-builder,filter.service}.ts` | `constituent.type` field is now array-typed; legacy `eq`/`neq`/`in` translated to `arrayContains`/`arrayOverlaps` so saved segments survive |
 | Bulk import (API validate) | `constituents/bulk-import/validation.ts` | a `type` CSV cell splits on `; , \|` into a deduped array |
-| Bulk import (worker) | [`packages/worker/.../process-bulk-import.ts`](../packages/worker/src/processors/process-bulk-import.ts) | mirrors the parse; truncates to 1 type when the flag is off for the tenant (defence in depth); keeps `type = types[0]` |
+| Bulk import (worker) | [`packages/worker/.../process-bulk-import.ts`](../packages/worker/src/processors/process-bulk-import.ts) | mirrors the parse; **rejects** a multi-type row as a failed result row (`multi_type_disabled`, parity with the API 422) when the flag is off for the tenant — never silently truncates (defence in depth); keeps `type = types[0]` |
 | Salesforce ETL | [`packages/migrate/src/transformers/constituents.ts`](../packages/migrate/src/transformers/constituents.ts) | single SF value → one-element `types` array |
 | Web | `packages/web/src/...` constituents module | SSR-fetch flag → multiselect form / multi-chip badges when on, single Select / single badge when off |
 
 **Transaction & RLS boundaries.** All writes go through `withTenantContext` / `withWorkerContext` and carry an explicit `eq(constituents.orgId, …)` predicate in addition to RLS (issue #430). The array filter compiles to a parameterised `types && ARRAY[...]::text[]` — no string interpolation. Everything is synchronous request/response except bulk import, which is the existing async BullMQ pipeline.
+
+**Persisted-segment translation semantics.** The DSL operator translation is exact for the common cases — `eq → arrayContains` ("holds this one type"), `in → arrayOverlaps` ("holds any of these"). `neq` translates to **`NOT arrayContains`** = "does *not* hold this type at all". For single-type rows this is identical to the legacy scalar `!=`; for a genuinely multi-type row `[donor, volunteer]`, a segment `type neq donor` now *excludes* it (it holds `donor`). This is the intended contract and is why no special-casing is needed — but it is the one operator whose meaning shifts on multi-type data, so audit any business-critical saved `neq` segment after enabling the flag. The advanced-filter `constituent.type` field is **array-typed regardless of the flag** (the column is always `text[]`, and filtering by several values is orthogonal to whether a constituent can hold several) — a hard single-select gate would invalidate array-operator segments saved while the flag was on, so it is deliberately not gated. Only the constituent **form** (assignment) is single-value when the flag is off.
 
 ## 4. Permissions matrix
 
