@@ -519,6 +519,10 @@ export interface DuplicateMatch {
   firstName: string;
   lastName: string;
   email: string | null;
+  // TODO(#465 follow-up): reads the legacy scalar `type` only. Correct during
+  // the back-compat shadow window (`type === types[0]`), but the migration that
+  // DROPS the `type` column must switch this projection to `types`, or
+  // duplicate-match results silently lose their type data.
   type: string;
   score: number;
 }

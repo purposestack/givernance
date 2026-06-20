@@ -16,8 +16,9 @@ import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
 import { constituents, featureFlags } from "@givernance/shared/schema";
 import { eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { flagService } from "../../lib/flags/flag-service.js";
+import { redis } from "../../lib/redis.js";
 import { createServer } from "../../server.js";
 import { authHeader, ensureTestTenants, ORG_A, signToken } from "../helpers/auth.js";
 import { db } from "../helpers/db.js";
@@ -69,9 +70,22 @@ afterAll(async () => {
 describe("Constituent multi-type — flag OFF", () => {
   beforeAll(() => setMultiTypeFlag(false));
 
-  it("rejects more than one type with 422 multi_type_disabled", async () => {
+  it("rejects more than one type with a 422 RFC 9457 multi_type_disabled body", async () => {
     const res = await createConstituent({ types: ["donor", "volunteer"] });
     expect(res.status).toBe(422);
+    // Lock the problem+json shape — a regression to a plain string or `{error}`
+    // body must fail here, not slip through a status-only assertion (issue #465).
+    const body = res.json() as unknown as {
+      type: string;
+      title: string;
+      status: number;
+      detail: string;
+    };
+    expect(body.status).toBe(422);
+    expect(body.title).toBe("multi_type_disabled");
+    expect(body.type).toBe("https://httpproblems.com/http-status/422");
+    expect(typeof body.detail).toBe("string");
+    expect(body.detail.length).toBeGreaterThan(0);
   });
 
   it("accepts a single type and mirrors it into the legacy `type` column", async () => {
@@ -149,5 +163,81 @@ describe("Constituent multi-type — flag ON", () => {
     expect(res.statusCode).toBe(200);
     const rows = res.json<{ data: Array<{ types: string[] }> }>().data;
     expect(rows.some((r) => r.types.includes("partner"))).toBe(true);
+  });
+});
+
+/**
+ * Persisted advanced-filter segments survive the scalar→array migration
+ * (issue #465). A segment saved before the migration stores
+ * `{field:"constituent.type", operator:"eq"|"in"|"neq", value}`. After the
+ * column became `text[]`, those operators are translated (eq→array-contains,
+ * in→array-overlap, neq→NOT array-contains). These tests prove the translation
+ * both *compiles* (no `text = text[]` 500) and is *semantically correct*, using
+ * count-increments so the assertion is robust to any rows other suites left in
+ * ORG_A (file-level parallelism is off, so a before/after delta is race-free).
+ */
+describe("Constituent multi-type — persisted advanced-filter segments survive", () => {
+  async function setAdvancedFiltersFlag(enabled: boolean) {
+    await db
+      .update(featureFlags)
+      .set({ enabled })
+      .where(eq(featureFlags.key, FEATURE_FLAG_KEYS.ADVANCED_FILTERS));
+    await flagService.invalidate();
+    await flagService.invalidateTenant(ORG_A);
+  }
+
+  async function previewTypeSegment(operator: string, value: unknown): Promise<number> {
+    const token = signToken(app);
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/constituents/filter/preview",
+      headers: authHeader(token),
+      payload: {
+        query: { operator: "AND", conditions: [{ field: "constituent.type", operator, value }] },
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    return res.json<{ data: { count: number } }>().data.count;
+  }
+
+  beforeAll(async () => {
+    await setMultiTypeFlag(true);
+    await setAdvancedFiltersFlag(true);
+  });
+
+  afterAll(() => setAdvancedFiltersFlag(false));
+
+  beforeEach(async () => {
+    // Preview is rate-limited (20/min/IP); clear the window between cases so a
+    // full file run never trips 429. Key separator is a dash, not a colon.
+    const rlKeys = await redis.keys("fastify-rate-limit-*");
+    if (rlKeys.length > 0) await redis.del(...rlKeys);
+    await flagService.invalidateTenant(ORG_A);
+  });
+
+  it("legacy `eq` segment → array-contains (counts a newly matching row)", async () => {
+    const before = await previewTypeSegment("eq", "beneficiary");
+    await createConstituent({ lastName: "SegEq", types: ["beneficiary"] });
+    const after = await previewTypeSegment("eq", "beneficiary");
+    expect(after).toBe(before + 1);
+  });
+
+  it("legacy `in` segment → array-overlap (any-of)", async () => {
+    const before = await previewTypeSegment("in", ["partner", "member"]);
+    await createConstituent({ lastName: "SegIn", types: ["partner"] });
+    const after = await previewTypeSegment("in", ["partner", "member"]);
+    expect(after).toBe(before + 1);
+  });
+
+  it("legacy `neq` segment → NOT array-contains (excludes holders, includes non-holders)", async () => {
+    const beforeNeqDonor = await previewTypeSegment("neq", "donor");
+    const beforeNeqVolunteer = await previewTypeSegment("neq", "volunteer");
+    await createConstituent({ lastName: "SegNeq", types: ["volunteer"] });
+    const afterNeqDonor = await previewTypeSegment("neq", "donor");
+    const afterNeqVolunteer = await previewTypeSegment("neq", "volunteer");
+    // The volunteer-only row holds no `donor` → counted by `neq donor`.
+    expect(afterNeqDonor).toBe(beforeNeqDonor + 1);
+    // It DOES hold `volunteer` → excluded by `neq volunteer`.
+    expect(afterNeqVolunteer).toBe(beforeNeqVolunteer);
   });
 });

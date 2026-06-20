@@ -339,6 +339,18 @@ export const filterFields: FilterField[] = [
     // real multi-select (Popover + Checkboxes) so the operator picks one-or-many
     // from the canonical 5 types.
     //
+    // This field stays array-typed REGARDLESS of the `constituents.multi_type`
+    // flag (issue #465 review). It is NOT gated to single-select when the flag
+    // is off, on purpose: (a) the `types` column is always `text[]` — migration
+    // 0083 is flag-independent — so array operators are always valid; (b)
+    // filtering BY several type values is orthogonal to whether a constituent
+    // can HOLD several types (the flag governs assignment, not segmentation);
+    // and (c) a hard single-select gate would invalidate persisted segments that
+    // were saved with `arrayOverlaps`/`arrayContains` while the flag was on,
+    // making them un-editable once it flips off — the opposite of the
+    // segment-survival guarantee. The constituent FORM remains single-value when
+    // the flag is off (that surface IS gated); only the filter is always rich.
+    //
     // Option labels live under `fieldOptions.constituent.type.*`; the JSON
     // values mirror the canonical `constituents.types.*` strings so the FR/EN
     // wording stays in lockstep across the two surfaces (filter dropdown +

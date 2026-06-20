@@ -535,7 +535,7 @@ async function flushBatchCounters(
   });
 }
 
-interface RowContext {
+export interface RowContext {
   // biome-ignore lint/suspicious/noExplicitAny: Drizzle tx type is internal
   tx: any;
   row: ParsedRow;
@@ -543,8 +543,10 @@ interface RowContext {
   jobId: string;
   batchDelta: JobAccumulator;
   log: ReturnType<typeof jobLogger>;
-  // Issue #465 — when off, multi-valued `types` cells are truncated to a
-  // single value on insert so the off-state matches the legacy picklist.
+  // Issue #465 — when off, a multi-valued `types` cell is rejected as a
+  // failed row (parity with the API's 422 `multi_type_disabled`), never
+  // silently truncated, so the off-state matches the legacy picklist AND
+  // the operator gets a fixable error-CSV line instead of silent data loss.
   multiTypeEnabled: boolean;
 }
 
@@ -568,11 +570,11 @@ async function recordFailedRow(
 async function insertCreatedRow(ctx: RowContext, payload: ConstituentPayload): Promise<void> {
   try {
     // Issue #465 — keep the legacy singular `type` column in lockstep with
-    // `types[0]` (back-compat shadow), and enforce the multi-type gate: with
-    // the flag off, only the first type is kept. Omitted `types` leaves the
-    // DB defaults (`{donor}` / `donor`) to apply.
-    const { types: rawTypes, ...rest } = payload;
-    const types = ctx.multiTypeEnabled ? rawTypes : rawTypes?.slice(0, 1);
+    // `types[0]` (back-compat shadow). The multi-type gate (rejecting >1 type
+    // when the flag is off) is enforced upstream in `processOneRow`, so by the
+    // time a row reaches here `types` is already flag-legal. Omitted `types`
+    // leaves the DB defaults (`{donor}` / `donor`) to apply.
+    const { types, ...rest } = payload;
     const typeColumns = types && types.length > 0 ? { types, type: types[0] } : {};
     const [inserted] = await ctx.tx
       .insert(constituents)
@@ -601,7 +603,9 @@ async function insertCreatedRow(ctx: RowContext, payload: ConstituentPayload): P
   }
 }
 
-async function processOneRow(ctx: RowContext): Promise<void> {
+// Exported for unit testing of the multi-type gate (issue #465). The reject
+// path returns before any DB dup-check, so a stubbed `tx` is enough.
+export async function processOneRow(ctx: RowContext): Promise<void> {
   // 1. Parse-time error (INVALID_CELL on a formula in XLSX).
   if (ctx.row.parseError) {
     await recordFailedRow(ctx, ctx.row.parseError.code, ctx.row.parseError.message);
@@ -616,6 +620,19 @@ async function processOneRow(ctx: RowContext): Promise<void> {
       ctx,
       first?.code ?? "VALIDATION_FAILED",
       v.errors.map((e) => e.message).join("; "),
+    );
+    return;
+  }
+
+  // 2b. Multi-type gate (issue #465). With the flag off, a multi-valued
+  // `types` cell is rejected with the same `multi_type_disabled` code the
+  // API write path returns (422) — never silently truncated. The operator
+  // sees a fixable error-CSV line instead of losing the extra types.
+  if (!ctx.multiTypeEnabled && (v.payload.types?.length ?? 0) > 1) {
+    await recordFailedRow(
+      ctx,
+      "multi_type_disabled",
+      "Multiple constituent types require the multi-type feature, which is disabled for this organisation",
     );
     return;
   }

@@ -206,9 +206,13 @@ const ConstituentResponse = Type.Object({
   city: Type.Optional(Type.Union([Type.Null(), Type.String()])),
   countryCode: Type.Optional(Type.Union([Type.Null(), Type.String()])),
   // Canonical multi-valued type (issue #465). `type` (singular) is retained
-  // as a deprecated back-compat mirror equal to `types[0]`.
+  // as a deprecated back-compat mirror equal to `types[0]` — flagged
+  // `deprecated` so OpenAPI consumers get the removal signal.
   types: Type.Array(Type.String()),
-  type: Type.String(),
+  type: Type.String({
+    deprecated: true,
+    description: "Back-compat mirror of types[0]; removed once readers migrate to `types`.",
+  }),
   tags: Type.Union([Type.Null(), Type.Array(Type.String())]),
   deletedAt: Type.Union([Type.Null(), Type.String()]),
   createdAt: Type.String(),
