@@ -104,9 +104,6 @@ importers:
       jsdom:
         specifier: ^29.1.1
         version: 29.1.1(@noble/hashes@1.8.0)
-      lru-cache:
-        specifier: ^11.5.1
-        version: 11.5.1
       nats.ws:
         specifier: ^1.29.2
         version: 1.30.3
@@ -242,6 +239,9 @@ importers:
       jsdom:
         specifier: ^29.1.1
         version: 29.1.1(@noble/hashes@1.8.0)
+      lru-cache:
+        specifier: ^11.5.1
+        version: 11.5.1
     devDependencies:
       '@types/jsdom':
         specifier: ^28.0.3
@@ -424,9 +424,6 @@ importers:
       jsdom:
         specifier: ^29.1.1
         version: 29.1.1(@noble/hashes@1.8.0)
-      lru-cache:
-        specifier: ^11.5.1
-        version: 11.5.1
       nodemailer:
         specifier: ^9.0.1
         version: 9.0.1

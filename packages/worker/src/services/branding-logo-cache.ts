@@ -15,25 +15,20 @@
  * TTL: 1h. The asset is content-addressed in S3, so an in-flight
  * export will never see a "different logo" mid-run; the TTL just keeps
  * memory bounded across long-lived workers that process many tenants.
+ *
+ * The LRU shape itself lives in `@givernance/shared/lib/lru-fetch-cache`
+ * (issue #294); this module owns only the worker-specific resolution +
+ * fetch closure.
  */
 
+import { createLruFetchCache } from "@givernance/shared/lib/lru-fetch-cache";
 import { orgBrandingAssets, tenants } from "@givernance/shared/schema";
 import { and, eq } from "drizzle-orm";
-import { LRUCache } from "lru-cache";
 import { db } from "../lib/db.js";
 import { logger } from "../lib/logger.js";
 import { getBrandingObject } from "../lib/s3.js";
 
-const ONE_HOUR_MS = 60 * 60 * 1000;
-
-const cache = new LRUCache<string, Buffer>({
-  max: 50,
-  ttl: ONE_HOUR_MS,
-  // Roughly bound per-entry size to ~1 MB — defends against a
-  // misconfigured pipeline shipping a giant PDF letterhead variant.
-  sizeCalculation: (value) => value.byteLength,
-  maxSize: 50 * 1024 * 1024,
-});
+const cache = createLruFetchCache();
 
 /**
  * Resolve and cache the `pdf-letterhead` variant buffer for a tenant's
@@ -54,47 +49,45 @@ export async function getActivePdfLetterhead(orgId: string): Promise<Buffer | nu
 
   if (!tenant?.logoAssetId) return null;
 
-  const cached = cache.get(tenant.logoAssetId);
-  if (cached) return cached;
+  return cache.get(tenant.logoAssetId, async (assetId) => {
+    // Defence in depth (issue #430): scope by orgId even when looking
+    // up by primary key, so a drifted `tenants.logo_asset_id` pointer
+    // cannot return a foreign tenant's asset (which would embed the
+    // wrong logo in this tenant's receipt PDFs).
+    const [asset] = await db
+      .select({
+        id: orgBrandingAssets.id,
+        status: orgBrandingAssets.status,
+        variants: orgBrandingAssets.variants,
+        deletedAt: orgBrandingAssets.deletedAt,
+      })
+      .from(orgBrandingAssets)
+      .where(and(eq(orgBrandingAssets.id, assetId), eq(orgBrandingAssets.orgId, orgId)));
 
-  // Defence in depth (issue #430): scope by orgId even when looking
-  // up by primary key, so a drifted `tenants.logo_asset_id` pointer
-  // cannot return a foreign tenant's asset (which would embed the
-  // wrong logo in this tenant's receipt PDFs).
-  const [asset] = await db
-    .select({
-      id: orgBrandingAssets.id,
-      status: orgBrandingAssets.status,
-      variants: orgBrandingAssets.variants,
-      deletedAt: orgBrandingAssets.deletedAt,
-    })
-    .from(orgBrandingAssets)
-    .where(and(eq(orgBrandingAssets.id, tenant.logoAssetId), eq(orgBrandingAssets.orgId, orgId)));
+    if (asset?.status !== "ready" || asset.deletedAt) {
+      return null;
+    }
 
-  if (!asset || asset.status !== "ready" || asset.deletedAt) {
-    return null;
-  }
+    const pdfVariant = asset.variants?.["pdf-letterhead"];
+    if (!pdfVariant?.key) {
+      logger.warn(
+        { assetId: asset.id },
+        "Active logo missing pdf-letterhead variant — skipping logo embed",
+      );
+      return null;
+    }
 
-  const pdfVariant = asset.variants?.["pdf-letterhead"];
-  if (!pdfVariant?.key) {
-    logger.warn(
-      { assetId: asset.id },
-      "Active logo missing pdf-letterhead variant — skipping logo embed",
-    );
-    return null;
-  }
+    const buffer = await getBrandingObject(pdfVariant.key);
+    if (!buffer) {
+      logger.warn(
+        { assetId: asset.id, key: pdfVariant.key },
+        "Active logo pdf-letterhead variant missing in S3 — skipping logo embed",
+      );
+      return null;
+    }
 
-  const buffer = await getBrandingObject(pdfVariant.key);
-  if (!buffer) {
-    logger.warn(
-      { assetId: asset.id, key: pdfVariant.key },
-      "Active logo pdf-letterhead variant missing in S3 — skipping logo embed",
-    );
-    return null;
-  }
-
-  cache.set(tenant.logoAssetId, buffer);
-  return buffer;
+    return buffer;
+  });
 }
 
 /** Test hook — clear the cache between Vitest runs. */
