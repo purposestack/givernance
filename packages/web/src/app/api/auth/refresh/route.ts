@@ -41,6 +41,14 @@ import { logAuthEvent } from "@/lib/auth/log";
  * but the response goes to the same origin and the new cookies overwrite
  * the old ones in-place. No CSRF check needed; documented here so future
  * reviewers don't add one reflexively.
+ *
+ * NOTE: this route keeps its own inline Keycloak exchange rather than the
+ * shared `lib/auth/refresh-session.ts#exchangeRefreshToken` that
+ * `/api/auth/restore-session` uses, on purpose: this is the hot
+ * client-driven path and distinguishes Keycloak's `invalid_grant`
+ * (→ 401 + clear) from a transient network blip (→ 503, cookies kept) —
+ * a distinction the shared helper collapses to `null`. Any future DRY
+ * refactor must preserve that 401-vs-503 split.
  */
 export async function POST(_request: NextRequest) {
   const jar = await cookies();
