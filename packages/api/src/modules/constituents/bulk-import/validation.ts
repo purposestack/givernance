@@ -47,7 +47,9 @@ export interface ConstituentImportPayload {
   postalCode?: string;
   city?: string;
   countryCode?: string;
-  type?: ConstituentTypeLiteral;
+  // Issue #465 — multi-valued. A `type` cell may carry several values
+  // separated by `;`, `,`, or `|` (e.g. "donor;volunteer").
+  types?: ConstituentTypeLiteral[];
   tags?: string[];
 }
 
@@ -83,12 +85,26 @@ function validateCountry(raw: string | undefined, errors: ValidationError[]): st
   return raw;
 }
 
-function validateType(
+/**
+ * Parse a `type` cell into a deduped array of valid types (issue #465). The
+ * cell may carry several values separated by `;`, `,`, or `|`. A single
+ * invalid value rejects the row with `INVALID_TYPE` (the operator's error
+ * CSV then shows which row to fix). Returns `undefined` for an empty cell so
+ * the service applies the `{donor}` default.
+ */
+function validateTypes(
   raw: string | undefined,
   errors: ValidationError[],
-): ConstituentTypeLiteral | undefined {
+): ConstituentTypeLiteral[] | undefined {
   if (!raw) return undefined;
-  if (!CONSTITUENT_TYPES.includes(raw as ConstituentTypeLiteral)) {
+  const parts = raw
+    .split(/[;,|]/)
+    .map((p) => p.trim().toLowerCase())
+    .filter((p) => p.length > 0);
+  if (parts.length === 0) return undefined;
+
+  const invalid = parts.find((p) => !CONSTITUENT_TYPES.includes(p as ConstituentTypeLiteral));
+  if (invalid) {
     errors.push({
       field: "type",
       code: "INVALID_TYPE",
@@ -96,7 +112,7 @@ function validateType(
     });
     return undefined;
   }
-  return raw as ConstituentTypeLiteral;
+  return Array.from(new Set(parts)) as ConstituentTypeLiteral[];
 }
 
 function parseTags(raw: string | undefined): string[] | undefined {
@@ -158,7 +174,7 @@ export function validateRow(values: Record<string, string>): ValidationOutcome {
   );
 
   const countryCode = validateCountry(values.countryCode?.trim().toUpperCase(), errors);
-  const type = validateType(values.type?.trim().toLowerCase(), errors);
+  const types = validateTypes(values.type, errors);
   const tags = parseTags(values.tags?.trim());
 
   if (errors.length > 0) return { ok: false, errors };
@@ -172,7 +188,7 @@ export function validateRow(values: Record<string, string>): ValidationOutcome {
   if (postalCode) payload.postalCode = postalCode;
   if (city) payload.city = city;
   if (countryCode) payload.countryCode = countryCode;
-  if (type) payload.type = type;
+  if (types) payload.types = types;
   if (tags) payload.tags = tags;
   return { ok: true, payload };
 }

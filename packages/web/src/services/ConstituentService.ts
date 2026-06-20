@@ -50,6 +50,13 @@ export interface ConstituentCreateInput {
   postalCode?: string | null;
   city?: string | null;
   countryCode?: string | null;
+  /**
+   * Canonical multi-valued type (issue #465). Preferred over the legacy
+   * singular `type`. The API rejects >1 element with 422 `multi_type_disabled`
+   * when the `constituents.multi_type` flag is off for the tenant.
+   */
+  types?: string[];
+  /** Legacy single-value type. Still accepted by the API for back-compat. */
   type?: string;
   tags?: string[];
 }
@@ -66,11 +73,15 @@ export const ConstituentService = {
     client: ApiClient,
     query: ConstituentListQuery = {},
   ): Promise<ConstituentListResponse> {
-    const params: Record<string, string | number | boolean | undefined> = {
+    const params: Record<string, string | number | boolean | string[] | undefined> = {
       page: query.page,
       perPage: query.perPage,
       search: query.search || undefined,
       type: query.type,
+      // Multi-value type filter (issue #465) — repeatable `?types=` array.
+      // Sent only when non-empty so the legacy single `?type=` path is
+      // untouched when the `constituents.multi_type` flag is off.
+      types: query.types && query.types.length > 0 ? query.types : undefined,
       sort: query.sort,
       order: query.order,
       // Epic #274 — campaign + lastDonation + lifetime amount filters.
@@ -216,7 +227,12 @@ function mapConstituent(raw: Constituent): Constituent {
     postalCode: raw.postalCode ?? null,
     city: raw.city ?? null,
     countryCode: raw.countryCode ?? null,
-    type: raw.type,
+    // The API always returns `types` (issue #465). Fall back to the legacy
+    // singular `type` for rows projected by an older API build so the
+    // multi-chip surfaces never collapse to empty.
+    types:
+      Array.isArray(raw.types) && raw.types.length > 0 ? raw.types : raw.type ? [raw.type] : [],
+    type: raw.type ?? (Array.isArray(raw.types) ? (raw.types[0] ?? "") : ""),
     tags: raw.tags,
     deletedAt: raw.deletedAt,
     createdAt: raw.createdAt,
@@ -267,6 +283,10 @@ function toRequestBody(input: ConstituentUpdateInput): Record<string, unknown> {
   if (input.countryCode !== undefined && input.countryCode !== "") {
     body.countryCode = input.countryCode;
   }
+  // Issue #465: `types` is the canonical field; send it whenever present.
+  // `type` is still sent for back-compat when supplied (the API accepts both
+  // and coerces `type` into `types` when `types` is omitted).
+  if (input.types !== undefined) body.types = input.types;
   if (input.type !== undefined) body.type = input.type;
   if (input.tags !== undefined) body.tags = input.tags;
   return body;

@@ -110,6 +110,49 @@
       font-size: var(--text-xs);
       color: var(--color-text-secondary);
     }
+
+    /* ── Multiselect type picker (chip-style checkboxes) ── */
+    .type-multiselect {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-2);
+      padding: var(--space-3);
+      background: var(--color-surface-container);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+    }
+
+    .type-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+      padding: var(--space-1) var(--space-3);
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-full);
+      font-size: var(--text-sm);
+      color: var(--color-text);
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.15s ease, border-color 0.15s ease;
+    }
+
+    .type-chip:hover {
+      border-color: var(--color-primary);
+    }
+
+    .type-chip input[type="checkbox"] {
+      accent-color: var(--color-primary);
+      cursor: pointer;
+      margin: 0;
+    }
+
+    .type-chip:has(input:checked) {
+      background: var(--color-primary-50);
+      border-color: var(--color-primary);
+      color: var(--color-primary-dark);
+      font-weight: var(--weight-medium);
+    }
   </style>
 </head>
 <body>
@@ -254,14 +297,30 @@
             </div>
 
             <div class="form-group">
-              <label class="form-label form-label-required" for="type">Type</label>
-              <select class="form-select" id="type" name="type" required>
-                <option value="donor" selected>Donateur</option>
-                <option value="volunteer">B&eacute;n&eacute;vole</option>
-                <option value="member">Membre</option>
-                <option value="beneficiary">B&eacute;n&eacute;ficiaire</option>
-                <option value="partner">Partenaire</option>
-              </select>
+              <label class="form-label form-label-required" id="type-label">Type</label>
+              <div class="type-multiselect" role="group" aria-labelledby="type-label">
+                <label class="type-chip">
+                  <input type="checkbox" name="types" value="donor" checked>
+                  <span>Donateur</span>
+                </label>
+                <label class="type-chip">
+                  <input type="checkbox" name="types" value="volunteer" checked>
+                  <span>B&eacute;n&eacute;vole</span>
+                </label>
+                <label class="type-chip">
+                  <input type="checkbox" name="types" value="member">
+                  <span>Membre</span>
+                </label>
+                <label class="type-chip">
+                  <input type="checkbox" name="types" value="beneficiary">
+                  <span>B&eacute;n&eacute;ficiaire</span>
+                </label>
+                <label class="type-chip">
+                  <input type="checkbox" name="types" value="partner">
+                  <span>Partenaire</span>
+                </label>
+              </div>
+              <span class="form-hint">S&eacute;lectionnez un ou plusieurs types. Un constituant peut &ecirc;tre &agrave; la fois donateur, b&eacute;n&eacute;vole, membre, etc.</span>
             </div>
 
             <div class="form-row">

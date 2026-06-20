@@ -2,8 +2,9 @@
 
 import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
 import { Type } from "@sinclair/typebox";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { requireFlag } from "../../lib/flags/flag-guard.js";
+import { flagService as defaultFlagService } from "../../lib/flags/flag-service.js";
 import { requireAuth, requireOrgAdmin, requireWrite } from "../../lib/guards.js";
 import {
   DataArrayResponse,
@@ -48,6 +49,16 @@ const ConstituentTypeEnum = Type.Union([
 ]);
 
 /**
+ * Canonical multi-valued type (issue #465). At least one, no duplicates. The
+ * handler rejects more than one element when the `constituents.multi_type`
+ * flag is off for the tenant (`multi_type_disabled`).
+ */
+const ConstituentTypesArray = Type.Array(ConstituentTypeEnum, {
+  minItems: 1,
+  uniqueItems: true,
+});
+
+/**
  * Postal address fields (Epic #274 follow-up). All five are independent
  * and nullable — the constituent form lets the operator opt in per
  * recipient; the renderer skips the window-envelope address block when
@@ -80,6 +91,9 @@ const ConstituentCreateBody = Type.Object({
   email: Type.Optional(Type.String({ maxLength: 255 })),
   phone: Type.Optional(Type.String({ maxLength: 50 })),
   ...ConstituentAddressCreateFields,
+  // Canonical multi-valued type (issue #465). Defaults to ["donor"] in the
+  // service when omitted. `type` (singular) stays accepted for back-compat.
+  types: Type.Optional(ConstituentTypesArray),
   type: Type.Optional(ConstituentTypeEnum),
   tags: Type.Optional(Type.Array(Type.String())),
 });
@@ -101,6 +115,8 @@ const ConstituentUpdateBody = Type.Object(
     email: Type.Optional(Type.Union([Type.Null(), Type.String({ maxLength: 255 })])),
     phone: Type.Optional(Type.Union([Type.Null(), Type.String({ maxLength: 50 })])),
     ...ConstituentAddressUpdateFields,
+    // Issue #465 — omitted = leave types untouched; present = replace the set.
+    types: Type.Optional(ConstituentTypesArray),
     type: Type.Optional(ConstituentTypeEnum),
     tags: Type.Optional(Type.Array(Type.String())),
   },
@@ -120,7 +136,10 @@ const ListQuery = Type.Intersect([
   Type.Object({
     search: Type.Optional(Type.String({ maxLength: 200 })),
     tags: Type.Optional(Type.Union([Type.Array(Type.String()), Type.String()])),
+    // Legacy single-value filter (kept) + multi-value filter (issue #465).
+    // Both compile to an array-overlap against `types` in the service.
     type: Type.Optional(ConstituentTypeEnum),
+    types: Type.Optional(Type.Union([Type.Array(ConstituentTypeEnum), ConstituentTypeEnum])),
     includeDeleted: Type.Optional(Type.Boolean({ default: false })),
     sort: Type.Optional(ConstituentSortFieldSchema),
     order: Type.Optional(SortOrderSchema),
@@ -186,6 +205,9 @@ const ConstituentResponse = Type.Object({
   postalCode: Type.Optional(Type.Union([Type.Null(), Type.String()])),
   city: Type.Optional(Type.Union([Type.Null(), Type.String()])),
   countryCode: Type.Optional(Type.Union([Type.Null(), Type.String()])),
+  // Canonical multi-valued type (issue #465). `type` (singular) is retained
+  // as a deprecated back-compat mirror equal to `types[0]`.
+  types: Type.Array(Type.String()),
   type: Type.String(),
   tags: Type.Union([Type.Null(), Type.Array(Type.String())]),
   deletedAt: Type.Union([Type.Null(), Type.String()]),
@@ -251,6 +273,33 @@ const BulkEmailJobRowSchema = Type.Object({
   completedAt: Type.Union([Type.Null(), Type.String()]),
 });
 
+/**
+ * Multi-type gate (issue #465). With `constituents.multi_type` OFF for the
+ * tenant, a constituent may hold at most one type — preserving the legacy
+ * single-picklist behaviour. A single-element `types` (or the legacy singular
+ * `type`) is always allowed; only a payload trying to set ≥2 types is
+ * rejected. Returns an RFC 9457 problem to send (422) or null when allowed.
+ *
+ * The flag is NOT a `requireFlag` preHandler here: the create/update routes
+ * are core CRUD that must always work — only the *multi-valued affordance* is
+ * gated, not the endpoint.
+ */
+async function rejectMultiTypeWhenDisabled(
+  request: FastifyRequest,
+  orgId: string,
+  types: string[] | undefined,
+) {
+  if (!types || types.length <= 1) return null;
+  const flags = request.flagService ?? defaultFlagService;
+  const enabled = await flags.isEnabled(FEATURE_FLAG_KEYS.CONSTITUENTS_MULTI_TYPE, { orgId });
+  if (enabled) return null;
+  return problemDetail(
+    422,
+    "multi_type_disabled",
+    "Assigning more than one type to a constituent requires the multi-type feature, which is not enabled for your organisation.",
+  );
+}
+
 export async function constituentRoutes(app: FastifyInstance) {
   /** List constituents with pagination, search, and filtering */
   app.get(
@@ -275,6 +324,7 @@ export async function constituentRoutes(app: FastifyInstance) {
         search?: string;
         tags?: string[] | string;
         type?: string;
+        types?: string[] | string;
         includeDeleted?: boolean;
         sort?: (typeof CONSTITUENT_SORT_FIELDS)[number];
         order?: "asc" | "desc";
@@ -287,6 +337,13 @@ export async function constituentRoutes(app: FastifyInstance) {
       };
 
       const tags = query.tags ? (Array.isArray(query.tags) ? query.tags : [query.tags]) : undefined;
+      // `?types=donor&types=volunteer` arrives as an array; `?types=donor` as
+      // a scalar — normalise to an array for the service's overlap filter.
+      const types = query.types
+        ? Array.isArray(query.types)
+          ? query.types
+          : [query.types]
+        : undefined;
 
       const result = await listConstituents(orgId, {
         page: query.page ?? 1,
@@ -294,6 +351,7 @@ export async function constituentRoutes(app: FastifyInstance) {
         search: query.search,
         tags,
         type: query.type,
+        types,
         includeDeleted: query.includeDeleted,
         sort: query.sort,
         order: query.order,
@@ -383,6 +441,7 @@ export async function constituentRoutes(app: FastifyInstance) {
         response: {
           201: DataResponse(ConstituentResponse),
           409: ConflictResponse,
+          422: ProblemDetailSchema,
           ...ErrorResponses,
         },
       },
@@ -403,10 +462,16 @@ export async function constituentRoutes(app: FastifyInstance) {
         postalCode?: string;
         city?: string;
         countryCode?: string;
+        types?: string[];
         type?: string;
         tags?: string[];
       };
       const query = request.query as { force?: boolean };
+
+      const multiTypeError = await rejectMultiTypeWhenDisabled(request, orgId, body.types);
+      if (multiTypeError) {
+        return reply.status(422).send(multiTypeError);
+      }
 
       if (!query.force) {
         const duplicates = await findDuplicates(orgId, {
@@ -439,7 +504,11 @@ export async function constituentRoutes(app: FastifyInstance) {
         tags: ["Constituents"],
         params: IdParams,
         body: ConstituentUpdateBody,
-        response: { 200: DataResponse(ConstituentResponse), ...ErrorResponses },
+        response: {
+          200: DataResponse(ConstituentResponse),
+          422: ProblemDetailSchema,
+          ...ErrorResponses,
+        },
       },
     },
     async (request, reply) => {
@@ -460,9 +529,15 @@ export async function constituentRoutes(app: FastifyInstance) {
         postalCode?: string | null;
         city?: string | null;
         countryCode?: string | null;
+        types?: string[];
         type?: string;
         tags?: string[];
       };
+
+      const multiTypeError = await rejectMultiTypeWhenDisabled(request, orgId, body.types);
+      if (multiTypeError) {
+        return reply.status(422).send(multiTypeError);
+      }
 
       const updated = await updateConstituent(orgId, id, body, userId);
 

@@ -28,6 +28,18 @@ export interface Constituent {
   city: string | null;
   /** ISO 3166-1 alpha-2 (e.g. `FR`, `BE`). NULL = no country line printed. */
   countryCode: string | null;
+  /**
+   * Canonical multi-valued type (issue #465). A constituent can be e.g. both a
+   * donor AND a volunteer. The API always returns at least one element.
+   * The list/badge surfaces render every entry as a chip (with a `+N` overflow
+   * in tight table cells) when the `constituents.multi_type` flag is on.
+   */
+  types: Array<ConstituentType | string>;
+  /**
+   * Legacy singular type — kept for back-compat, always equal to `types[0]`.
+   * Prefer `types`; this field exists so single-type surfaces (and code paths
+   * gated by a disabled `constituents.multi_type` flag) keep working unchanged.
+   */
   type: ConstituentType | string;
   tags: string[] | null;
   deletedAt: string | null;
@@ -68,7 +80,14 @@ export interface ConstituentListQuery {
   page?: number;
   perPage?: number;
   search?: string;
+  /** Legacy single-value type filter (`?type=donor`). */
   type?: ConstituentType;
+  /**
+   * Multi-value type filter (issue #465). Serialised as repeatable
+   * `?types=donor&types=volunteer` and matched by array-overlap server-side.
+   * Used by the list quick-filter when `constituents.multi_type` is on.
+   */
+  types?: ConstituentType[];
   sort?: ConstituentSortField;
   order?: ConstituentSortOrder;
   /** Epic #274 — restrict to constituents linked to a specific campaign. */

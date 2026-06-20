@@ -160,6 +160,7 @@ export function DonationForm(props: DonationFormProps) {
           postalCode: null,
           city: null,
           countryCode: null,
+          types: ["donor"],
           type: "donor",
           tags: null,
           deletedAt: null,

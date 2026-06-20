@@ -329,11 +329,15 @@ export const filterFields: FilterField[] = [
   },
   {
     // Field name MUST match the BE FIELD_REGISTRY in
-    // packages/api/src/modules/constituents/filters/types.ts. The BE
-    // accepts `eq`, `neq`, `in` on this scalar column; the FE turns
-    // `in` into a real multi-select (Popover + Checkboxes) so the
-    // operator picks one-or-many from the canonical 5 types defined
-    // by `ConstituentTypeEnum` in `routes.ts`.
+    // packages/api/src/modules/constituents/filters/types.ts. Issue #465
+    // migrated this from a scalar column to a `text[]` (`types`), so the BE
+    // now accepts the array operators `arrayOverlaps` (any-of) / `arrayContains`
+    // (all-of) alongside the legacy scalar operators (`eq`/`neq`/`in`, which
+    // the BE query-builder translates to array semantics for back-compat).
+    // We default to `arrayOverlaps` so the common "any of these types" segment
+    // works out of the box, and the FE renders every multi-value operator as a
+    // real multi-select (Popover + Checkboxes) so the operator picks one-or-many
+    // from the canonical 5 types.
     //
     // Option labels live under `fieldOptions.constituent.type.*`; the JSON
     // values mirror the canonical `constituents.types.*` strings so the FR/EN
@@ -343,9 +347,9 @@ export const filterFields: FilterField[] = [
     // FilterCondition for one field — not worth the rendering complexity.
     name: "constituent.type",
     label: "fields.constituent.type",
-    type: "select",
+    type: "multiselect",
     category: "demographics",
-    operators: ["eq", "neq", "in"],
+    operators: ["arrayOverlaps", "arrayContains", "eq", "neq", "in"],
     options: [
       { value: "donor", label: "fieldOptions.constituent.type.donor" },
       { value: "volunteer", label: "fieldOptions.constituent.type.volunteer" },
@@ -451,6 +455,8 @@ export function getOperatorLabel(operator: FilterOperator): string {
     endsWith: "operators.endsWith",
     exists: "operators.exists",
     notExists: "operators.notExists",
+    arrayContains: "operators.arrayContains",
+    arrayOverlaps: "operators.arrayOverlaps",
   };
   return keys[operator] || operator;
 }

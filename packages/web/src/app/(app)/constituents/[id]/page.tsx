@@ -1,8 +1,10 @@
+import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
 import { Download, FileText, GitMerge, Mail, Pencil, Sparkles, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
 
+import { ConstituentTypeBadges } from "@/components/constituents/constituent-type-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ApiProblem } from "@/lib/api";
@@ -13,6 +15,7 @@ import { type Constituent, fullName, initials } from "@/models/constituent";
 import type { Donation, DonationListResponse } from "@/models/donation";
 import { ConstituentService } from "@/services/ConstituentService";
 import { DonationService } from "@/services/DonationService";
+import { FeatureFlagsService, isFlagEnabled } from "@/services/FeatureFlagsService";
 
 import { DetailTabs } from "./detail-tabs";
 import { DonationsTable } from "./donations-table";
@@ -99,6 +102,18 @@ export default async function ConstituentDetailPage({ params, searchParams }: De
     fetchDonationsOrEmpty(id, donationsPage, donationsPerPage),
   ]);
 
+  // Issue #465 — when off, the profile header shows a single type badge
+  // (`types[0]`), identical to today. When on, all types render as chips.
+  // A flag-fetch failure defaults to OFF (safest single-badge posture).
+  let multiTypeEnabled = false;
+  try {
+    const client = await createServerApiClient();
+    const flags = await FeatureFlagsService.listPublic(client);
+    multiTypeEnabled = isFlagEnabled(flags, FEATURE_FLAG_KEYS.CONSTITUENTS_MULTI_TYPE);
+  } catch {
+    multiTypeEnabled = false;
+  }
+
   const t = await getTranslations("constituentDetail");
   const tType = await getTranslations("constituents.types");
   const locale = await getLocale();
@@ -126,6 +141,7 @@ export default async function ConstituentDetailPage({ params, searchParams }: De
         })}
         typeLabel={resolveTypeLabel(constituent.type, tType)}
         typeVariant={TYPE_VARIANTS[String(constituent.type)] ?? "neutral"}
+        multiTypeEnabled={multiTypeEnabled}
         canManageAdminActions={canManageAdminActions}
         canWrite={canWrite}
         labels={{
@@ -244,6 +260,7 @@ function ProfileCard({
   memberSinceLabel,
   typeLabel,
   typeVariant,
+  multiTypeEnabled,
   canManageAdminActions,
   canWrite,
   labels,
@@ -253,6 +270,11 @@ function ProfileCard({
   memberSinceLabel: string;
   typeLabel: string;
   typeVariant: BadgeVariant;
+  /**
+   * `true` when `constituents.multi_type` is on (issue #465): render every
+   * type as a chip. `false`: single badge on `types[0]` (the legacy view).
+   */
+  multiTypeEnabled: boolean;
   canManageAdminActions: boolean;
   canWrite: boolean;
   labels: ProfileLabels;
@@ -274,7 +296,11 @@ function ProfileCard({
           {fullName(constituent)}
         </h1>
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          <Badge variant={typeVariant}>{typeLabel}</Badge>
+          {multiTypeEnabled ? (
+            <ConstituentTypeBadges types={constituent.types} />
+          ) : (
+            <Badge variant={typeVariant}>{typeLabel}</Badge>
+          )}
           {constituent.tags?.map((tag) => (
             <Badge key={tag} variant="neutral" shape="square">
               {tag}

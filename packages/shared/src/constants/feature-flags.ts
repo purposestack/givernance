@@ -181,6 +181,38 @@ export const FEATURE_FLAG_KEYS = {
    * Emergency rollback: see `docs/runbooks/feature-flag-rollback.md`.
    */
   CAMPAIGN_POSTAL_MERGED_PDF: "campaign.postal_merged_pdf",
+
+  /**
+   * Gates multi-valued constituent type (issue #465).
+   *
+   * A constituent's `type` was historically a single picklist value
+   * (`donor` | `volunteer` | `member` | `beneficiary` | `partner`). Real
+   * NPOs need overlap — a donor who also volunteers, a beneficiary who
+   * becomes a member. The storage moved to a `types text[]` array
+   * (additive migration `0083_constituent_types_array`); the legacy
+   * singular `type` column is kept in lockstep as `types[0]` for one
+   * release so an un-migrated reader never 500s during rollout.
+   *
+   * `scope='tenant'` + `tenant_override_allowed=true`: there is no
+   * platform-level precondition (no DKIM-style infra gate) — only the
+   * usual caution of letting a tenant opt into a new data-entry shape.
+   * Org-admins can self-serve the toggle from /settings/feature-flags.
+   *
+   * `public=true`: the constituents page SSR-fetches `/v1/feature-flags`
+   * to decide whether to render the multiselect control (vs the legacy
+   * single Select) and the multi-badge display.
+   *
+   * Off-state contract (the array is ALWAYS the storage, the flag only
+   * gates the new affordances):
+   *   - API: `POST` / `PUT /v1/constituents` reject a `types` payload
+   *     with more than one element (`multi_type_disabled`) so the
+   *     effective behaviour is identical to the single-picklist era.
+   *     Single-element arrays + the legacy `type` field always work.
+   *   - Web: the create/edit form renders the legacy single Select; the
+   *     list quick-filter and advanced-filter control stay single-value;
+   *     every badge spot shows one badge (the first type).
+   */
+  CONSTITUENTS_MULTI_TYPE: "constituents.multi_type",
 } as const;
 
 export type FeatureFlagKey = (typeof FEATURE_FLAG_KEYS)[keyof typeof FEATURE_FLAG_KEYS];
@@ -276,6 +308,16 @@ export const FEATURE_FLAG_REGISTRY: ReadonlyArray<{
       "Adds an option to download a postal mailing as one combined PDF (one page per recipient) instead of a ZIP of separate files — handy for sending the whole batch straight to a printer. Off by default: exports stay as a ZIP until Givernance staff turn this on for your organisation. Very large mailings always use the ZIP.",
     scope: "tenant",
     tenantOverrideAllowed: false,
+    public: true,
+  },
+  {
+    key: FEATURE_FLAG_KEYS.CONSTITUENTS_MULTI_TYPE,
+    defaultEnabled: false,
+    label: "Multiple types per constituent",
+    description:
+      "Lets a single constituent hold several types at once — for example someone who is both a donor and a volunteer — instead of just one. Off by default: each constituent keeps a single type until you turn this on from this page.",
+    scope: "tenant",
+    tenantOverrideAllowed: true,
     public: true,
   },
 ];

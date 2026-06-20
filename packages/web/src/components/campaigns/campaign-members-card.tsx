@@ -4,7 +4,7 @@ import type { ColumnDef, SortingState } from "@tanstack/react-table";
 import { Filter, Plus, Trash2, Users } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
-import { ConstituentTypeBadge } from "@/components/constituents/constituent-type-badge";
+import { ConstituentTypeBadges } from "@/components/constituents/constituent-type-badge";
 import {
   FilterBuilder,
   FilterChip,
@@ -510,7 +510,14 @@ export function CampaignMembersCard({
       {
         accessorKey: "type",
         header: () => t("columns.type"),
-        cell: ({ row }) => <ConstituentTypeBadge type={row.original.type} />,
+        // Issue #465: this read-only members projection still carries only the
+        // legacy singular `type` (the API members endpoint hasn't been widened
+        // to `types`). Render it through the multi-chip component unconditionally
+        // — wrapping the single value in a one-element array renders exactly one
+        // chip today, and the cell automatically shows every type with a `+N`
+        // overflow the moment the backend starts returning the `types` array,
+        // with no further FE change and no flag-threading into this read view.
+        cell: ({ row }) => <ConstituentTypeBadges types={[row.original.type]} maxVisible={2} />,
         meta: { className: "hidden md:table-cell" },
       },
       {

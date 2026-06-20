@@ -51,7 +51,10 @@ export interface ListConstituentsQuery {
   perPage: number;
   search?: string;
   tags?: string[];
+  /** Legacy single-value filter — matches constituents whose `types` array contains it. */
   type?: string;
+  /** Multi-value filter (issue #465) — matches constituents whose `types` overlap any of these. */
+  types?: string[];
   includeDeleted?: boolean;
   sort?: string;
   order?: string;
@@ -118,7 +121,10 @@ function buildConstituentOrderBy(
       asc(constituents.id),
     ];
   }
-  if (sort === "type") return [dir(constituents.type), asc(constituents.id)];
+  // Issue #465 — `type` is now the `types` array. Sort on its first element
+  // (Postgres arrays are 1-indexed) so the column keeps a stable, intuitive
+  // ordering; the first type is also what the single-badge spots render.
+  if (sort === "type") return [dir(sql`${constituents.types}[1]`), asc(constituents.id)];
   if (sort === "email") {
     // Case-insensitive + NULLS LAST: not every constituent has an email
     // (volunteers contacted only by phone, anonymized records). Pinning
@@ -150,8 +156,42 @@ export interface ConstituentInput {
   postalCode?: string | null;
   city?: string | null;
   countryCode?: string | null;
+  // Canonical multi-valued type (issue #465). When present, the legacy
+  // singular `type` is derived from `types[0]`. When omitted on UPDATE the
+  // existing types are left untouched.
+  types?: string[];
+  // Legacy single-value type — accepted for back-compat (Salesforce ETL,
+  // older clients). Coerced into `types` when `types` is omitted.
   type?: string;
   tags?: string[];
+}
+
+/**
+ * Reconcile the legacy singular `type` with the canonical `types` array
+ * (issue #465). Returns the DB column patch to merge into an INSERT/UPDATE:
+ *   - `types` provided  → use it; mirror `type = types[0]`.
+ *   - only `type`       → `types = [type]`; `type` stays as the shadow.
+ *   - neither           → `{}` (leave both columns untouched on UPDATE; the
+ *                          DB default `'{donor}'` + column default apply on
+ *                          INSERT).
+ * The singular `type` column is kept in lockstep as a back-compat shadow so
+ * an un-migrated reader never breaks during the rollout window.
+ */
+function reconcileTypeColumns(input: {
+  types?: string[];
+  type?: string;
+}): { types: string[]; type: string } | Record<string, never> {
+  if (input.types && input.types.length > 0) {
+    // De-dupe defensively — the validator enforces uniqueItems, but the ETL
+    // / bulk-import paths build the array themselves.
+    const types = Array.from(new Set(input.types));
+    const first = types[0];
+    if (first !== undefined) return { types, type: first };
+  }
+  if (input.type) {
+    return { types: [input.type], type: input.type };
+  }
+  return {};
 }
 
 /**
@@ -175,6 +215,7 @@ function buildListConstituentsWhere(
     search,
     tags,
     type,
+    types,
     includeDeleted,
     campaignId,
     excludeCampaignId,
@@ -211,8 +252,13 @@ function buildListConstituentsWhere(
     }
   }
 
-  if (type) {
-    conditions.push(eq(constituents.type, type));
+  // Issue #465 — type filtering now targets the `types` array. Both the
+  // multi-value `types` param and the legacy single `type` param compile to
+  // an array-overlap (`types && ARRAY[...]`), index-backed by the GIN index.
+  // A constituent matches if ANY of its types is in the requested set.
+  const typeFilter = types && types.length > 0 ? types : type ? [type] : undefined;
+  if (typeFilter) {
+    conditions.push(arrayOverlaps(constituents.types, typeFilter));
   }
 
   if (tags && tags.length > 0) {
@@ -385,9 +431,12 @@ export async function getConstituent(orgId: string, id: string) {
 /** Create a new constituent in an organization */
 export async function createConstituent(orgId: string, input: ConstituentInput) {
   return withTenantContext(orgId, async (tx) => {
+    // Strip the two raw type inputs and replace with the reconciled column
+    // patch so we never write a stale `type`/`types` pair.
+    const { type: _legacyType, types: _types, ...rest } = input;
     const [result] = await tx
       .insert(constituents)
-      .values({ ...input, orgId })
+      .values({ ...rest, ...reconcileTypeColumns(input), orgId })
       .returning();
 
     return result;
@@ -411,9 +460,12 @@ export async function updateConstituent(
 
     if (!existing) return null;
 
+    const { type: _legacyType, types: _types, ...rest } = input;
     const [updated] = await tx
       .update(constituents)
-      .set({ ...input, updatedAt: new Date() })
+      // `reconcileTypeColumns` returns `{}` when neither type field is in the
+      // patch, leaving the existing `type`/`types` columns untouched.
+      .set({ ...rest, ...reconcileTypeColumns(input), updatedAt: new Date() })
       .where(eq(constituents.id, id))
       .returning();
 

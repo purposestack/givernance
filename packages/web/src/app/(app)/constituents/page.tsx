@@ -82,6 +82,12 @@ export default async function ConstituentsPage({ searchParams }: ConstituentsPag
     "partner",
   ];
   const typeValue = ALLOWED_TYPES.find((t) => t === rawType);
+  // Multi-value type filter (issue #465). Normalise `?types=` to an array of
+  // whitelisted values (repeatable param OR single string), de-duplicated.
+  const rawTypes = Array.isArray(params.types) ? params.types : params.types ? [params.types] : [];
+  const typeValues = Array.from(
+    new Set(ALLOWED_TYPES.filter((t) => rawTypes.includes(t))),
+  ) as ConstituentType[];
   const sort = parseSortField(params.sort);
   const order = parseSortOrder(params.order);
 
@@ -95,13 +101,19 @@ export default async function ConstituentsPage({ searchParams }: ConstituentsPag
   // render it).
   let bulkEmailEnabled = false;
   let bulkImportEnabled = false;
+  // Issue #465 — when off, the multi-value type affordances are completely
+  // absent (single-badge cell + single-value quick filter), behaviour
+  // identical to the legacy single picklist.
+  let multiTypeEnabled = false;
   try {
     const flags = await FeatureFlagsService.listPublic(client);
     bulkEmailEnabled = isFlagEnabled(flags, FEATURE_FLAG_KEYS.COMMUNICATION_BULK_EMAIL);
     bulkImportEnabled = isFlagEnabled(flags, FEATURE_FLAG_KEYS.CONSTITUENTS_BULK_IMPORT);
+    multiTypeEnabled = isFlagEnabled(flags, FEATURE_FLAG_KEYS.CONSTITUENTS_MULTI_TYPE);
   } catch {
     bulkEmailEnabled = false;
     bulkImportEnabled = false;
+    multiTypeEnabled = false;
   }
 
   let result: ConstituentListResponse;
@@ -110,7 +122,10 @@ export default async function ConstituentsPage({ searchParams }: ConstituentsPag
       page,
       perPage,
       search: searchValue,
-      type: typeValue,
+      // Flag on → multi-value `?types=` filter; flag off → legacy single
+      // `?type=` so the off-state query is byte-for-byte what it is today.
+      type: multiTypeEnabled ? undefined : typeValue,
+      types: multiTypeEnabled && typeValues.length > 0 ? typeValues : undefined,
       sort,
       order,
     });
@@ -157,6 +172,7 @@ export default async function ConstituentsPage({ searchParams }: ConstituentsPag
           canManageAdminActions={canManageAdminActions}
           canWrite={canWrite}
           bulkEmailEnabled={bulkEmailEnabled}
+          multiTypeEnabled={multiTypeEnabled}
           sort={sort}
           order={order}
         />

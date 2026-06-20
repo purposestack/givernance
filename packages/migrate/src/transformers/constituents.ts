@@ -12,16 +12,22 @@ interface SalesforceContact {
   npe01__Type__c?: string;
 }
 
-/** Map Salesforce constituent type to Givernance type */
-function mapType(sfType?: string): ConstituentCreate["type"] {
-  const mapping: Record<string, ConstituentCreate["type"]> = {
+/**
+ * Map a Salesforce constituent type to a Givernance type. Salesforce carries
+ * a single value per Contact, so the result is always a one-element array
+ * (issue #465). A multi-value Salesforce source would split here.
+ */
+type ConstituentTypeValue = NonNullable<ConstituentCreate["types"]>[number];
+
+function mapTypes(sfType?: string): ConstituentTypeValue[] {
+  const mapping: Record<string, ConstituentTypeValue> = {
     Donor: "donor",
     Volunteer: "volunteer",
     Member: "member",
     Beneficiary: "beneficiary",
     Partner: "partner",
   };
-  return sfType ? (mapping[sfType] ?? "donor") : "donor";
+  return [sfType ? (mapping[sfType] ?? "donor") : "donor"];
 }
 
 /** Transform a Salesforce Contact row into a Givernance constituent */
@@ -31,7 +37,7 @@ export function transformContact(row: SalesforceContact): ConstituentCreate {
     lastName: row.LastName,
     email: row.Email || undefined,
     phone: row.Phone || undefined,
-    type: mapType(row.npe01__Type__c),
+    types: mapTypes(row.npe01__Type__c),
   };
 }
 

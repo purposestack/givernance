@@ -42,7 +42,7 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import ExcelJS from "exceljs";
 import { env } from "../env.js";
 import { withWorkerContext } from "../lib/db.js";
-import { isFlagEnabled } from "../lib/flags.js";
+import { isFlagEnabled, isFlagEnabledForTenant } from "../lib/flags.js";
 import { jobLogger } from "../lib/logger.js";
 
 const BATCH_SIZE = 50;
@@ -320,7 +320,9 @@ interface ConstituentPayload {
   postalCode?: string;
   city?: string;
   countryCode?: string;
-  type?: ConstituentTypeLiteral;
+  // Issue #465 — multi-valued. Truncated to a single value before insert
+  // when the `constituents.multi_type` flag is off for the tenant.
+  types?: ConstituentTypeLiteral[];
   tags?: string[];
 }
 
@@ -340,12 +342,23 @@ function validateCountryWorker(
   return raw;
 }
 
+/**
+ * Parse a `type` cell into a deduped array of valid types (issue #465). The
+ * cell may carry several values separated by `;`, `,`, or `|`. Mirrors the
+ * API-side `validateTypes` in `bulk-import/validation.ts`.
+ */
 function validateTypeWorker(
   raw: string | undefined,
   errors: ValidationError[],
-): ConstituentTypeLiteral | undefined {
+): ConstituentTypeLiteral[] | undefined {
   if (!raw) return undefined;
-  if (!CONSTITUENT_TYPES.includes(raw as ConstituentTypeLiteral)) {
+  const parts = raw
+    .split(/[;,|]/)
+    .map((p) => p.trim().toLowerCase())
+    .filter((p) => p.length > 0);
+  if (parts.length === 0) return undefined;
+  const invalid = parts.find((p) => !CONSTITUENT_TYPES.includes(p as ConstituentTypeLiteral));
+  if (invalid) {
     errors.push({
       field: "type",
       code: "INVALID_TYPE",
@@ -353,7 +366,7 @@ function validateTypeWorker(
     });
     return undefined;
   }
-  return raw as ConstituentTypeLiteral;
+  return Array.from(new Set(parts)) as ConstituentTypeLiteral[];
 }
 
 function parseTagsWorker(raw: string | undefined): string[] | undefined {
@@ -421,7 +434,7 @@ function validate(
     errors,
   );
   const countryCode = validateCountryWorker(values.countryCode?.trim().toUpperCase(), errors);
-  const type = validateTypeWorker(values.type?.trim().toLowerCase(), errors);
+  const types = validateTypeWorker(values.type, errors);
   const tags = parseTagsWorker(values.tags?.trim());
 
   if (errors.length > 0) return { ok: false, errors };
@@ -435,7 +448,7 @@ function validate(
   if (postalCode) payload.postalCode = postalCode;
   if (city) payload.city = city;
   if (countryCode) payload.countryCode = countryCode;
-  if (type) payload.type = type;
+  if (types) payload.types = types;
   if (tags) payload.tags = tags;
   return { ok: true, payload };
 }
@@ -530,6 +543,9 @@ interface RowContext {
   jobId: string;
   batchDelta: JobAccumulator;
   log: ReturnType<typeof jobLogger>;
+  // Issue #465 — when off, multi-valued `types` cells are truncated to a
+  // single value on insert so the off-state matches the legacy picklist.
+  multiTypeEnabled: boolean;
 }
 
 async function recordFailedRow(
@@ -551,9 +567,16 @@ async function recordFailedRow(
 
 async function insertCreatedRow(ctx: RowContext, payload: ConstituentPayload): Promise<void> {
   try {
+    // Issue #465 — keep the legacy singular `type` column in lockstep with
+    // `types[0]` (back-compat shadow), and enforce the multi-type gate: with
+    // the flag off, only the first type is kept. Omitted `types` leaves the
+    // DB defaults (`{donor}` / `donor`) to apply.
+    const { types: rawTypes, ...rest } = payload;
+    const types = ctx.multiTypeEnabled ? rawTypes : rawTypes?.slice(0, 1);
+    const typeColumns = types && types.length > 0 ? { types, type: types[0] } : {};
     const [inserted] = await ctx.tx
       .insert(constituents)
-      .values({ ...payload, orgId: ctx.orgId })
+      .values({ ...rest, ...typeColumns, orgId: ctx.orgId })
       .returning({ id: constituents.id });
     if (!inserted) throw new Error("Constituent insert returned no row");
     ctx.batchDelta.created += 1;
@@ -635,6 +658,13 @@ export async function processBulkImport(
     );
     return { created: 0, duplicate: 0, failed: 0, totalRows: 0 };
   }
+
+  // Issue #465 — tenant-aware multi-type gate, read once per job. When off,
+  // `insertCreatedRow` truncates multi-valued `types` cells to a single value.
+  const multiTypeEnabled = await isFlagEnabledForTenant(
+    FEATURE_FLAG_KEYS.CONSTITUENTS_MULTI_TYPE,
+    data.orgId,
+  );
 
   // 1. Load + flip to processing (idempotent).
   const meta = await withWorkerContext(data.orgId, async (tx) => {
@@ -736,6 +766,7 @@ export async function processBulkImport(
           jobId: data.bulkImportJobId,
           batchDelta,
           log,
+          multiTypeEnabled,
         });
       }
     });

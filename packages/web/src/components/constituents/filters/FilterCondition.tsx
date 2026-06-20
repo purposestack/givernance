@@ -43,7 +43,14 @@ function trDynamic(t: StrictTranslator, key: string, values?: Record<string, str
  * (Popover + Checkboxes) so the operator's "any of …" semantics map to a
  * `string[]` payload the BE expects.
  */
-const MULTI_VALUE_OPERATORS = new Set<FilterOperator>(["in", "notIn"]);
+const MULTI_VALUE_OPERATORS = new Set<FilterOperator>([
+  "in",
+  "notIn",
+  // Array-column operators (issue #465) — both take a SET of values rendered
+  // through the same Popover + Checkbox multiselect.
+  "arrayContains",
+  "arrayOverlaps",
+]);
 
 function isMultiValueOperator(op: FilterOperator): boolean {
   return MULTI_VALUE_OPERATORS.has(op);

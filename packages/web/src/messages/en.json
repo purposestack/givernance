@@ -2188,12 +2188,14 @@
       "volunteer": "Volunteer",
       "member": "Member",
       "beneficiary": "Beneficiary",
-      "partner": "Partner"
+      "partner": "Partner",
+      "overflow": "+{count}"
     },
     "filters": {
       "searchPlaceholder": "Search a contact…",
       "typeLabel": "Type",
       "allTypes": "All types",
+      "typesSelectedCount": "{count} types",
       "advancedLabel": "More filters",
       "advanced": {
         "title": "Advanced filters",
@@ -2264,7 +2266,9 @@
         "startsWith": "starts with",
         "endsWith": "ends with",
         "exists": "exists",
-        "notExists": "does not exist"
+        "notExists": "does not exist",
+        "arrayContains": "includes all of",
+        "arrayOverlaps": "includes any of"
       },
       "validation": {
         "incomplete": "Please complete all filter conditions",
@@ -3299,6 +3303,7 @@
     "fields": {
       "type": "Type",
       "typeHint": "Choose how this person relates to your organisation.",
+      "typesHint": "Select one or more types. A constituent can be a donor, a volunteer, a member, etc. at the same time.",
       "firstName": "First name",
       "firstNamePlaceholder": "Jane",
       "lastName": "Last name",
@@ -3334,7 +3339,8 @@
     },
     "errors": {
       "generic": "Something went wrong while saving. Please try again.",
-      "validation": "Please correct the highlighted fields."
+      "validation": "Please correct the highlighted fields.",
+      "typesRequired": "Select at least one type."
     },
     "success": {
       "created": "Constituent created.",
