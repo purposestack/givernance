@@ -129,7 +129,7 @@ jobs:
       # Standard kamal-on-runner setup, mirrored from deploy-staging.yml so
       # the SSH agent / kamal CLI / accessory secrets are wired the same way.
 
-      - uses: pnpm/action-setup@v6.0.8
+      - uses: pnpm/action-setup@v6.0.9
       - uses: actions/setup-node@v6
         with:
           node-version: "22"
