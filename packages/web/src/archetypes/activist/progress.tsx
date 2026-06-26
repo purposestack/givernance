@@ -23,11 +23,15 @@ export function ActivistProgress({ data }: ProgressSlotProps) {
       <div className="activist-progress__row">
         <div className="activist-progress__cell">
           <p className="activist-progress__label">RAISED</p>
-          <p className="activist-progress__value">{formatCurrency(data.raisedCents, data.locale, data.defaultCurrency)}</p>
+          <p className="activist-progress__value">
+            {formatCurrency(data.raisedCents, data.locale, data.defaultCurrency)}
+          </p>
         </div>
         <div className="activist-progress__cell">
           <p className="activist-progress__label">GOAL</p>
-          <p className="activist-progress__value">{formatCurrency(goalCents, data.locale, data.defaultCurrency)}</p>
+          <p className="activist-progress__value">
+            {formatCurrency(goalCents, data.locale, data.defaultCurrency)}
+          </p>
         </div>
         <div className="activist-progress__cell">
           <p className="activist-progress__label">SUPPORTERS</p>

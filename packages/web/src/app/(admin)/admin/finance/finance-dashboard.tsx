@@ -113,13 +113,16 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
 
   // Display currency for cross-currency aggregates: the selected filter when a
   // single currency is picked, otherwise the platform reporting base.
-  const displayCurrency =
-    filters.currency === "all" ? PLATFORM_BASE_CURRENCY : filters.currency;
+  const displayCurrency = filters.currency === "all" ? PLATFORM_BASE_CURRENCY : filters.currency;
 
   // Locale-bound formatters (replace the former module-scope helpers that were
   // hardcoded to "fr-FR" + "EUR"). Function declarations hoist, so they are
   // callable from the derived values below.
-  function formatCents(cents: number, currency: string = displayCurrency, showCents = true): string {
+  function formatCents(
+    cents: number,
+    currency: string = displayCurrency,
+    showCents = true,
+  ): string {
     return (showCents ? formatCurrency : formatCurrencyRounded)(cents, locale, currency);
   }
 

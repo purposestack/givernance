@@ -24,6 +24,7 @@
  * payload matches.
  */
 
+import { useLocale } from "next-intl";
 import { useCallback, useId, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -36,6 +37,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ApiProblem } from "@/lib/api/problem";
+import { formatDate } from "@/lib/format";
 import type { SurveyCadence, SurveyKind, SurveyRow } from "@/models/superadmin-finance";
 
 import { toast } from "./toast";
@@ -99,11 +101,6 @@ interface PendingDialog {
   current: SurveyCadence;
 }
 
-function formatShortDate(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" });
-}
-
 function defaultCadenceFor(kind: SurveyKind): SurveyCadence {
   // Match the docs/32 cadence defaults — CSAT runs continuously, the
   // satisfaction surveys default to quarterly-minus-7d.
@@ -128,6 +125,7 @@ function cooldownMinutesFrom(err: ApiProblem): number {
 
 export function SurveyLaunchCard({ surveys, labels, onLaunch, onSchedule }: SurveyLaunchCardProps) {
   const headingId = useId();
+  const locale = useLocale();
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [dialog, setDialog] = useState<PendingDialog | null>(null);
   const [dialogCadence, setDialogCadence] = useState<SurveyCadence>("quarterly_minus_7d");
@@ -212,11 +210,11 @@ export function SurveyLaunchCard({ surveys, labels, onLaunch, onSchedule }: Surv
                   {labels.responseCount(survey.responseCount)}
                   {" · "}
                   {survey.lastCollectedAt
-                    ? labels.lastCollectedAt(formatShortDate(survey.lastCollectedAt))
+                    ? labels.lastCollectedAt(formatDate(survey.lastCollectedAt, locale, "medium"))
                     : labels.lastCollectedNever}
                   {" · "}
                   {survey.nextScheduledAt
-                    ? labels.nextScheduledAt(formatShortDate(survey.nextScheduledAt))
+                    ? labels.nextScheduledAt(formatDate(survey.nextScheduledAt, locale, "medium"))
                     : labels.nextScheduledNever}
                 </div>
               </div>

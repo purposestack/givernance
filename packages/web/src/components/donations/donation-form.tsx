@@ -64,6 +64,7 @@ import {
 import { toast } from "@/components/ui/toast";
 import { ApiProblem } from "@/lib/api";
 import { createClientApiClient } from "@/lib/api/client-browser";
+import { DONATION_CURRENCIES, type DonationCurrency } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { Campaign } from "@/models/campaign";
 import { type Constituent, fullName } from "@/models/constituent";
@@ -73,7 +74,6 @@ import type {
   DonationDetail,
   DonationUpdateInput,
 } from "@/models/donation";
-import { DONATION_CURRENCIES, type DonationCurrency } from "@/lib/format";
 import type { Fund } from "@/models/fund";
 import { CampaignService } from "@/services/CampaignService";
 import { ConstituentService } from "@/services/ConstituentService";

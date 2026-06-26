@@ -16,7 +16,9 @@ export function NeoBrutalistProgress({ data }: ProgressSlotProps) {
       aria-valuenow={progressPercent}
       aria-valuetext={ariaValueText}
     >
-      <p className="neo-progress__amount">{formatCurrency(data.raisedCents, data.locale, data.defaultCurrency)}</p>
+      <p className="neo-progress__amount">
+        {formatCurrency(data.raisedCents, data.locale, data.defaultCurrency)}
+      </p>
       <div>
         <div className="neo-progress__bar" aria-hidden="true">
           <span style={{ width: `${progressPercent}%` }} />
