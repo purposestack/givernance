@@ -1,19 +1,10 @@
 import type { PublicPageStyleKey } from "@givernance/shared/constants";
 import type { CampaignPublicPageColor } from "@givernance/shared/validators";
+import type { PresentmentCurrency } from "@/lib/format";
 
 export type PublicPageStatus = "draft" | "published";
-export type PublicDonationCurrency =
-  | "EUR"
-  | "GBP"
-  | "CHF"
-  | "USD"
-  | "SEK"
-  | "NOK"
-  | "DKK"
-  | "PLN"
-  | "CZK"
-  | "HUF"
-  | "JPY";
+/** Donor-facing presentment currency superset — see lib/format theme. */
+export type PublicDonationCurrency = PresentmentCurrency;
 
 /**
  * Epic #416 — checkout-config response (multi-currency). Returned by

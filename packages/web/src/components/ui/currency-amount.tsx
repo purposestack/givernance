@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { DEFAULT_LOCALE, formatCurrency, formatCurrencyRounded } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 /** Data shape for a single monetary amount with optional conversion context. */
@@ -27,24 +28,20 @@ interface CurrencyAmountProps {
    */
   variant?: "single" | "aggregate";
   locale?: string;
+  /** When true, render without decimals (KPI / stat-card contexts). */
+  rounded?: boolean;
   className?: string;
-}
-
-function formatAmount(amount: number, currency: string, locale?: string): string {
-  return new Intl.NumberFormat(locale ?? "en-GB", {
-    style: "currency",
-    currency,
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount / 100);
 }
 
 export function CurrencyAmount({
   data,
   variant = "single",
   locale,
+  rounded = false,
   className,
 }: CurrencyAmountProps) {
+  const formatAmount = (amount: number, currency: string) =>
+    (rounded ? formatCurrencyRounded : formatCurrency)(amount, locale ?? DEFAULT_LOCALE, currency);
   const [tooltipOpen, setTooltipOpen] = useState(false);
   const tooltipId = useId();
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -61,7 +58,7 @@ export function CurrencyAmount({
   const displayedCurrency = hasConversion
     ? (data.displayCurrency ?? data.originalCurrency)
     : data.originalCurrency;
-  const formattedAmount = formatAmount(displayedAmount, displayedCurrency, locale);
+  const formattedAmount = formatAmount(displayedAmount, displayedCurrency);
 
   const closeTooltip = useCallback(() => setTooltipOpen(false), []);
 
@@ -95,7 +92,7 @@ export function CurrencyAmount({
   }
 
   // Aggregate variant with conversion tooltip
-  const originalFormatted = formatAmount(data.originalAmount, data.originalCurrency, locale);
+  const originalFormatted = formatAmount(data.originalAmount, data.originalCurrency);
   const rateDate = data.exchangeRateTimestamp
     ? new Date(data.exchangeRateTimestamp).toLocaleDateString(locale ?? "en-GB", {
         day: "2-digit",

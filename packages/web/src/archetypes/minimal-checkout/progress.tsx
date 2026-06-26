@@ -19,7 +19,7 @@ export function MinimalProgress({ data }: ProgressSlotProps) {
       <div>
         <p className="minimal-progress__label">Raised</p>
         <p className="minimal-progress__amount">
-          {formatCurrency(data.raisedCents, "en")} <span>/ {formatCurrency(goalCents, "en")}</span>
+          {formatCurrency(data.raisedCents, data.locale, data.defaultCurrency)} <span>/ {formatCurrency(goalCents, data.locale, data.defaultCurrency)}</span>
         </p>
       </div>
       <div className="minimal-progress__pct">{progressPercent} %</div>

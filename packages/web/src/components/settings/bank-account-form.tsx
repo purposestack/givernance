@@ -31,6 +31,7 @@ import {
 import { toast } from "@/components/ui/toast";
 import { ApiProblem } from "@/lib/api";
 import { createClientApiClient } from "@/lib/api/client-browser";
+import { BANK_ACCOUNT_CURRENCIES } from "@/lib/format";
 import type { BankAccount } from "@/models/bank-account";
 import { BankAccountService } from "@/services/BankAccountService";
 
@@ -59,7 +60,6 @@ interface BankAccountFormBaseProps {
 
 export type BankAccountFormProps = BankAccountFormBaseProps & (CreateMode | EditMode);
 
-const CURRENCIES: readonly string[] = ["CHF", "EUR"];
 const COUNTRIES: readonly { value: string; key: string }[] = [
   { value: "CH", key: "CH" },
   { value: "LI", key: "LI" },
@@ -278,7 +278,7 @@ export function BankAccountForm(props: BankAccountFormProps) {
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {CURRENCIES.map((c) => (
+                      {BANK_ACCOUNT_CURRENCIES.map((c) => (
                         <SelectItem key={c} value={c}>
                           {c}
                         </SelectItem>

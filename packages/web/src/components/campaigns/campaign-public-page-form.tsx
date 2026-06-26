@@ -48,7 +48,7 @@ import { toast } from "@/components/ui/toast";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ApiProblem } from "@/lib/api";
 import { createClientApiClient } from "@/lib/api/client-browser";
-import { formatCurrency } from "@/lib/format";
+import { formatCurrency, formatCurrencyRounded } from "@/lib/format";
 import type { Campaign } from "@/models/campaign";
 import type { CampaignPublicPage, PublicPageStatus } from "@/models/public-page";
 import { CampaignPublicPageService } from "@/services/CampaignPublicPageService";
@@ -456,6 +456,7 @@ function CampaignPublicPagePreview({
                 raisedCents: 0,
                 donorCount: 0,
                 defaultCurrency: campaign.defaultCurrency as "EUR" | "GBP" | "CHF",
+                locale,
                 // Preview-side has no access to the real tenant org name —
                 // empty string is the donor-page convention (matches the
                 // `page.organisationName ?? ""` fallback in `/p/[id]`), and
@@ -484,11 +485,7 @@ function CampaignPublicPagePreview({
                         className="rounded-xl border border-current/20 bg-current/5 px-3 py-2 text-center text-base font-semibold"
                         disabled
                       >
-                        {new Intl.NumberFormat(locale, {
-                          style: "currency",
-                          currency: "EUR",
-                          maximumFractionDigits: 0,
-                        }).format(amount)}
+                        {formatCurrencyRounded(amount * 100, locale, campaign.defaultCurrency)}
                       </button>
                     ))}
                   </div>
@@ -576,11 +573,7 @@ function CampaignPublicPagePreview({
                     type="button"
                     className="rounded-2xl border border-outline-variant bg-surface px-4 py-5 text-center text-xl font-semibold text-on-surface"
                   >
-                    {new Intl.NumberFormat(locale, {
-                      style: "currency",
-                      currency: "EUR",
-                      maximumFractionDigits: 0,
-                    }).format(amount)}
+                    {formatCurrencyRounded(amount * 100, locale, campaign.defaultCurrency)}
                   </button>
                 ))}
               </div>

@@ -41,6 +41,8 @@ export interface ArchetypePageData {
   raisedCents: number;
   donorCount: number;
   defaultCurrency: PublicDonationCurrency;
+  /** BCP-47 locale for donor-facing money/number formatting in every slot. */
+  locale: string;
   organisationName: string;
   organisationMission: string | null;
   organisationLogoUrl: string | null;

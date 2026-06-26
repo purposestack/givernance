@@ -30,9 +30,9 @@ export function FoundationProgress({ data }: ProgressSlotProps) {
         className="mt-2 font-heading text-2xl text-on-surface sm:text-3xl"
         style={{ fontVariantNumeric: "tabular-nums lining-nums" }}
       >
-        <span className="font-semibold">{formatCurrency(data.raisedCents, "en")}</span>
+        <span className="font-semibold">{formatCurrency(data.raisedCents, data.locale, data.defaultCurrency)}</span>
         <span className="ml-1 text-sm font-normal text-on-surface-variant">
-          {t("metrics.goalSuffix")} {formatCurrency(goalCents, "en")}
+          {t("metrics.goalSuffix")} {formatCurrency(goalCents, data.locale, data.defaultCurrency)}
         </span>
       </p>
       <div

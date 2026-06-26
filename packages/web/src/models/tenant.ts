@@ -1,6 +1,8 @@
 import type { Locale } from "@givernance/shared/i18n";
+import type { SettlementCurrency } from "@/lib/format";
 
-export type TenantCurrency = "EUR" | "GBP" | "CHF";
+/** Tenant base (settlement) currency — see lib/format theme. */
+export type TenantCurrency = SettlementCurrency;
 
 export interface Tenant {
   id: string;

@@ -16,6 +16,7 @@ import { cascadeStyle, StatCard, type StatCardTrendData } from "@/components/das
 import { CountUp } from "@/components/shared/count-up";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
+import { CurrencyAmount } from "@/components/ui/currency-amount";
 import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
 import { hasPermission, requireAuth } from "@/lib/auth/guards";
@@ -131,23 +132,20 @@ export default async function DashboardPage() {
         <StatCard
           label={t("stats.totalRaised")}
           value={
-            // Multi-currency aggregate (ADR-032 §2.13) keeps main's CountUp
-            // animation. The `≈` prefix marks a genuinely FX-converted total so
-            // the figure is never mistaken for an exact single-currency sum.
+            // A genuinely FX-converted total renders through CurrencyAmount
+            // (ADR-032 §2.13) — it owns the `≈` prefix, the conversion tooltip
+            // and the SR announcement. The single-currency case keeps main's
+            // CountUp animation, which the aggregate variant can't carry.
             mct ? (
-              <>
-                {"≈ "}
-                <CountUp
-                  value={mct.totalDisplayCents / 100}
-                  locale={locale}
-                  formatOptions={{
-                    style: "currency",
-                    currency: mct.displayCurrency,
-                    minimumFractionDigits: 0,
-                    maximumFractionDigits: 0,
-                  }}
-                />
-              </>
+              <CurrencyAmount
+                variant="aggregate"
+                rounded
+                locale={locale}
+                data={{
+                  originalAmount: mct.totalDisplayCents,
+                  originalCurrency: mct.displayCurrency,
+                }}
+              />
             ) : (
               <CountUp
                 value={totalRaisedCents / 100}

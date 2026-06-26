@@ -19,7 +19,12 @@ import { toast } from "@/components/ui/toast";
 import { ApiProblem } from "@/lib/api";
 import { createClientApiClient } from "@/lib/api/client-browser";
 import { getReadableTextColor } from "@/lib/color";
-import { formatCurrency } from "@/lib/format";
+import {
+  formatCurrency,
+  formatCurrencyRounded,
+  getCurrencySymbol,
+  SETTLEMENT_CURRENCIES,
+} from "@/lib/format";
 import type { PublicDonationCurrency } from "@/models/public-page";
 import { CampaignPublicPageService } from "@/services/CampaignPublicPageService";
 
@@ -140,7 +145,9 @@ const DEFAULT_VALUES: PublicDonationFormValues = {
   amount: "",
   currency: "EUR",
 };
-const PUBLIC_DONATION_CURRENCIES: PublicDonationCurrency[] = ["EUR", "GBP", "CHF"];
+// Static fallback when the multi-currency checkout-config list is unavailable
+// (flag off). Derived from the settlement-currency theme — see lib/format.
+const PUBLIC_DONATION_CURRENCIES: PublicDonationCurrency[] = [...SETTLEMENT_CURRENCIES];
 
 const SESSION_STORAGE_CURRENCY_KEY = "givernance_donation_currency";
 
@@ -442,11 +449,7 @@ function DonorDetailsForm({
                 onErrorsChange((current) => ({ ...current, amount: undefined }));
               }}
             >
-              {new Intl.NumberFormat(locale, {
-                style: "currency",
-                currency: values.currency,
-                maximumFractionDigits: 0,
-              }).format(amount)}
+              {formatCurrencyRounded(amount * 100, locale, values.currency)}
             </Button>
           );
         })}
@@ -534,7 +537,7 @@ function DonorDetailsForm({
           input={
             <div className="relative">
               <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-on-surface-variant">
-                {getCurrencySymbol(values.currency)}
+                {getCurrencySymbol(values.currency, locale)}
               </span>
               <Input
                 id="public-donation-amount"
@@ -604,34 +607,6 @@ function DonorDetailsForm({
       </form>
     </>
   );
-}
-
-function getCurrencySymbol(currency: string): string {
-  switch (currency) {
-    case "GBP":
-      return "£";
-    case "CHF":
-      return "CHF";
-    default:
-      // For all other currencies (EUR, USD, SEK, NOK, DKK, PLN, CZK, HUF,
-      // JPY, and any future dynamic currencies from checkout-config), fall
-      // back to the Intl-formatted symbol. Using `€` as the ultimate fallback
-      // keeps the previous behaviour for EUR which is the most common case.
-      try {
-        return (
-          new Intl.NumberFormat("en", {
-            style: "currency",
-            currency,
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 0,
-          })
-            .formatToParts(0)
-            .find((p) => p.type === "currency")?.value ?? currency
-        );
-      } catch {
-        return currency;
-      }
-  }
 }
 
 function Field({

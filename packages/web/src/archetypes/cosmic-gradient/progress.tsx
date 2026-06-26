@@ -14,7 +14,7 @@ export function CosmicProgress({ data }: ProgressSlotProps) {
 
   return (
     <section className="cosmic-progress" aria-label="Campaign progress">
-      <p className="cosmic-progress__amount">{formatCurrency(data.raisedCents, "en")}</p>
+      <p className="cosmic-progress__amount">{formatCurrency(data.raisedCents, data.locale, data.defaultCurrency)}</p>
       <div>
         <div
           className="cosmic-progress__bar"
@@ -27,8 +27,8 @@ export function CosmicProgress({ data }: ProgressSlotProps) {
           <span style={{ width: `${progressPercent}%` }} />
         </div>
         <p className="cosmic-progress__meta">
-          of <strong>{formatCurrency(goalCents, "en")}</strong> goal ·{" "}
-          {data.donorCount.toLocaleString("en")} backers · <strong>{progressPercent} %</strong>{" "}
+          of <strong>{formatCurrency(goalCents, data.locale, data.defaultCurrency)}</strong> goal ·{" "}
+          {data.donorCount.toLocaleString(data.locale)} backers · <strong>{progressPercent} %</strong>{" "}
           funded
         </p>
       </div>

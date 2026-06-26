@@ -106,6 +106,7 @@ function renderArchetype(args: {
     raisedCents: page.raisedCents,
     donorCount: page.donorCount,
     defaultCurrency: page.defaultCurrency,
+    locale,
     organisationName: page.organisationName ?? "",
     organisationMission: page.organisationMission ?? null,
     organisationLogoUrl: page.organisationLogoUrl ?? null,

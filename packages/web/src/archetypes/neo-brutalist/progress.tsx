@@ -16,14 +16,14 @@ export function NeoBrutalistProgress({ data }: ProgressSlotProps) {
       aria-valuenow={progressPercent}
       aria-valuetext={ariaValueText}
     >
-      <p className="neo-progress__amount">{formatCurrency(data.raisedCents, "en")}</p>
+      <p className="neo-progress__amount">{formatCurrency(data.raisedCents, data.locale, data.defaultCurrency)}</p>
       <div>
         <div className="neo-progress__bar" aria-hidden="true">
           <span style={{ width: `${progressPercent}%` }} />
         </div>
         <p className="neo-progress__meta">
-          / {formatCurrency(goalCents, "en")} · {progressPercent}% ·{" "}
-          {data.donorCount.toLocaleString("en")} backers
+          / {formatCurrency(goalCents, data.locale, data.defaultCurrency)} · {progressPercent}% ·{" "}
+          {data.donorCount.toLocaleString(data.locale)} backers
         </p>
       </div>
     </section>

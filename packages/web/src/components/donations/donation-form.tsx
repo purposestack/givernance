@@ -73,13 +73,12 @@ import type {
   DonationDetail,
   DonationUpdateInput,
 } from "@/models/donation";
+import { DONATION_CURRENCIES, type DonationCurrency } from "@/lib/format";
 import type { Fund } from "@/models/fund";
 import { CampaignService } from "@/services/CampaignService";
 import { ConstituentService } from "@/services/ConstituentService";
 import { DonationService } from "@/services/DonationService";
 
-const CURRENCIES = ["EUR", "GBP", "CHF", "SEK", "NOK", "DKK", "PLN", "CZK"] as const;
-type DonationCurrency = (typeof CURRENCIES)[number];
 const PAYMENT_METHODS = ["wire", "cheque", "card", "sepa", "cash", "other"] as const;
 
 interface AllocationFormValue {
@@ -446,7 +445,7 @@ export function DonationForm(props: DonationFormProps) {
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {CURRENCIES.map((c) => (
+                      {DONATION_CURRENCIES.map((c) => (
                         <SelectItem key={c} value={c}>
                           {c}
                         </SelectItem>

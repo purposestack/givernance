@@ -22,15 +22,15 @@ export function CivicProgress({ data }: ProgressSlotProps) {
     >
       <div className="civic-progress__cell">
         <p className="civic-progress__label">Raised</p>
-        <p className="civic-progress__value">{formatCurrency(data.raisedCents, "en")}</p>
+        <p className="civic-progress__value">{formatCurrency(data.raisedCents, data.locale, data.defaultCurrency)}</p>
       </div>
       <div className="civic-progress__cell">
         <p className="civic-progress__label">Goal</p>
-        <p className="civic-progress__value">{formatCurrency(goalCents, "en")}</p>
+        <p className="civic-progress__value">{formatCurrency(goalCents, data.locale, data.defaultCurrency)}</p>
       </div>
       <div className="civic-progress__cell">
         <p className="civic-progress__label">Supporters</p>
-        <p className="civic-progress__value">{data.donorCount.toLocaleString("en")}</p>
+        <p className="civic-progress__value">{data.donorCount.toLocaleString(data.locale)}</p>
       </div>
       <div className="civic-progress__cell">
         <p className="civic-progress__label">% funded</p>
