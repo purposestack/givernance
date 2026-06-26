@@ -52,7 +52,7 @@ jobs:
       NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || '' }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6.0.3
+        uses: actions/checkout@v7.0.0
 
       # Detect whether this push touched Keycloak source files (the realm
       # JSON, the sync script) — combined with `gates.outputs.keycloak_changed`
