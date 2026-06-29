@@ -4,7 +4,7 @@ import { donations } from "@givernance/shared/schema";
 import { Type } from "@sinclair/typebox";
 import { eq, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
-import { db } from "../../lib/db.js";
+import { db, systemDb } from "../../lib/db.js";
 import { redis } from "../../lib/redis.js";
 
 const HealthResponse = Type.Object({ status: Type.String() });
@@ -47,7 +47,11 @@ async function getFxSubsystem(): Promise<{
 
   let pendingBackfillCount = 0;
   try {
-    const result = await db
+    // systemDb (owner pool): this is a deliberate CROSS-TENANT platform health
+    // metric — the FX-backlog alarm (ADR-032 §2.12) counts fx_pending donations
+    // across every tenant. Under the app pool (RLS, no tenant context) this COUNT
+    // matches zero rows and the alarm is silently dead (H-be-2).
+    const result = await systemDb
       .select({ count: sql<number>`COUNT(*)::integer` })
       .from(donations)
       .where(eq(donations.fxPending, true));

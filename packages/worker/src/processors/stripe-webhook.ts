@@ -227,7 +227,7 @@ export async function processStripeWebhook(
 }
 
 /**
- * ADR-031 §2.2 — Fetch Stripe balance_transaction FX data.
+ * ADR-032 §2.2 — Fetch Stripe balance_transaction FX data.
  *
  * Pulled out of `handlePaymentIntentSucceeded` to keep that function below
  * the cognitive-complexity threshold. Returns a plain object whose fields
@@ -236,7 +236,7 @@ export async function processStripeWebhook(
  *
  * When STRIPE_SECRET_KEY is not configured (test environments without a
  * Stripe mock) the function returns `fxPending: false` with all other
- * settlement fields undefined — this matches the pre-ADR-031 behaviour and
+ * settlement fields undefined — this matches the pre-ADR-032 behaviour and
  * keeps existing tests green without adding a test-seam dependency.
  */
 async function fetchBalanceTxnFx(
@@ -336,7 +336,7 @@ async function fetchBalanceTxnFx(
 }
 
 /**
- * ADR-031 §3.1 — Multi-fund allocation inside a DB transaction.
+ * ADR-032 §3.1 — Multi-fund allocation inside a DB transaction.
  *
  * Pulled out of the `withWorkerContext` callback in `handlePaymentIntentSucceeded`
  * to keep that callback below the cognitive-complexity threshold.
@@ -406,12 +406,12 @@ async function maybeCreateFundAllocations(
  * Resolves the tenant from the connected account ID, finds or creates the constituent,
  * and records the donation atomically with a DonationCreated outbox event.
  *
- * ADR-031 §2.2: after the charge is confirmed, fetch the Stripe balance_transaction
+ * ADR-032 §2.2: after the charge is confirmed, fetch the Stripe balance_transaction
  * to obtain the actual settled amount and FX rate stamped by Stripe at settlement.
  * This is more accurate than the Fixer.io estimate because Stripe records the
  * exact EUR amount (or whatever the account settlement currency is) after fees.
  *
- * ADR-031 §3.1: if the DONATION_FUND_ROUTING flag is on, create donation_allocations
+ * ADR-032 §3.1: if the DONATION_FUND_ROUTING flag is on, create donation_allocations
  * rows for each campaign_funds row with is_online_default = true.
  */
 async function handlePaymentIntentSucceeded(
@@ -448,7 +448,7 @@ async function handlePaymentIntentSucceeded(
   const qrCodeConstituentIdFromMetadata = metadata.qr_code_constituent_id || null;
   const platformFeeCents = intent.application_fee_amount ?? 0;
 
-  // ── ADR-031 §2.2 — Fetch Stripe balance_transaction for settlement FX data ──
+  // ── ADR-032 §2.2 — Fetch Stripe balance_transaction for settlement FX data ──
   // Delegated to `fetchBalanceTxnFx` to keep cognitive complexity below the
   // max-20 threshold. Falls back gracefully (fxPending=true) on Stripe outage
   // or missing STRIPE_SECRET_KEY; the backfill job (Task 5) fills it in later.
@@ -493,7 +493,7 @@ async function handlePaymentIntentSucceeded(
     });
 
     // Create the donation record — ON CONFLICT guards against BullMQ retry duplicates.
-    // ADR-031 §2.2: populate settlement FX columns from the balance_transaction fetch above.
+    // ADR-032 §2.2: populate settlement FX columns from the balance_transaction fetch above.
     const [donation] = await tx
       .insert(donations)
       .values({
@@ -501,7 +501,7 @@ async function handlePaymentIntentSucceeded(
         constituentId,
         amountCents,
         currency,
-        // Legacy base-currency conversion (kept for back-compat — ADR-031 §2.3)
+        // Legacy base-currency conversion (kept for back-compat — ADR-032 §2.3)
         exchangeRate: (fxExchangeRate ?? convertedAmount.exchangeRate).toFixed(8),
         amountBaseCents: convertedAmount.amountBaseCents,
         campaignId: campaignId || undefined,
@@ -513,7 +513,7 @@ async function handlePaymentIntentSucceeded(
         paymentRef: paymentIntentId,
         donatedAt: new Date(),
         fiscalYear: new Date().getFullYear(),
-        // Settlement / FX columns (ADR-031 §2.2)
+        // Settlement / FX columns (ADR-032 §2.2)
         settledAmountCents,
         settledCurrency,
         stripeBalanceTxnId,
@@ -576,7 +576,7 @@ async function handlePaymentIntentSucceeded(
         .where(and(eq(campaigns.id, campaignId), eq(campaigns.orgId, orgId)));
     }
 
-    // ── ADR-031 §3.1 — Multi-fund allocation (DONATION_FUND_ROUTING flag) ────
+    // ── ADR-032 §3.1 — Multi-fund allocation (DONATION_FUND_ROUTING flag) ────
     // Delegated to `maybeCreateFundAllocations` (extracted to keep the callback
     // below the cognitive-complexity threshold). No-op when flag is off or when
     // there is no campaignId (vanilla donation with no campaign context).
@@ -759,6 +759,9 @@ async function handleChargeRefunded(
         donationId: donation.id,
         paymentRef: paymentIntentId,
         source: "stripe_webhook",
+        // Bucket the refund leaves — the row already reads `refunded` by the time
+        // the balance processor runs, so it can't infer this (ADR-032 §2.10).
+        priorStatus: donation.status,
       },
     });
 

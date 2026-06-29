@@ -300,7 +300,7 @@ export const users = pgTable(
      */
     locale: varchar("locale", { length: 10 }).$type<Locale>(),
     /**
-     * Personal display currency override (ADR-031 §2.8, Epic #416 Task 7).
+     * Personal display currency override (ADR-032 §2.8, Epic #416 Task 7).
      * NULL means "use the org's baseCurrency as the display currency".
      * When set, must reference a `currency_metadata.code` WHERE enabled = true.
      * The PATCH /v1/users/me endpoint validates the value against
@@ -696,7 +696,7 @@ export {
   type NewCustomizationQuotaOverrideRow,
 } from "./customization";
 
-// ─── Currency metadata (ADR-031 §2.9, Epic #416) ──────────────────────────────
+// ─── Currency metadata (ADR-032 §2.9, Epic #416) ──────────────────────────────
 
 export {
   type CurrencyMetadata,
@@ -975,7 +975,7 @@ export const donations = pgTable(
     /**
      * Donation amount converted to the fund's settlement currency, in
      * settlement-currency cents. Supersedes amountBaseCents conceptually
-     * (ADR-031 §2.3) — amountBaseCents is retained for back-compat.
+     * (ADR-032 §2.3) — amountBaseCents is retained for back-compat.
      */
     amountInSettlementCurrencyCents: integer("amount_in_settlement_currency_cents"),
 
@@ -984,7 +984,7 @@ export const donations = pgTable(
      * Set TRUE when the FX rate could not be fetched synchronously (e.g. Fixer
      * API outage). The backfill job queries WHERE fx_pending = TRUE, fills in
      * exchangeRate / exchangeRateSource / amountInSettlementCurrencyCents, then
-     * flips this to FALSE. (Epic #416 Task 5 / ADR-031 §2.3)
+     * flips this to FALSE. (Epic #416 Task 5 / ADR-032 §2.3)
      */
     fxPending: boolean("fx_pending").notNull().default(false),
     paymentMethod: varchar("payment_method", { length: 50 }),
@@ -1037,7 +1037,7 @@ export const funds = pgTable(
     description: text("description"),
     type: fundTypeEnum("type").notNull().default("unrestricted"),
     /**
-     * Optional FK to the settlement bank account for this fund (ADR-031 §2.4,
+     * Optional FK to the settlement bank account for this fund (ADR-032 §2.4,
      * Epic #416 Task 3). When set, donations allocated to this fund settle via
      * the specified bank account; `bank_accounts.currency` becomes the fund's
      * settlement currency. Nullable — existing funds have no bank account
@@ -1084,7 +1084,7 @@ export const donationAllocations = pgTable(
   ],
 );
 
-// ─── Org Currency Balances (ADR-031 §2.10) ───────────────────────────────────
+// ─── Org Currency Balances (ADR-032 §2.10) ───────────────────────────────────
 
 /**
  * Materialized running totals per (org, currency) pair. Updated by the
@@ -1100,9 +1100,12 @@ export const donationAllocations = pgTable(
  * Deltas are signed: refunds pass a negative cleared delta so the
  * ON CONFLICT UPDATE naturally subtracts from the running total.
  *
- * RLS tenant isolation: `org_id = current_setting('app.current_org_id', true)::uuid`.
+ * RLS tenant isolation via the `app_current_organization_id()` helper (FORCE'd).
  * Only `SELECT` is granted to `givernance_app`; the worker processor
- * connects via the owner role for the upsert.
+ * connects via the owner pool for the upsert.
+ *
+ * Totals are BIGINT cents — cumulative lifetime running totals overflow INTEGER
+ * (cap ≈ €21.4M) for a mid/large NPO (ADR-032 §2.10).
  */
 export const orgCurrencyBalances = pgTable(
   "org_currency_balances",
@@ -1111,8 +1114,8 @@ export const orgCurrencyBalances = pgTable(
       .notNull()
       .references(() => tenants.id, { onDelete: "cascade" }),
     currency: varchar("currency", { length: 3 }).notNull(),
-    clearedTotalCents: integer("cleared_total_cents").notNull().default(0),
-    pendingTotalCents: integer("pending_total_cents").notNull().default(0),
+    clearedTotalCents: bigint("cleared_total_cents", { mode: "number" }).notNull().default(0),
+    pendingTotalCents: bigint("pending_total_cents", { mode: "number" }).notNull().default(0),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -1365,7 +1368,7 @@ export const campaignFunds = pgTable(
      * entire donation amount flows to the single fund with no split.
      * When two or more funds are assigned, every row must have a non-null
      * splitPct and the values must sum to exactly 100.00.
-     * ADR-031 §2.5, Epic #416 Task 4.
+     * ADR-032 §2.5, Epic #416 Task 4.
      */
     splitPct: numeric("split_pct", { precision: 5, scale: 2 }),
     /**

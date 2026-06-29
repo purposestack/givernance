@@ -30,9 +30,9 @@ type LocaleChoice = Locale | typeof FOLLOW_TENANT;
 /**
  * Sentinel value used by the displayCurrency Select to mean "no personal
  * override — use the org's baseCurrency". The API takes `displayCurrency: null`.
- * ADR-031 §2.8, Epic #416 Task 7.
+ * ADR-032 §2.8, Epic #416 Task 7.
  *
- * TODO(ADR-031 task #409): fetch the enabled currency list from /v1/currencies
+ * TODO(ADR-032 task #409): fetch the enabled currency list from /v1/currencies
  * when that endpoint exists instead of using the hardcoded DISPLAY_CURRENCIES list.
  */
 const FOLLOW_ORG_CURRENCY = "__follow_org__" as const;
@@ -40,7 +40,7 @@ type CurrencyChoice = string | typeof FOLLOW_ORG_CURRENCY;
 
 /**
  * Hardcoded list of currencies offered in the display currency picker.
- * TODO(ADR-031 task #409): fetch from /v1/currencies when endpoint exists.
+ * TODO(ADR-032 task #409): fetch from /v1/currencies when endpoint exists.
  */
 const DISPLAY_CURRENCIES = ["EUR", "CHF", "GBP", "USD", "SEK", "NOK", "DKK", "PLN", "CZK"] as const;
 
@@ -58,9 +58,15 @@ interface ProfileLanguageFormProps {
    * only PATCHes on submit and rebases its state from the response.
    */
   initial: MeProfile;
+  /**
+   * Whether `donation.multi_currency` is on for the tenant. Gates the
+   * display-currency picker per the feature-flag-first rule (F12) — when
+   * off the picker is wholly absent and the user follows the org currency.
+   */
+  multiCurrencyEnabled: boolean;
 }
 
-export function ProfileLanguageForm({ initial }: ProfileLanguageFormProps) {
+export function ProfileLanguageForm({ initial, multiCurrencyEnabled }: ProfileLanguageFormProps) {
   const t = useTranslations("profile.language");
   const tCurrency = useTranslations("profile.displayCurrency");
   const router = useRouter();
@@ -163,36 +169,38 @@ export function ProfileLanguageForm({ initial }: ProfileLanguageFormProps) {
             </p>
           </div>
 
-          <div className="space-y-2">
-            <label
-              htmlFor="profile-display-currency"
-              className="text-sm font-medium text-on-surface"
-            >
-              {tCurrency("displayCurrencyLabel")}
-            </label>
-            <Select
-              value={currencyChoice}
-              onValueChange={(value) => setCurrencyChoice(value as CurrencyChoice)}
-              disabled={saving}
-            >
-              <SelectTrigger
-                id="profile-display-currency"
-                aria-label={tCurrency("displayCurrencyLabel")}
+          {multiCurrencyEnabled ? (
+            <div className="space-y-2">
+              <label
+                htmlFor="profile-display-currency"
+                className="text-sm font-medium text-on-surface"
               >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={FOLLOW_ORG_CURRENCY}>
-                  {tCurrency("displayCurrencyPlaceholder")}
-                </SelectItem>
-                {DISPLAY_CURRENCIES.map((code) => (
-                  <SelectItem key={code} value={code}>
-                    {code}
+                {tCurrency("displayCurrencyLabel")}
+              </label>
+              <Select
+                value={currencyChoice}
+                onValueChange={(value) => setCurrencyChoice(value as CurrencyChoice)}
+                disabled={saving}
+              >
+                <SelectTrigger
+                  id="profile-display-currency"
+                  aria-label={tCurrency("displayCurrencyLabel")}
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={FOLLOW_ORG_CURRENCY}>
+                    {tCurrency("displayCurrencyPlaceholder")}
                   </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+                  {DISPLAY_CURRENCIES.map((code) => (
+                    <SelectItem key={code} value={code}>
+                      {code}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : null}
         </div>
 
         {errorMessage ? <p className="text-sm text-error">{errorMessage}</p> : null}

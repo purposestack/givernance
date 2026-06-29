@@ -1,8 +1,8 @@
 /**
  * FxRateService — Fixer.io-backed exchange rate lookup with Redis cache.
  *
- * ADR-031 §2.1: Fixer.io as exchange rate provider, Redis cache with 25h TTL.
- * ADR-031 §1.4: FX resilience — returns rate: null (fx_pending fallback) when
+ * ADR-032 §2.1: Fixer.io as exchange rate provider, Redis cache with 25h TTL.
+ * ADR-032 §1.4: FX resilience — returns rate: null (fx_pending fallback) when
  * Fixer.io is down.
  *
  * Cache key strategy: fx:rates:{fromCurrency} → JSON { rates: Record<string, number>, timestamp: string }
@@ -89,7 +89,7 @@ export class FxRateService {
    *   2. Redis cache hit (key fx:rates:{fromCurrency}) → { rate, source: "fixer_cache" }
    *   3. Live Fixer.io call + cache population → { rate, source: "fixer_api" }
    *   4. Fixer.io unavailable → { rate: null, source: "fixer_cache" }
-   *      (caller must set fx_pending = true per ADR-031 §1.4)
+   *      (caller must set fx_pending = true per ADR-032 §1.4)
    */
   async getRate(fromCurrency: string, toCurrency: string): Promise<FxRateResult> {
     const from = fromCurrency.trim().toUpperCase();

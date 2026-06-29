@@ -1,4 +1,4 @@
--- Migration 0062: Add display_currency to users (ADR-031 §2.8, Epic #416 Task 7)
+-- Migration 0062: Add display_currency to users (ADR-032 §2.8, Epic #416 Task 7)
 --
 -- NULL = use the org's baseCurrency as the display currency.
 -- When set, the value must match a currency_metadata.code WHERE enabled = true;

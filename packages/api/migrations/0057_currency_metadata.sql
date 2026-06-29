@@ -1,11 +1,11 @@
--- Migration: 0057_currency_metadata (ADR-031 §2.9, Epic #416, Task 2)
+-- Migration: 0057_currency_metadata (ADR-032 §2.9, Epic #416, Task 2)
 --
 -- Platform-managed currency reference table. One row per ISO 4217 currency
 -- code. Carries Stripe-specific metadata (zero-decimal flag, special-handling
 -- flag, minimum chargeable amount) so the checkout-config service can validate
 -- amounts without a hard-coded switch in application code.
 --
--- Design notes (full rationale in `docs/adrs/adr-031-multi-currency.md`):
+-- Design notes (full rationale in `docs/adrs/adr-032-multi-currency.md`):
 --
 --   * No `org_id` — this is a platform table, not a tenant-scoped one.
 --     The app role (`givernance_app`) gets SELECT-only access; writes are

@@ -2,7 +2,7 @@
 --
 -- Generalises the `bank_accounts` table from a Swiss-only QR-bill
 -- account holder to a generic multi-currency settlement account per
--- ADR-031 §2.4:
+-- ADR-032 §2.4:
 --
 --   1. Add `label` (VARCHAR 255, NOT NULL) — human-readable operator
 --      label ("PostFinance CHF", "UBS EUR"). Required on all new rows;

@@ -391,17 +391,30 @@ export const RECEIPT_JOBS = {
   REWRAP_DEKS: "receipts.rewrap_deks",
 } as const;
 
-// ─── Org currency balances (ADR-031 §2.10, Epic #416 Task 6) ────────────────
+// ─── Org currency balances (ADR-032 §2.10, Epic #416 Task 6) ────────────────
+
+/**
+ * Donation status values relevant to balance accounting. Kept loose (`string`
+ * fallback) so an unrecognised future status degrades to a safe no-op rather
+ * than a wrong delta.
+ */
+export type DonationBalanceStatus = "pending" | "cleared" | "refunded" | "failed" | "cancelled";
 
 /**
  * Update the org_currency_balances materialized table in response to a
  * donation lifecycle event.
  *
- * `eventType` maps to a signed delta on cleared/pending totals:
- *   - "donation.created"     status=cleared → +cleared
- *   - "donation.created"     status=pending → +pending
- *   - "donation.refunded"                  → -cleared
- *   - "donation.status_changed" (pending→cleared) → +cleared, -pending
+ * The delta is derived from the ACTUAL status transition carried on the event,
+ * never from an assumed one (ADR-032 §2.10):
+ *   - "donation.created"        → +cleared (status=cleared) or +pending (status=pending)
+ *   - "donation.refunded"       → −cleared if priorStatus=cleared, −pending if priorStatus=pending,
+ *                                  else no-op (never blindly −cleared)
+ *   - "donation.status_changed" → branch on (fromStatus → toStatus); only pending→cleared
+ *                                  does +cleared/−pending. Missing transition data ⇒ safe no-op.
+ *
+ * `priorStatus` (refunds) and `fromStatus`/`toStatus` (transitions) are optional
+ * so older enqueued jobs and producers that don't carry them degrade to a no-op
+ * instead of corrupting the materialized totals.
  */
 export interface UpdateOrgCurrencyBalanceJob {
   name: "update-org-currency-balance";
@@ -412,12 +425,17 @@ export type UpdateOrgCurrencyBalancePayload = {
   orgId: string;
   donationId: string;
   eventType: "donation.created" | "donation.refunded" | "donation.status_changed";
+  /** Status of the donation immediately BEFORE a refund (which bucket it leaves). */
+  priorStatus?: DonationBalanceStatus;
+  /** Status transition for `donation.status_changed` events. */
+  fromStatus?: DonationBalanceStatus;
+  toStatus?: DonationBalanceStatus;
 };
 
 /** Queue name for the currency-balance update jobs (Epic #416 Task 6). */
 export const CURRENCY_BALANCE_QUEUE_NAME = "currency_balances" as const;
 
-// ─── FX cache (ADR-031 §2.1, Epic #416 Tasks 9–11) ─────────────────────────
+// ─── FX cache (ADR-032 §2.1, Epic #416 Tasks 9–11) ─────────────────────────
 
 /**
  * Refresh the Fixer.io FX-rate Redis cache for every active bank-account

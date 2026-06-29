@@ -1,4 +1,4 @@
--- Migration 0058: Add bank_account_id FK to funds (ADR-031 §2.4, Epic #416 Task 3)
+-- Migration 0058: Add bank_account_id FK to funds (ADR-032 §2.4, Epic #416 Task 3)
 --
 -- Adds the settlement account binding to funds. Nullable initially — existing
 -- funds have no bank account assigned. A follow-up migration will enforce NOT

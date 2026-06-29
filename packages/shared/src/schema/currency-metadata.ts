@@ -2,7 +2,7 @@ import { boolean, integer, pgTable, smallint, text, varchar } from "drizzle-orm/
 
 /**
  * Currency metadata — static reference table for ISO 4217 currencies supported
- * by Givernance (ADR-031 §2.9, Epic #416).
+ * by Givernance (ADR-032 §2.9, Epic #416).
  *
  * This is a platform-managed lookup table, not a tenant-scoped one. It has no
  * `org_id` column and no RLS policy — the app role gets SELECT-only access and
@@ -31,7 +31,7 @@ import { boolean, integer, pgTable, smallint, text, varchar } from "drizzle-orm/
  *                      flow. Disabled by default; the seed migration enables
  *                      the initial set.
  *
- * TODO(ADR-031): The static MULTI_CURRENCY_VALUES / DonationCreateSchema
+ * TODO(ADR-032): The static MULTI_CURRENCY_VALUES / DonationCreateSchema
  * currency union in `packages/shared/src/validators/index.ts` will be
  * replaced with a runtime check against `currency_metadata.enabled = true`
  * in task #409 (checkout-config endpoint).

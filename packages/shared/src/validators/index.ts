@@ -176,7 +176,7 @@ export const DonationAllocationSchema = Type.Object({
   amountCents: Type.Integer({ exclusiveMinimum: 0 }),
 });
 
-// TODO(ADR-031): Replace these static lists with a runtime check against currency_metadata.enabled = true
+// TODO(ADR-032): Replace these static lists with a runtime check against currency_metadata.enabled = true
 // This will be wired in task #409 (checkout-config endpoint).
 //
 // Two themed currency sets, single source of truth for both API validation

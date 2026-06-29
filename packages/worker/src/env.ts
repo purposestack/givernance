@@ -89,7 +89,7 @@ const EnvSchema = Type.Object({
   EXCHANGE_RATE_API_KEY: Type.Optional(Type.String({ minLength: 1 })),
   /**
    * Fixer.io API key — used by the FX-rate cache refresh and backfill jobs
-   * (ADR-031 §2.1, Epic #416 Tasks 9–11). Optional — when absent, the
+   * (ADR-032 §2.1, Epic #416 Tasks 9–11). Optional — when absent, the
    * FxRateService skips live calls and returns rate: null (fx_pending fallback).
    */
   FIXER_API_KEY: Type.Optional(Type.String({ minLength: 1 })),

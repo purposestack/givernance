@@ -1,4 +1,4 @@
--- Migration 0063: Seed feature flags for multi-currency (ADR-031, Epic #416 Task 8)
+-- Migration 0063: Seed feature flags for multi-currency (ADR-032, Epic #416 Task 8)
 --
 -- Seeds two feature flags introduced by the multi-currency Epic:
 --
@@ -27,7 +27,7 @@
 --     `packages/api/src/tests/integration/feature-flags.test.ts`
 --     asserts label + description + scope + tenant_override_allowed +
 --     public match between these rows and the registry. Drift fails CI.
---   - `docs/adrs/adr-031-multi-currency-strategy.md` — ADR governing
+--   - `docs/adrs/adr-032-multi-currency-strategy.md` — ADR governing
 --     the multi-currency approach.
 --
 -- Idempotent — `ON CONFLICT (key) DO NOTHING` so a redeploy preserves

@@ -72,7 +72,7 @@ export interface SwissQrBillPreviewBankAccount {
   holderPostalCode: string;
   holderTown: string;
   holderCountryCode: string;
-  /** ISO 4217 alpha-3 settlement currency — open-ended after ADR-031 §2.4. */
+  /** ISO 4217 alpha-3 settlement currency — open-ended after ADR-032 §2.4. */
   currency: string;
 }
 

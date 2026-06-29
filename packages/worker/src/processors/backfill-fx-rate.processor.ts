@@ -1,6 +1,6 @@
 /**
  * backfill_fx_rate — resolve historical FX rates for fx_pending donations
- * (ADR-031 §1.4 + §2.1, Epic #416 Task 11).
+ * (ADR-032 §1.4 + §2.1, Epic #416 Task 11).
  *
  * Donations land with `fx_pending = true` when Fixer.io was unavailable at
  * checkout time. This processor batches through them oldest-first, fetches
@@ -39,6 +39,7 @@ import {
 import {
   auditLogs,
   bankAccounts,
+  currencyMetadata,
   donationAllocations,
   donations,
   funds,
@@ -143,6 +144,12 @@ async function resolveSettlementCurrency(
  * Fetch the Fixer.io historical rate for a donation date and currency pair.
  * Returns null when Fixer.io is unavailable (caller aborts the batch).
  * Returns the rate or undefined when the API responds but the pair is missing.
+ *
+ * Direction (ADR-032): we convert the DONATION amount INTO the settlement
+ * currency, so the rate must be "settlement units per donation unit". Fixer's
+ * `base` is the FROM currency, so `base=donationCurrency&symbols=settlementCurrency`
+ * and the rate is `rates[settlementCurrency]`. (Same convention as the shared
+ * `FxRateService.getRate(from, to)` and Stripe's `balance_transaction.exchange_rate`.)
  */
 async function fetchHistoricalRate(
   donationId: string,
@@ -151,7 +158,7 @@ async function fetchHistoricalRate(
   dateStr: string,
   log: ReturnType<typeof jobLogger>,
 ): Promise<{ rate: number; timestamp: Date } | null | "fixer_unavailable"> {
-  const url = `${FIXER_BASE_URL}/${dateStr}?access_key=${env.FIXER_API_KEY}&base=${settlementCurrency}&symbols=${donationCurrency}`;
+  const url = `${FIXER_BASE_URL}/${dateStr}?access_key=${env.FIXER_API_KEY}&base=${donationCurrency}&symbols=${settlementCurrency}`;
 
   let response: FixerHistoricalResponse;
   try {
@@ -181,7 +188,7 @@ async function fetchHistoricalRate(
     return "fixer_unavailable";
   }
 
-  const rate = response.rates[donationCurrency];
+  const rate = response.rates[settlementCurrency];
   if (rate === undefined || !Number.isFinite(rate) || rate <= 0) {
     log.warn(
       { donationId, donationCurrency, settlementCurrency, date: dateStr },
@@ -192,6 +199,20 @@ async function fetchHistoricalRate(
 
   const timestamp = response.timestamp ? new Date(response.timestamp * 1000) : new Date(dateStr);
   return { rate, timestamp };
+}
+
+/**
+ * Resolve the ISO-4217 minor-unit exponent (decimal places) for a currency from
+ * `currency_metadata`. Defaults to 2 (the overwhelming-majority case) when the
+ * row is absent so a missing seed never makes the conversion crash.
+ */
+async function minorUnitOf(currency: string): Promise<number> {
+  const [row] = await db
+    .select({ minorUnit: currencyMetadata.minorUnit })
+    .from(currencyMetadata)
+    .where(eq(currencyMetadata.code, currency.toUpperCase()))
+    .limit(1);
+  return row?.minorUnit ?? 2;
 }
 
 /** Process one donation from the batch. Returns the outcome. */
@@ -205,6 +226,7 @@ async function processDonation(
   const donationCurrency = donation.currency.toUpperCase();
 
   if (donationCurrency === settlementCurrency) {
+    // Same currency ⇒ same minor unit ⇒ scale 1.
     await resolveDonation(
       donation.id,
       donation.orgId,
@@ -212,6 +234,7 @@ async function processDonation(
       "same_currency",
       new Date(),
       donation.amountCents,
+      1,
       log,
     );
     return { kind: "resolved" };
@@ -229,6 +252,12 @@ async function processDonation(
   if (rateResult === "fixer_unavailable") return { kind: "fixer_unavailable" };
   if (rateResult === null) return { kind: "skipped" };
 
+  const [donationMinor, settlementMinor] = await Promise.all([
+    minorUnitOf(donationCurrency),
+    minorUnitOf(settlementCurrency),
+  ]);
+  const minorUnitScale = 10 ** (settlementMinor - donationMinor);
+
   await resolveDonation(
     donation.id,
     donation.orgId,
@@ -236,6 +265,7 @@ async function processDonation(
     "backfilled",
     rateResult.timestamp,
     donation.amountCents,
+    minorUnitScale,
     log,
   );
   return { kind: "resolved" };
@@ -352,9 +382,14 @@ async function resolveDonation(
   source: string,
   rateTimestamp: Date,
   amountCents: number,
+  minorUnitScale: number,
   log: ReturnType<typeof jobLogger>,
 ): Promise<void> {
-  const amountInSettlementCurrencyCents = Math.round(amountCents * rate);
+  // `amountCents` is in the DONATION currency's minor units; the settled amount is
+  // in the SETTLEMENT currency's minor units. `rate` converts MAJOR→MAJOR, so we
+  // must also rescale by 10^(settlementMinorUnit − donationMinorUnit) — otherwise
+  // ¥10000 JPY (0 dp) → EUR (2 dp) is 100× off (ADR-032 §2.3, H-pay-1).
+  const amountInSettlementCurrencyCents = Math.round(amountCents * rate * minorUnitScale);
 
   await db
     .update(donations)

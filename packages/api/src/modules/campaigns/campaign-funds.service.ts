@@ -1,6 +1,6 @@
 /**
  * Campaign-funds routing service — manages the campaign_funds junction table
- * for multi-fund split routing (ADR-031 §2.5, Epic #416 Task 4).
+ * for multi-fund split routing (ADR-032 §2.5, Epic #416 Task 4).
  *
  * Invariants enforced on every write:
  *   1. Single fund per campaign: splitPct may be NULL; isOnlineDefault is
@@ -57,6 +57,14 @@ export class CampaignFundNotFoundError extends Error {
   }
 }
 
+/** Raised when the (campaign, fund) pair is already routed (unique violation → 409). */
+export class CampaignFundConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CampaignFundConflictError";
+  }
+}
+
 // ─── Invariant Validator ──────────────────────────────────────────────────────
 
 /**
@@ -74,6 +82,7 @@ export class CampaignFundNotFoundError extends Error {
 async function validateCampaignFundsInvariants(
   tx: Parameters<Parameters<typeof withTenantContext>[1]>[0],
   campaignId: string,
+  orgId: string,
 ): Promise<string | null> {
   const rows = await tx
     .select({
@@ -81,7 +90,9 @@ async function validateCampaignFundsInvariants(
       isOnlineDefault: campaignFunds.isOnlineDefault,
     })
     .from(campaignFunds)
-    .where(eq(campaignFunds.campaignId, campaignId));
+    // Explicit tenant filter — RLS is the safety net, the predicate is the
+    // contract (issue #430), even though callers pre-verify campaign ownership.
+    .where(and(eq(campaignFunds.campaignId, campaignId), eq(campaignFunds.orgId, orgId)));
 
   if (rows.length <= 1) {
     // 0 rows (empty) or 1 row — always valid
@@ -196,18 +207,26 @@ export async function addCampaignFund(
       throw new CampaignFundNotFoundError("Fund not found in this organisation");
     }
 
-    // Insert row
-    await tx.insert(campaignFunds).values({
-      orgId,
-      campaignId,
-      fundId: payload.fundId,
-      splitPct: payload.splitPct ?? null,
-      isOnlineDefault: payload.isOnlineDefault ?? false,
-      sortOrder: payload.sortOrder ?? 0,
-    });
+    // Insert row. A duplicate (campaign, fund) trips the unique index → map the
+    // 23505 to a 409 instead of leaking a raw 500 (H-be-5).
+    try {
+      await tx.insert(campaignFunds).values({
+        orgId,
+        campaignId,
+        fundId: payload.fundId,
+        splitPct: payload.splitPct ?? null,
+        isOnlineDefault: payload.isOnlineDefault ?? false,
+        sortOrder: payload.sortOrder ?? 0,
+      });
+    } catch (err) {
+      if (typeof err === "object" && err !== null && (err as { code?: string }).code === "23505") {
+        throw new CampaignFundConflictError("This fund is already assigned to the campaign.");
+      }
+      throw err;
+    }
 
     // Validate invariants after insert
-    const violation = await validateCampaignFundsInvariants(tx, campaignId);
+    const violation = await validateCampaignFundsInvariants(tx, campaignId, orgId);
     if (violation) {
       throw new CampaignFundInvariantError(violation);
     }
@@ -307,7 +326,7 @@ export async function updateCampaignFund(
     }
 
     // Validate invariants after update
-    const violation = await validateCampaignFundsInvariants(tx, campaignId);
+    const violation = await validateCampaignFundsInvariants(tx, campaignId, orgId);
     if (violation) {
       throw new CampaignFundInvariantError(violation);
     }
@@ -411,5 +430,13 @@ export async function removeCampaignFund(
           eq(campaignFunds.orgId, orgId),
         ),
       );
+
+    // Re-validate after the delete (H-be-1): removing a non-default fund from a
+    // split set (e.g. 33.33/33.33/33.34) would otherwise leave SUM ≠ 100 silently
+    // persisted, violating §2.5. The remaining set must still satisfy the invariants.
+    const violation = await validateCampaignFundsInvariants(tx, campaignId, orgId);
+    if (violation) {
+      throw new CampaignFundInvariantError(violation);
+    }
   });
 }

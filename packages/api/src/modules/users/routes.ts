@@ -240,7 +240,7 @@ async function syncUserUpdateToKeycloak(args: {
  * `users.locale` so the user reverts to inheriting the tenant's `default_locale`.
  * `displayCurrency` is optional — when supplied it must be an ISO 4217 3-letter
  * code that exists in `currency_metadata WHERE enabled = true`; null clears the
- * override so the user inherits the org's baseCurrency (ADR-031 §2.8, Epic #416 Task 7).
+ * override so the user inherits the org's baseCurrency (ADR-032 §2.8, Epic #416 Task 7).
  */
 const UpdateMeBody = Type.Object({
   locale: Type.Optional(Type.Union([UserLocaleSchema, Type.Null()])),
@@ -303,7 +303,7 @@ const UserResponse = Type.Object({
  * `default_locale` so the profile UI can show "Use organisation default"
  * with the actual default value as a hint without a second round-trip.
  *
- * ADR-031 §2.8: `displayCurrency` is the user's personal display currency
+ * ADR-032 §2.8: `displayCurrency` is the user's personal display currency
  * override (NULL when they inherit the org's baseCurrency).
  */
 const MeResponse = Type.Object({
@@ -627,7 +627,7 @@ export async function userRoutes(app: FastifyInstance) {
       }
 
       // Validate displayCurrency against currency_metadata WHERE enabled = true
-      // (ADR-031 §2.8). currency_metadata has no RLS so we use systemDb.
+      // (ADR-032 §2.8). currency_metadata has no RLS so we use systemDb.
       if (body.displayCurrency !== undefined && body.displayCurrency !== null) {
         const [currRow] = await systemDb
           .select({ code: currencyMetadata.code })

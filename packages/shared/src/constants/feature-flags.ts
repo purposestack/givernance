@@ -388,7 +388,7 @@ export const FEATURE_FLAG_KEYS = {
   BRANDING_ORPHAN_GC_SWEEP: "branding.orphan_gc_sweep",
 
   /**
-   * Gates multi-fund routing within a campaign (ADR-031 §2.5, Epic #416).
+   * Gates multi-fund routing within a campaign (ADR-032 §2.5, Epic #416).
    *
    * Task 4 shipped the schema expansion and CRUD API behind this flag.
    * Task 8 (this task) adds the full registry entry (label + description +
@@ -408,7 +408,7 @@ export const FEATURE_FLAG_KEYS = {
   DONATION_FUND_ROUTING: "donation.fund_routing",
 
   /**
-   * Gates multi-currency checkout support (ADR-031, Epic #416).
+   * Gates multi-currency checkout support (ADR-032, Epic #416).
    *
    * With this flag ON, donors can select their preferred currency at
    * checkout and the system presents live exchange-rate-converted amounts

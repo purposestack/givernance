@@ -2,7 +2,7 @@
  * Campaign fund routing routes — CRUD for the campaign_funds junction table.
  *
  * All four routes are gated behind the `donation.fund_routing` feature flag
- * (ADR-031 §2.5, Epic #416 Task 4). The flag must be the FIRST preHandler
+ * (ADR-032 §2.5, Epic #416 Task 4). The flag must be the FIRST preHandler
  * so scanners see 404 without enumerating role requirements.
  *
  *   GET    /v1/campaigns/:id/funds        — list fund routing entries
@@ -27,6 +27,7 @@ import {
 } from "../../lib/schemas.js";
 import {
   addCampaignFund,
+  CampaignFundConflictError,
   CampaignFundInvariantError,
   CampaignFundNotFoundError,
   listCampaignFundRouting,
@@ -139,6 +140,7 @@ export async function campaignFundRoutes(app: FastifyInstance) {
         body: AddCampaignFundBody,
         response: {
           201: DataResponse(CampaignFundRoutingResponse),
+          409: ProblemDetailSchema,
           422: ProblemDetailSchema,
           ...ErrorResponses,
         },
@@ -165,6 +167,9 @@ export async function campaignFundRoutes(app: FastifyInstance) {
       } catch (err) {
         if (err instanceof CampaignFundNotFoundError) {
           return reply.status(404).send(problemDetail(404, "Not Found", err.message));
+        }
+        if (err instanceof CampaignFundConflictError) {
+          return reply.status(409).send(problemDetail(409, "Conflict", err.message));
         }
         if (err instanceof CampaignFundInvariantError) {
           return reply.status(422).send(problemDetail(422, "Unprocessable Entity", err.message));

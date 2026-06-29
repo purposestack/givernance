@@ -80,12 +80,12 @@ const tenantLifecycleQueue = new Queue(QUEUE_NAMES.TENANT_LIFECYCLE, {
 });
 const brandingQueue = new Queue(QUEUE_NAMES.BRANDING, { connection: queueConnection });
 const keycloakSyncQueue = new Queue(QUEUE_NAMES.KEYCLOAK_SYNC, { connection: queueConnection });
-// Currency balance update queue (ADR-031 §2.10, Epic #416 Task 6)
+// Currency balance update queue (ADR-032 §2.10, Epic #416 Task 6)
 const currencyBalancesQueue = new Queue(CURRENCY_BALANCE_QUEUE_NAME, {
   connection: queueConnection,
 });
 
-// FX-cache refresh + backfill queue (ADR-031 §2.1, Epic #416 Tasks 9–11)
+// FX-cache refresh + backfill queue (ADR-032 §2.1, Epic #416 Tasks 9–11)
 const fxCacheQueue = new Queue(FX_CACHE_QUEUE_NAME, {
   connection: queueConnection,
   defaultJobOptions: {
@@ -233,7 +233,7 @@ async function scheduleRepeatableJobs() {
     },
   );
 
-  // FX-cache daily refresh (ADR-031 §2.1, Epic #416 Task 10). Runs at
+  // FX-cache daily refresh (ADR-032 §2.1, Epic #416 Task 10). Runs at
   // 04:00 UTC — after EU midnight quiet period and before the morning
   // trading open that would make stale rates visible. `jobId` is fixed
   // so re-registering across worker restarts doesn't fan out to duplicate
@@ -382,7 +382,7 @@ async function processDomainEvent(job: Job): Promise<void> {
   // non-`user.soft_deleted` events.
   await fanoutSurveyErasure({ outboxId: id, tenantId, type, payload });
 
-  // Org currency balance update (ADR-031 §2.10, Epic #416 Task 6).
+  // Org currency balance update (ADR-032 §2.10, Epic #416 Task 6).
   // Enqueue a dedicated BullMQ job for donation lifecycle events so the
   // materialized totals stay in sync. jobId is stable per (donation, eventType)
   // so outbox re-deliveries don't produce duplicate balance mutations.
@@ -395,6 +395,11 @@ async function processDomainEvent(job: Job): Promise<void> {
       orgId: tenantId,
       donationId: payload.donationId as string,
       eventType: type as UpdateOrgCurrencyBalancePayload["eventType"],
+      // Carry the real transition so the processor never assumes a prior bucket
+      // (ADR-032 §2.10). Absent fields ⇒ the processor safely no-ops.
+      priorStatus: payload.priorStatus as UpdateOrgCurrencyBalancePayload["priorStatus"],
+      fromStatus: payload.fromStatus as UpdateOrgCurrencyBalancePayload["fromStatus"],
+      toStatus: payload.toStatus as UpdateOrgCurrencyBalancePayload["toStatus"],
     };
     await currencyBalancesQueue.add("update-org-currency-balance", currencyBalancePayload, {
       jobId: `currency-balance-${payload.donationId as string}-${type}`,
@@ -947,7 +952,7 @@ function startWorkers() {
     },
   );
 
-  // Currency balance update worker (ADR-031 §2.10, Epic #416 Task 6).
+  // Currency balance update worker (ADR-032 §2.10, Epic #416 Task 6).
   // Concurrency 5: jobs are short-lived (single upsert) and idempotent.
   const currencyBalancesWorker = new Worker(
     CURRENCY_BALANCE_QUEUE_NAME,
@@ -959,7 +964,7 @@ function startWorkers() {
     },
   );
 
-  // FX-cache worker (ADR-031 §2.1, Epic #416 Tasks 9–11).
+  // FX-cache worker (ADR-032 §2.1, Epic #416 Tasks 9–11).
   // Carries two job names: refresh_fx_cache and backfill_fx_rate.
   // Concurrency 1: Fixer.io calls are sequential per job and we don't
   // want concurrent warm-up runs competing on the same Redis keys.

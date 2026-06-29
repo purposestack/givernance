@@ -862,6 +862,9 @@ export async function refundDonation(
         donationId,
         paymentRef,
         source: "donation_refund_route",
+        // Bucket the refund leaves, captured BEFORE the status flip above, so the
+        // balance processor subtracts from the right total (ADR-032 §2.10).
+        priorStatus: validation.status,
       },
     });
   });

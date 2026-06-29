@@ -1,5 +1,5 @@
 /**
- * refresh_fx_cache — daily Fixer.io FX-rate cache warm-up (ADR-031 §2.1, Epic #416 Task 10).
+ * refresh_fx_cache — daily Fixer.io FX-rate cache warm-up (ADR-032 §2.1, Epic #416 Task 10).
  *
  * Collects every distinct currency that the platform must quote (active bank-
  * account settlement currencies + user display-currency overrides), calls

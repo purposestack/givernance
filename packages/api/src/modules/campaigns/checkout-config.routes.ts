@@ -7,7 +7,7 @@
  * must never expose fund names, bank account IDs, IBANs, split percentages,
  * or any other fund internals.
  *
- * Resolution flow (ADR-031 §2.6, Epic #416 Task 15):
+ * Resolution flow (ADR-032 §2.6, Epic #416 Task 15):
  *
  *   campaign_funds WHERE is_online_default = TRUE
  *     → funds.bank_account_id → bank_accounts.currency  (= settlement_currency)

@@ -115,7 +115,7 @@ export async function ensureSwissQrReference(args: {
   /** NULL for door-drop (one campaign-level reference per export). */
   constituentId: string | null;
   referenceType: SwissQrReferenceType;
-  /** ISO 4217 alpha-3 settlement currency — open-ended after ADR-031 §2.4. */
+  /** ISO 4217 alpha-3 settlement currency — open-ended after ADR-032 §2.4. */
   currency: string;
 }): Promise<{ reference: string; referenceType: SwissQrReferenceType }> {
   return withWorkerContext(args.orgId, async (tx) => {
@@ -312,7 +312,7 @@ export async function renderSwissQrBillPdf(args: {
       // scope. The API readiness gate rejects non-Swiss currencies
       // before a postal export can be enqueued, so this assertion is
       // safe at runtime. Cast needed because `BankAccount.currency` is
-      // now varchar(3) (ADR-031 §2.4 multi-currency generalisation).
+      // now varchar(3) (ADR-032 §2.4 multi-currency generalisation).
       currency: args.bankAccount.currency as "CHF" | "EUR",
       reference: args.reference,
       creditor: {
