@@ -208,7 +208,7 @@ jobs:
       # paying ~10-15s for `gem install kamal`. Cache hit/miss is logged
       # by the action.
       - name: Set up Ruby (for Kamal)
-        uses: ruby/setup-ruby@v1.313.0
+        uses: ruby/setup-ruby@v1.314.0
         with:
           ruby-version: '3.3'
           bundler-cache: true
