@@ -82,7 +82,7 @@ services:
   # and the S3 gateway on 8333 (MinIO used 9000) in one process. Production
   # (SaaS) is unaffected — it stays on Scaleway Object Storage (ADR-009).
   seaweedfs:
-    image: chrislusf/seaweedfs:4.34
+    image: chrislusf/seaweedfs:4.37
     ports:
       # S3 API. Apps (api/worker) reach it in-network at http://seaweedfs:8333.
       - "${S3_PORT:-8333}:8333"
