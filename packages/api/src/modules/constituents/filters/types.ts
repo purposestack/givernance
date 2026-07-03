@@ -207,9 +207,7 @@ export const FIELD_REGISTRY: Record<string, FieldMetadata> = {
     type: "string",
     table: "constituents",
     column: "city",
-    // `in` added so operators can pick several cities at once ("is any of");
-    // the query builder already renders it via inArray.
-    operators: ["eq", "neq", "contains", "startsWith", "endsWith", "in", "isNull", "isNotNull"],
+    operators: ["eq", "neq", "contains", "startsWith", "endsWith", "isNull", "isNotNull"],
   },
   "address.postalCode": {
     name: "address.postalCode",

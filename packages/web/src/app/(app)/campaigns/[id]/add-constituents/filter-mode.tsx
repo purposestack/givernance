@@ -66,7 +66,9 @@ function getActiveFilters(query: FilterQuery | null) {
       (c) =>
         c.field &&
         (isNullaryOperator(c.operator) ||
-          (Array.isArray(c.value) ? c.value.every((v) => v !== "") : c.value !== "")),
+          (Array.isArray(c.value)
+            ? c.value.length > 0 && c.value.every((v) => v !== "")
+            : c.value !== "")),
     )
     .map((c) => {
       const known = filterFields.find((f) => f.name === c.field);

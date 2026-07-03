@@ -150,7 +150,10 @@ export function FilterBuilder({ open, onOpenChange, onApply, initialQuery }: Fil
       // Presence checks (isNull / isNotNull) never need a value.
       if (isNullaryOperator(c.operator)) return false;
       if (Array.isArray(c.value)) {
-        return c.value.some((v) => v === "" || v === null || v === undefined);
+        // An empty multiselect (no values picked) is incomplete, not "ready".
+        return (
+          c.value.length === 0 || c.value.some((v) => v === "" || v === null || v === undefined)
+        );
       }
       return c.value === "" || c.value === null || c.value === undefined;
     });
@@ -186,7 +189,9 @@ export function FilterBuilder({ open, onOpenChange, onApply, initialQuery }: Fil
         (c) =>
           c.field &&
           (isNullaryOperator(c.operator) ||
-            (Array.isArray(c.value) ? c.value.every((v) => v !== "") : c.value !== "")),
+            (Array.isArray(c.value)
+              ? c.value.length > 0 && c.value.every((v) => v !== "")
+              : c.value !== "")),
       )
       .map((c) => {
         // `label` carries the i18n key from `filterFields` (e.g.

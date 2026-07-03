@@ -74,7 +74,7 @@ function hasIncompleteCondition(query: FilterQuery): boolean {
     if (!isFilterCondition(c)) return false;
     if (isNullaryOperator(c.operator)) return false;
     if (Array.isArray(c.value)) {
-      return c.value.some((v) => v === "" || v === null || v === undefined);
+      return c.value.length === 0 || c.value.some((v) => v === "" || v === null || v === undefined);
     }
     return c.value === "" || c.value === null || c.value === undefined;
   });

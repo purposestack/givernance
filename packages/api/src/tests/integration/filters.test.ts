@@ -598,13 +598,31 @@ describe("Advanced Constituent Filters", () => {
       expect(res.json().data.count).toBe(1);
     });
 
-    it("resolves the renamed address.countryCode field instead of 400 Unknown field", async () => {
-      const res = await preview({
+    it("resolves the renamed address.countryCode field and actually filters (not a match-all no-op)", async () => {
+      // Seed one non-US constituent so the predicate is proven to discriminate.
+      await withTenantContext(ORG_A, async (txDb) => {
+        await txDb.insert(constituents).values({
+          orgId: ORG_A,
+          firstName: "Fran",
+          lastName: "Cais",
+          type: "donor",
+          countryCode: "FR",
+        });
+      });
+
+      const us = await preview({
         operator: "AND",
         conditions: [{ field: "address.countryCode", operator: "eq", value: "US" }],
       });
-      expect(res.statusCode).toBe(200);
-      expect(res.json().data.count).toBe(4);
+      expect(us.statusCode).toBe(200);
+      expect(us.json().data.count).toBe(4); // the 4 original US constituents
+
+      const fr = await preview({
+        operator: "AND",
+        conditions: [{ field: "address.countryCode", operator: "eq", value: "FR" }],
+      });
+      expect(fr.statusCode).toBe(200);
+      expect(fr.json().data.count).toBe(1);
     });
 
     it("supports isNull / isNotNull on the nullable email column", async () => {
@@ -673,6 +691,70 @@ describe("Advanced Constituent Filters", () => {
         // `exists` was removed from the wire vocabulary in favour of isNull.
         operator: "AND",
         conditions: [{ field: "donations.lastDate", operator: "exists" as never, value: null }],
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it("matches the never-donated set with donations.count = 0 (COALESCE, not NULL-collapse)", async () => {
+      // Alice has zero cleared donations. After removing the aggregate-NULL
+      // wrapper, `count = 0` must still match her (COALESCE(count,0)=0), and
+      // `count < 2` must include her too.
+      const zero = await preview({
+        operator: "AND",
+        conditions: [{ field: "donations.count", operator: "eq", value: 0 }],
+      });
+      expect(zero.statusCode).toBe(200);
+      expect(zero.json().data.count).toBe(1);
+
+      const lessThanTwo = await preview({
+        operator: "AND",
+        conditions: [{ field: "donations.count", operator: "lt", value: 2 }],
+      });
+      expect(lessThanTwo.statusCode).toBe(200);
+      // Alice (0) + Jane (1) + Bob (1) = 3; John (3 gifts) excluded.
+      expect(lessThanTwo.json().data.count).toBe(3);
+    });
+
+    it("honours OR across MULTIPLE aggregate conditions (union, not first-only)", async () => {
+      // count = 1 (Jane, Bob) OR totalAmount ≥ 2000 EUR (John) = 3.
+      const res = await preview({
+        operator: "OR",
+        conditions: [
+          { field: "donations.count", operator: "eq", value: 1 },
+          { field: "donations.totalAmount", operator: "gte", value: 2000 },
+        ],
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().data.count).toBe(3);
+    });
+
+    it("treats a date range end as inclusive of the whole day (between end-of-day)", async () => {
+      // All 4 constituents were createdAt = now() in the fixture. A range ending
+      // TODAY must include them — without the end-of-day normalisation the bare
+      // date casts to midnight and drops rows created later today.
+      const today = new Date().toISOString().slice(0, 10);
+      const res = await preview({
+        operator: "AND",
+        conditions: [
+          { field: "constituent.createdAt", operator: "between", value: ["2000-01-01", today] },
+        ],
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().data.count).toBe(4);
+    });
+
+    it("returns 400 (not 500) for a field removed from the registry", async () => {
+      const res = await preview({
+        operator: "AND",
+        conditions: [{ field: "donations.averageAmount", operator: "gte", value: 100 }],
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it("rejects a non-numeric value on a numeric field with 400 (not 500)", async () => {
+      const res = await preview({
+        operator: "AND",
+        conditions: [{ field: "donations.totalAmount", operator: "gte", value: "abc" as never }],
       });
       expect(res.statusCode).toBe(400);
     });
