@@ -57,7 +57,7 @@ vi.mock("./filter-presets", () => ({
     },
     { name: "address.city", label: "City", type: "text", operators: ["eq", "ne", "contains"] },
     {
-      name: "address.country",
+      name: "address.countryCode",
       label: "Country",
       type: "select",
       operators: ["eq", "ne"],
@@ -94,7 +94,7 @@ vi.mock("./filter-presets", () => ({
       name: "tags",
       label: "Tags",
       type: "multiselect",
-      operators: ["contains", "notContains"],
+      operators: ["arrayOverlaps", "arrayContains"],
       options: [
         { value: "vip", label: "VIP" },
         { value: "newsletter", label: "Newsletter" },
@@ -360,7 +360,7 @@ describe("FilterCondition", () => {
     const user = userEvent.setup();
     const selectCondition = {
       ...baseCondition,
-      field: "address.country",
+      field: "address.countryCode",
       operator: "eq" as FilterOperator,
       value: "",
     };

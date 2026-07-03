@@ -263,11 +263,21 @@ export function FilterCondition({ condition, onChange, onRemove }: FilterConditi
    * switched to `in` picks up multi-select behaviour automatically.
    */
   const renderMultiselectInput = (selectedField: FilterField) => {
-    const fieldOptions = optionsFor(selectedField);
+    const catalogueOptions = optionsFor(selectedField);
     const selectedValues = Array.isArray(condition.value)
       ? (condition.value as Array<string | number>).map(String)
       : [];
     const selectedSet = new Set(selectedValues);
+
+    // Async suggestions return a bounded page (top-N). Union already-selected
+    // values that aren't in that page so a previously-picked tag stays visible
+    // and removable instead of vanishing (and looking un-deselectable).
+    const fieldOptions = [
+      ...catalogueOptions,
+      ...selectedValues
+        .filter((v) => !catalogueOptions.some((o) => o.value === v))
+        .map((v) => ({ value: v, label: v })),
+    ];
 
     const toggleValue = (value: string) => {
       const next = new Set(selectedSet);

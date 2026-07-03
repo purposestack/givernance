@@ -10,6 +10,7 @@ import {
   arrayOverlaps,
   between,
   eq,
+  getTableColumns,
   gt,
   gte,
   inArray,
@@ -93,11 +94,21 @@ export class FilterQueryBuilder {
   }
 
   /**
-   * Get the appropriate column reference for a field
+   * Get the appropriate column reference for a field.
+   *
+   * `fieldMeta.column` is the SNAKE_CASE database column name (e.g.
+   * `country_code`), but a Drizzle table is keyed by the CAMELCASE JS property
+   * name (`countryCode`). Indexing `table[fieldMeta.column]` therefore returned
+   * `undefined` for every field whose two names differ (country_code,
+   * first_name, last_name, postal_code, created_at) — the condition was then
+   * silently dropped and the filter matched everyone. Resolve by the column's
+   * real SQL name instead so any field maps correctly.
    */
-  private getColumnReference(fieldMeta: FieldMetadata): SQL {
+  private getColumnReference(fieldMeta: FieldMetadata): SQL | undefined {
     const table = this.getTable(fieldMeta.table);
-    return table[fieldMeta.column] as SQL;
+    const columns = getTableColumns(table) as Record<string, { name: string }>;
+    const match = Object.values(columns).find((c) => c.name === fieldMeta.column);
+    return (match ?? table[fieldMeta.column]) as SQL | undefined;
   }
 
   /**
@@ -145,9 +156,11 @@ export class FilterQueryBuilder {
    * Normalise a DSL value before it hits SQL:
    *  - amount fields declared `valueUnit: "cents"` arrive as a human EUR amount
    *    and must be multiplied by 100 to compare against the `*_cents` column;
-   *  - `between` on a date field must extend the upper bound to end-of-day, else
-   *    a `YYYY-MM-DD` string casts to midnight and silently excludes every
-   *    record dated later that same day (the inclusive-looking end is exclusive).
+   *  - date bounds must include the whole boundary day, else a bare
+   *    `YYYY-MM-DD` casts to midnight and silently drops that day's records:
+   *    `between` and `lte` extend the UPPER bound to end-of-day, and `gt`
+   *    ("after day D") is bumped to end-of-day too. `gte` / `lt` are correct at
+   *    midnight and left untouched.
    */
   private normalizeValue(
     fieldMeta: FieldMetadata,
@@ -162,8 +175,18 @@ export class FilterQueryBuilder {
       next = Array.isArray(next) ? next.map(toCents) : toCents(next);
     }
 
-    if (fieldMeta.type === "date" && operator === "between" && Array.isArray(next)) {
-      next = [next[0], this.endOfDay(next[1])];
+    if (fieldMeta.type === "date") {
+      if (operator === "between" && Array.isArray(next)) {
+        next = [next[0], this.endOfDay(next[1])];
+      } else if (operator === "lte" || operator === "gt") {
+        next = this.endOfDay(next);
+      }
+      // Drizzle timestamp columns serialize via value.toISOString(), so a bare
+      // date STRING throws on the regular-column path (constituent.createdAt).
+      // Coerce to Date; the raw-SQL aggregate date path (last/first gift) binds
+      // a Date fine too.
+      const toDate = (v: unknown) => (typeof v === "string" && v !== "" ? new Date(v) : v);
+      next = Array.isArray(next) ? next.map(toDate) : toDate(next);
     }
 
     return next;
@@ -395,41 +418,6 @@ export class FilterQueryBuilder {
   }
 
   /**
-   * Build aggregation subqueries for fields that require them
-   */
-  buildAggregationJoins(): Record<string, SQL> {
-    return {
-      donationStats: sql`
-        (
-          SELECT 
-            constituent_id,
-            COUNT(*) as donation_count,
-            SUM(amount_base_cents) as total_amount_cents,
-            AVG(amount_base_cents) as avg_amount_cents,
-            MAX(donated_at) as last_donation_date,
-            MIN(donated_at) as first_donation_date
-          FROM ${donations}
-          WHERE org_id = ${this.orgId}
-            AND status = 'cleared'
-          GROUP BY constituent_id
-        )
-      `,
-      campaignStats: sql`
-        (
-          SELECT 
-            constituent_id,
-            COUNT(DISTINCT campaign_id) as campaign_count,
-            ARRAY_AGG(DISTINCT campaign_id) as campaign_ids
-          FROM ${campaignConstituents} cc
-          INNER JOIN campaigns c ON c.id = cc.campaign_id
-          WHERE c.org_id = ${this.orgId}
-          GROUP BY constituent_id
-        )
-      `,
-    };
-  }
-
-  /**
    * Apply field-specific filters on aggregated data
    */
   buildAggregateCondition(
@@ -456,8 +444,16 @@ export class FilterQueryBuilder {
     const columnName = columnMapping[field];
     if (!columnName) return undefined;
 
-    // Build condition using the aggregated column
-    const column = sql.identifier(columnName);
+    // Build condition using the aggregated column. COUNT/SUM aggregates are
+    // COALESCE'd to 0 so a constituent with zero cleared donations (LEFT JOIN →
+    // NULL) is treated as count 0 / total 0: `count = 0` and `count < n` then
+    // correctly MATCH the never-donated set, while `count >= 1` still excludes
+    // it. Date aggregates (MAX/MIN) are left raw — a NULL last/first-gift date
+    // must fail every date comparison, which is the desired "never donated"
+    // exclusion for those fields.
+    const identifier = sql.identifier(columnName);
+    const isZeroMeaningful = fieldMeta.aggregate === "count" || fieldMeta.aggregate === "sum";
+    const column = isZeroMeaningful ? sql`COALESCE(${identifier}, 0)` : identifier;
 
     switch (operator) {
       case "eq":

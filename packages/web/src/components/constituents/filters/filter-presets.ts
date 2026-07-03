@@ -229,7 +229,10 @@ export const filterFields: FilterField[] = [
     label: "fields.address.city",
     type: "text",
     category: "demographics",
-    operators: ["eq", "neq", "contains", "startsWith", "in", "isNull", "isNotNull"],
+    // No `in` here: city is free text with no picklist, so a multi-city
+    // "is any of" needs a searchable multiselect (roadmap, docs/30 §7).
+    // `contains` covers substring search in the meantime.
+    operators: ["eq", "neq", "contains", "startsWith", "isNull", "isNotNull"],
     placeholder: "placeholders.cityName",
   },
   {

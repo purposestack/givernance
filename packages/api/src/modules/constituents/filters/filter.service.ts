@@ -213,6 +213,7 @@ export class FilterService {
             SELECT DISTINCT unnest(types) AS value
             FROM ${constituents}
             WHERE org_id = ${this.orgId}
+              AND deleted_at IS NULL
               ${search ? sql`AND EXISTS (SELECT 1 FROM unnest(types) AS t WHERE t ILIKE ${`%${search}%`})` : sql``}
             ORDER BY value
             LIMIT ${limit}
@@ -227,6 +228,7 @@ export class FilterService {
             SELECT DISTINCT unnest(tags) as tag
             FROM ${constituents}
             WHERE org_id = ${this.orgId}
+              AND deleted_at IS NULL
               ${search ? sql`AND EXISTS (SELECT 1 FROM unnest(tags) AS t WHERE t ILIKE ${`%${search}%`})` : sql``}
             ORDER BY tag
             LIMIT ${limit}
@@ -241,6 +243,7 @@ export class FilterService {
             .where(
               and(
                 eq(constituents.orgId, this.orgId),
+                isNull(constituents.deletedAt),
                 search ? sql`${constituents.city} ILIKE ${`%${search}%`}` : undefined,
               ),
             )
@@ -256,6 +259,7 @@ export class FilterService {
             .where(
               and(
                 eq(constituents.orgId, this.orgId),
+                isNull(constituents.deletedAt),
                 search ? sql`${constituents.postalCode} LIKE ${`${search}%`}` : undefined,
               ),
             )
@@ -271,6 +275,7 @@ export class FilterService {
             .where(
               and(
                 eq(constituents.orgId, this.orgId),
+                isNull(constituents.deletedAt),
                 search ? sql`${constituents.countryCode} ILIKE ${`%${search}%`}` : undefined,
               ),
             )
@@ -612,6 +617,14 @@ export class FilterService {
       errors.push(valueError);
     }
 
+    // Numeric fields must receive finite numbers — otherwise a value like
+    // "abc" reaches the SQL layer as NaN and raises a 500 instead of a clean
+    // 400. Skip the value-less presence operators.
+    const numericError = this.validateNumericValue(condition, fieldMeta, index);
+    if (numericError) {
+      errors.push(numericError);
+    }
+
     // Check for SQL injection
     if (condition.value && typeof condition.value === "string") {
       if (this.isSuspiciousValue(condition.value)) {
@@ -621,6 +634,27 @@ export class FilterService {
     }
 
     return errors;
+  }
+
+  /**
+   * Reject non-numeric input on number fields (scalar or `between` bounds)
+   * before it reaches `Number(value) * 100` / SQL and becomes NaN → 500.
+   */
+  private validateNumericValue(
+    condition: FilterCondition,
+    fieldMeta: (typeof FIELD_REGISTRY)[string],
+    index: number,
+  ): string | null {
+    if (fieldMeta.type !== "number") return null;
+    if (condition.operator === "isNull" || condition.operator === "isNotNull") return null;
+
+    const isNumericValue = (v: unknown) =>
+      v !== "" && v !== null && v !== undefined && !Number.isNaN(Number(v));
+    const values = Array.isArray(condition.value) ? condition.value : [condition.value];
+    if (!values.every(isNumericValue)) {
+      return `Field '${condition.field}' requires a numeric value at condition ${index}`;
+    }
+    return null;
   }
 
   /**
