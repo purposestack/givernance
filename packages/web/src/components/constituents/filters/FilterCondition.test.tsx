@@ -41,7 +41,7 @@ vi.mock("./filter-presets", () => ({
       name: "firstName",
       label: "First name",
       type: "text",
-      operators: ["eq", "ne", "contains", "startsWith", "endsWith", "exists", "notExists"],
+      operators: ["eq", "ne", "contains", "startsWith", "endsWith", "isNull", "isNotNull"],
     },
     {
       name: "lastName",
@@ -114,8 +114,8 @@ vi.mock("./filter-presets", () => ({
       lt: "less than",
       lte: "less than or equal",
       between: "between",
-      exists: "exists",
-      notExists: "does not exist",
+      isNull: "is empty",
+      isNotNull: "has a value",
     };
     return labels[op] || op;
   },
@@ -329,27 +329,27 @@ describe("FilterCondition", () => {
     });
   });
 
-  it("does not render value input for exists/notExists operators", async () => {
+  it("does not render value input for isNull/isNotNull operators", async () => {
     const user = userEvent.setup();
-    const existsCondition = {
+    const isNullCondition = {
       ...baseCondition,
       field: "firstName",
-      operator: "exists" as const,
+      operator: "isNull" as const,
       value: null,
     };
 
-    render(<FilterCondition {...defaultProps} condition={existsCondition} />);
+    render(<FilterCondition {...defaultProps} condition={isNullCondition} />);
 
     expect(screen.queryByPlaceholderText(/value/i)).not.toBeInTheDocument();
 
-    // Change to notExists
+    // Change to isNotNull
     const operatorSelector = screen.getAllByRole("combobox")[1]!;
     await user.click(operatorSelector);
-    await user.click(await screen.findByText(/does not exist/i));
+    await user.click(await screen.findByText(/has a value/i));
 
     expect(mockOnChange).toHaveBeenCalledWith({
-      ...existsCondition,
-      operator: "notExists" as FilterOperator,
+      ...isNullCondition,
+      operator: "isNotNull" as FilterOperator,
       value: null,
     });
 

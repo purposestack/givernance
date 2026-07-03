@@ -362,8 +362,8 @@ describe("FilterBuilder", () => {
     const initialQuery: FilterQuery = {
       operator: "OR",
       conditions: [
-        { id: "1", field: "donations.amount", operator: "gte", value: 1000 },
-        { id: "2", field: "address.country", operator: "eq", value: "CH" },
+        { id: "1", field: "donations.totalAmount", operator: "gte", value: 1000 },
+        { id: "2", field: "address.countryCode", operator: "eq", value: "CH" },
       ],
     };
 

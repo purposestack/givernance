@@ -140,11 +140,14 @@ export function AddConstituentsContent({ campaignId, mode }: AddConstituentsCont
         { query: newFilter },
       );
       setPreviewCount(response.data.count);
-    } catch {
-      // Swallow preview errors here — the inline FilterBuilder already shows
-      // its own error state via `FilterPreview`. We just blank the count so
-      // the "Add N constituents" CTA stays disabled.
+    } catch (err) {
+      // Blank the count so the "Add N constituents" CTA stays disabled, then
+      // rethrow: this handler is awaited by FilterBuilder.handleApply, so
+      // rethrowing lets the dialog fire its `applyError` toast and stay OPEN
+      // instead of silently closing onto a dead, unexplained Add button.
       setPreviewCount(null);
+      setPreviewLoading(false);
+      throw err;
     } finally {
       setPreviewLoading(false);
     }

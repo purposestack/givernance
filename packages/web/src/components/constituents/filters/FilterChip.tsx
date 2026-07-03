@@ -136,7 +136,7 @@ export function FilterChip({ filter, onRemove }: FilterChipProps) {
             size="sm"
             className="ml-1 -mr-1.5 h-4 w-4 shrink-0 p-0 hover:bg-surface-container-high"
             onClick={() => onRemove(filter.id)}
-            aria-label={`Remove ${displayLabel} filter`}
+            aria-label={t("removeFilter", { label: displayLabel })}
           >
             <X size={12} aria-hidden="true" />
           </Button>

@@ -124,6 +124,15 @@ export interface FieldMetadata {
    * For nested fields, the join path
    */
   joinPath?: string[];
+  /**
+   * Unit the DSL value arrives in when it differs from the stored column unit.
+   * `"cents"` means the FE sends a human amount in the base currency (EUR) and
+   * the query builder multiplies by 100 before comparing against the `*_cents`
+   * column. Without this, `donations.totalAmount >= 500` would compare 500
+   * against `amount_base_cents` and match every donor above €5 (issue: EUR/cents
+   * unit drift surfaced by the advanced-filters audit).
+   */
+  valueUnit?: "cents";
 }
 
 /**
@@ -136,14 +145,17 @@ export const FIELD_REGISTRY: Record<string, FieldMetadata> = {
     type: "string",
     table: "constituents",
     column: "first_name",
-    operators: ["eq", "neq", "contains", "startsWith", "endsWith", "isNull", "isNotNull"],
+    // first_name is NOT NULL (schema) — isNull/isNotNull would be dead
+    // operators (always 0 / always everyone), so they are intentionally omitted.
+    operators: ["eq", "neq", "contains", "startsWith", "endsWith"],
   },
   "constituent.lastName": {
     name: "constituent.lastName",
     type: "string",
     table: "constituents",
     column: "last_name",
-    operators: ["eq", "neq", "contains", "startsWith", "endsWith", "isNull", "isNotNull"],
+    // last_name is NOT NULL — no nullable operators (see firstName).
+    operators: ["eq", "neq", "contains", "startsWith", "endsWith"],
   },
   "constituent.email": {
     name: "constituent.email",
@@ -168,7 +180,11 @@ export const FIELD_REGISTRY: Record<string, FieldMetadata> = {
     type: "array",
     table: "constituents",
     column: "types",
-    operators: ["arrayContains", "arrayOverlaps", "eq", "neq", "in", "isNull", "isNotNull"],
+    // `types` is NOT NULL with a default of `{donor}` — every constituent has
+    // ≥1 type, so isNull/isNotNull are meaningless here and were removed. The
+    // legacy scalar operators (eq/neq/in) stay for persisted pre-#465 segments;
+    // the query builder translates them to array semantics.
+    operators: ["arrayContains", "arrayOverlaps", "eq", "neq", "in"],
   },
   "constituent.tags": {
     name: "constituent.tags",
@@ -191,7 +207,9 @@ export const FIELD_REGISTRY: Record<string, FieldMetadata> = {
     type: "string",
     table: "constituents",
     column: "city",
-    operators: ["eq", "neq", "contains", "startsWith", "endsWith", "isNull", "isNotNull"],
+    // `in` added so operators can pick several cities at once ("is any of");
+    // the query builder already renders it via inArray.
+    operators: ["eq", "neq", "contains", "startsWith", "endsWith", "in", "isNull", "isNotNull"],
   },
   "address.postalCode": {
     name: "address.postalCode",
@@ -205,7 +223,9 @@ export const FIELD_REGISTRY: Record<string, FieldMetadata> = {
     type: "string",
     table: "constituents",
     column: "country_code",
-    operators: ["eq", "neq", "in"],
+    // country_code is nullable → isNull/isNotNull are meaningful ("no country
+    // on file"). `in` supports multi-country selection.
+    operators: ["eq", "neq", "in", "isNull", "isNotNull"],
   },
 
   // Donation fields (aggregated)
@@ -216,6 +236,8 @@ export const FIELD_REGISTRY: Record<string, FieldMetadata> = {
     column: "amount_cents",
     operators: ["eq", "neq", "gt", "gte", "lt", "lte", "between"],
     aggregate: "sum",
+    // FE input is a human EUR amount; the aggregated column is in cents.
+    valueUnit: "cents",
   },
   "donations.count": {
     name: "donations.count",
@@ -229,8 +251,12 @@ export const FIELD_REGISTRY: Record<string, FieldMetadata> = {
     name: "donations.lastDate",
     type: "date",
     table: "donations",
+    // isNull/isNotNull removed: last_donation_date is a MAX() aggregate that is
+    // never NULL inside a donation_stats group, so isNotNull matched everyone
+    // and isNull leaked through the aggregate-NULL wrapper. "Has ever / never
+    // donated" is expressed with donations.count instead.
     column: "donated_at",
-    operators: ["eq", "neq", "gt", "gte", "lt", "lte", "between", "isNull", "isNotNull"],
+    operators: ["eq", "neq", "gt", "gte", "lt", "lte", "between"],
     aggregate: "max",
   },
   "donations.firstDate": {
@@ -241,29 +267,10 @@ export const FIELD_REGISTRY: Record<string, FieldMetadata> = {
     operators: ["eq", "neq", "gt", "gte", "lt", "lte", "between"],
     aggregate: "min",
   },
-  "donations.averageAmount": {
-    name: "donations.averageAmount",
-    type: "number",
-    table: "donations",
-    column: "amount_cents",
-    operators: ["eq", "neq", "gt", "gte", "lt", "lte", "between"],
-    aggregate: "avg",
-  },
-
-  // Campaign participation
-  "campaigns.count": {
-    name: "campaigns.count",
-    type: "number",
-    table: "campaign_constituents",
-    column: "campaign_id",
-    operators: ["eq", "neq", "gt", "gte", "lt", "lte"],
-    aggregate: "count",
-  },
-  "campaigns.ids": {
-    name: "campaigns.ids",
-    type: "array",
-    table: "campaign_constituents",
-    column: "campaign_id",
-    operators: ["in", "arrayContains"],
-  },
+  // NOTE: `donations.averageAmount`, `campaigns.count` and `campaigns.ids` were
+  // removed from the registry. They mapped to columns (`avg_amount_cents`,
+  // `campaign_count`) that the runtime `donation_stats` subquery never selects
+  // and to a campaign join that is never wired, so any query on them raised a
+  // Postgres 42703 → 500. They are tracked as roadmap items in
+  // docs/30-advanced-filters.md until the aggregation is actually joined.
 };

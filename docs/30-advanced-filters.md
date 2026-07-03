@@ -1,290 +1,228 @@
 # 30 — Advanced Constituent Filters for Campaigns
 
-> **Status**: Implemented — Epic #418, PR #421
-> **Owner**: MVP Engineer  
-> **Related**: [`docs/23-postal-campaigns.md`](23-postal-campaigns.md) §2.3 Campaign Members · [`docs/glossary-npo.md`](glossary-npo.md) NPO terminology · [`docs/28-bulk-import.md`](28-bulk-import.md) Bulk operations · [`docs/29-global-search.md`](29-global-search.md) GLO-001 search
+> **Status**: Implemented — Epic #418 (PR #421), reconciled by the advanced-filters audit (this PR)
+> **Owner**: MVP Engineer
+> **Related**: [`docs/23-postal-campaigns.md`](23-postal-campaigns.md) §2.3 Campaign Members · [`docs/28-bulk-import.md`](28-bulk-import.md) Bulk operations · [`docs/29-global-search.md`](29-global-search.md) GLO-001 search · [`docs/34-constituents.md`](34-constituents.md) multi-valued `types`
 > **Companion ADR**: [`docs/adrs/adr-033-advanced-filter-architecture.md`](adrs/adr-033-advanced-filter-architecture.md)
 
 ## 0. Why this exists — at a glance
 
-NPOs need to select constituents for campaigns based on complex criteria like "donors who gave last year but not this year" (LYBUNT) or "recurring monthly donors in Geneva with lifetime value > €500". The current implementation only supports basic text search, forcing operators to manually select constituents one by one — a process that doesn't scale beyond a few dozen recipients.
+NPOs build campaign audiences from criteria like "donors who gave over €500 lifetime", "constituents with no email on file", "people tagged *newsletter*", or smart segments like LYBUNT (gave last year, not this year). Without this, an operator selects recipients one by one — unworkable past a few dozen.
 
-Advanced filters ship **Salesforce NPSP-like segmentation** as a first-class feature so operators can:
+Advanced filters let a campaign manager, from the campaign **Add constituents → Build a filter** flow:
 
-1. **Build complex queries** using intuitive UI components with AND/OR logic
-2. **Use pre-defined templates** for common NPO patterns (LYBUNT, major donors, etc.)
-3. **See real-time counts** of matching constituents before applying
-4. **Save and reuse filters** across campaigns and team members
+1. Start from a **quick template** (a pre-built segment: LYBUNT, major donors, recurring, lapsed, new donors, local-Geneva).
+2. Refine with **custom rules** — pick a field, an operator that fits that field, and a value; combine rules with **AND / OR**.
+3. See a **live count** of matching constituents before applying.
+4. **Add the matched set** to the campaign in one action.
 
-## 1. User Flow
+**What this PR fixed (the audit).** The builder previously advertised ~22 fields of which only ~6 actually worked; the rest returned HTTP 400 because the frontend field names / operators had drifted from the backend registry. There was no usable "is empty / not set" operator (the only two nullable-ish operators were broken end-to-end), donation-metric filters silently matched constituents who had never donated, amount thresholds were compared in cents against a EUR-labelled input, and soft-deleted constituents leaked back into results. The catalog is now trimmed to exactly what the backend can execute, plus a real nullable operator. See §7 for what remains out of scope.
+
+## 1. User flow
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor Op as Operator
-    participant UI as Filter UI
-    participant API as Filter API
-    participant DB as Database
-    participant Campaign as Campaign Service
+    actor Op as Campaign manager
+    participant UI as FilterBuilder
+    participant Prev as /filter/preview
+    participant Add as /campaigns/:id/members/filter
+    participant DB as Postgres (RLS)
 
-    Note over Op,UI: 1. Open filter builder
-    Op->>UI: Click "Add Constituents" in campaign
-    UI->>UI: Show current search + "Advanced Filters" button
-    Op->>UI: Click "Advanced Filters"
-    UI->>UI: Open FilterBuilder modal
-
-    Note over Op,UI: 2. Build filter query
-    Op->>UI: Select pre-defined template<br/>"Donated last year but not this year"
-    UI->>UI: Populate filter conditions
-    UI->>API: POST /v1/constituents/filter/preview
-    API->>DB: Execute COUNT query with filters
-    API-->>UI: { count: 234 }
+    Op->>UI: Open "Build a filter"
+    Op->>UI: Pick a quick template (optional) + custom rules
+    Note over UI: Rules validated client-side; presence<br/>operators (isNull/isNotNull) need no value
+    UI->>Prev: POST { query } (debounced)
+    Prev->>DB: COUNT over constituents (orgId, deleted_at IS NULL, whereClause)
+    DB-->>Prev: 234
+    Prev-->>UI: { count: 234 }
     UI-->>Op: "234 constituents match"
-
-    Note over Op,UI: 3. Add custom conditions
-    Op->>UI: Add condition "City = Geneva"
-    UI->>UI: Update filter display
-    UI->>API: POST /v1/constituents/filter/preview
-    API-->>UI: { count: 67 }
-    UI-->>Op: "67 constituents match"
-
-    Note over Op,UI: 4. Apply to campaign
-    Op->>UI: Click "Add to Campaign"
-    UI->>API: POST /v1/campaigns/:id/members/bulk
-    API->>DB: BEGIN
-    loop For each matching constituent
-        API->>DB: INSERT campaign_members
+    alt query invalid (unknown field / bad operator)
+        Prev-->>UI: 400 { errors:[…] }
+        UI-->>Op: "Some conditions are invalid — please review them"
     end
-    API->>DB: COMMIT
-    API-->>UI: { added: 67, skipped: 0 }
-    UI-->>Op: "Added 67 constituents to campaign"
+    Op->>UI: Confirm "Add 234 constituents"
+    UI->>Add: POST { query }
+    Add->>DB: SELECT ids (same predicate) → INSERT campaign_constituents (skip existing)
+    Add-->>UI: { added: 234, skipped: 0 }
+    UI-->>Op: toast + redirect to campaign
 ```
 
-## 2. Filter Categories
+## 2. Filter catalog (what actually ships)
 
-### 2.1 Donation History Filters
-- **Last donation date**: Before/after/between specific dates
-- **Total donated**: Lifetime or within date range (>, <, =, between)
-- **Donation count**: Number of gifts
-- **Average gift size**: Mean donation amount
-- **Largest gift**: Maximum single donation
-- **First gift date**: Acquisition date
-- **Campaign-specific**: Donated to specific campaigns
+Every field below maps to a real column or aggregate in `FIELD_REGISTRY`
+(`packages/api/src/modules/constituents/filters/types.ts`) and is offered by the
+frontend catalog `filterFields`
+(`packages/web/src/components/constituents/filters/filter-presets.ts`). A build
+contract keeps the two in lockstep — a field the backend can't execute is never
+shown.
 
-### 2.2 Donation Patterns
-- **LYBUNT**: Donated last year but not this year
-- **SYBUNT**: Donated some year but not this year  
-- **Recurring donors**: Regular giving pattern detected
-- **Lapsed donors**: No donation in X months
-- **New donors**: First gift within X months
-- **Upgraded donors**: Increased giving amount
+### 2.1 Identity & contact
+| Field | Type | Operators |
+|---|---|---|
+| First name | text | eq, neq, contains, startsWith, endsWith |
+| Last name | text | eq, neq, contains, startsWith, endsWith |
+| Email | text | eq, neq, contains, startsWith, endsWith, **isNull, isNotNull** |
+| Phone | text | eq, neq, contains, startsWith, endsWith, **isNull, isNotNull** |
+| Date added | date | eq, neq, gt, gte, lt, lte, between |
 
-### 2.3 Demographics
-- **Location**: Country, canton, city, postal code
-- **Language**: Preferred communication language
-- **Type**: Individual, household, organization
-- **Tags**: Custom constituent tags
-- **Age**: Birthday-based filtering
+### 2.2 Demographics
+| Field | Type | Operators |
+|---|---|---|
+| Constituent type | multiselect | arrayOverlaps ("is any of"), arrayContains ("is all of") |
+| Tags | multiselect (tenant-defined, autocompleted) | arrayOverlaps, arrayContains, **isNull, isNotNull** |
+| City | text | eq, neq, contains, startsWith, in, **isNull, isNotNull** |
+| Postal code | text | eq, neq, startsWith, contains, **isNull, isNotNull** |
+| Country | select | eq, neq, in, **isNull, isNotNull** |
 
-### 2.4 Engagement
-- **Email status**: Valid, bounced, unsubscribed
-- **Communication preferences**: Email, postal, SMS
-- **Last contact date**: Recent engagement
-- **Campaign participation**: Previous campaign member
+### 2.3 Donation history (aggregates over cleared donations)
+| Field | Type | Operators | Notes |
+|---|---|---|---|
+| Total donated (lifetime) | number (EUR) | eq, neq, gt, gte, lt, lte, between | value ×100 → cents at the DSL boundary |
+| Number of donations | number | eq, neq, gt, gte, lt, lte, between | |
+| Last donation date | date | eq, neq, gt, gte, lt, lte, between | |
+| First gift date | date | eq, neq, gt, gte, lt, lte, between | |
 
-### 2.5 Calculated Metrics
-- **Lifetime value**: Total historical giving
-- **Giving frequency**: Gifts per year
-- **Recency score**: Months since last gift
-- **Engagement score**: Combined metric
+### 2.4 Quick templates (presets)
+`lybunt`, `major-donors`, `recurring-monthly`, `lapsed-donors` (backend pattern
+flags), `new-donors` (recent first gift), `local-geneva` (case/accent-insensitive
+city + postal band). Pattern flags: `LYBUNT | SYBUNT | RECURRING | LAPSED | MAJOR_DONOR`.
 
-## 3. Technical Architecture
+### 2.5 The nullable ("is empty" / "has a value") operator
+`isNull` / `isNotNull` are surfaced as **"is empty" / "has a value"** (FR *non
+renseigné* / *renseigné*), take **no value input**, and are offered **only on
+columns that can actually be empty** (email, phone, city, postal code, country,
+tags). Never on `NOT NULL` columns (first/last name, type) where they would be
+dead operators, and not on donation-date aggregates (where `isNotNull` would
+match everyone). "Has ever / never donated" is expressed with **Number of
+donations ≥ 1 / = 0** instead.
 
-### 3.1 Query DSL Structure
-```typescript
+## 3. Architecture
+
+### 3.1 Query DSL
+```ts
 interface FilterQuery {
-  operator: 'AND' | 'OR';
-  conditions: Array<{
-    field: string;
-    operator: FilterOperator;
-    value: any;
-    // Optional nesting for complex queries
-    subConditions?: FilterQuery;
-  }>;
-  // Pre-defined pattern detection
-  patterns?: Array<'LYBUNT' | 'SYBUNT' | 'RECURRING'>;
+  operator: "AND" | "OR";
+  conditions: Array<{ field: string; operator: FilterOperator; value?: FilterValue; subConditions?: FilterQuery }>;
+  patterns?: Array<"LYBUNT" | "SYBUNT" | "RECURRING" | "LAPSED" | "MAJOR_DONOR">;
 }
 
-type FilterOperator = 
-  | 'eq' | 'neq' 
-  | 'gt' | 'gte' | 'lt' | 'lte'
-  | 'between' | 'in' | 'notIn'
-  | 'contains' | 'startsWith' | 'endsWith'
-  | 'exists' | 'notExists';
+type FilterOperator =
+  | "eq" | "neq" | "gt" | "gte" | "lt" | "lte" | "between"
+  | "in" | "contains" | "startsWith" | "endsWith"
+  | "arrayContains" | "arrayOverlaps"   // text[] columns (types, tags)
+  | "isNull" | "isNotNull";             // presence checks on nullable columns
 ```
+The FE `FilterOperator` union (`filter-types.ts`), the BE union (`types.ts`) and
+the TypeBox wire schema (`filter.routes.ts`) are **identical** — any operator the
+FE emits that the wire schema rejects is a 400, so drift is not allowed. The
+former FE-only `exists` / `notExists` / `notIn` / `notContains` operators (which
+always 400'd) were removed.
 
-### 3.2 Component Architecture
-```
-packages/web/src/components/constituents/filters/
-├── FilterBuilder.tsx       # Main container component
-├── FilterChip.tsx         # Individual filter display
-├── FilterPresets.tsx      # Template selector
-├── FilterCondition.tsx    # Single condition editor
-├── FilterPreview.tsx      # Results count display
-├── filter-types.ts        # TypeScript definitions
-├── filter-presets.ts      # Pre-defined templates
-└── index.ts              # Public exports
-```
-
-### 3.3 API Endpoints
-- `POST /v1/constituents/filter` - Execute filter query
-- `POST /v1/constituents/filter/preview` - Get count only
-- `GET /v1/constituents/filter/suggestions` - Field value suggestions
-- `POST /v1/campaigns/:id/members/filter` - Add filtered results to campaign
-- `POST /v1/constituents/filter/save` - Save filter for reuse
-- `GET /v1/constituents/filter/saved` - List saved filters
-
-## 4. Pre-defined Filter Templates
-
-### 4.1 Donor Segmentation
-```typescript
-const templates = {
-  lybunt: {
-    name: 'Donated last year but not this year',
-    query: {
-      operator: 'AND',
-      conditions: [
-        {
-          field: 'donations.lastDate',
-          operator: 'between',
-          value: [lastYearStart, lastYearEnd]
-        },
-        {
-          field: 'donations.thisYear',
-          operator: 'eq',
-          value: 0
-        }
-      ]
+### 3.2 Read model
+```mermaid
+erDiagram
+    constituents ||--o{ donations : "has (cleared)"
+    constituents ||--o{ campaign_constituents : "member of"
+    campaigns ||--o{ campaign_constituents : "targets"
+    constituents {
+      uuid id PK
+      uuid org_id
+      text first_name
+      text last_name
+      text email "nullable"
+      text phone "nullable"
+      text city "nullable"
+      text postal_code "nullable"
+      text country_code "nullable"
+      text[] types "NOT NULL"
+      text[] tags "nullable"
+      timestamptz deleted_at "soft-delete; excluded from filters"
     }
-  },
-  majorDonors: {
-    name: 'Major donors (€1000+ lifetime)',
-    query: {
-      operator: 'AND',
-      conditions: [
-        {
-          field: 'donations.lifetime',
-          operator: 'gte',
-          value: 1000
-        }
-      ]
-    }
-  },
-  // ... more templates
-};
 ```
+No new tables. Donation metrics come from an inline `donation_stats` subquery
+(`COUNT`, `SUM(amount_base_cents)`, `MIN`/`MAX(donated_at)`) grouped over
+**cleared** donations and LEFT-JOINed to `constituents`.
 
-### 4.2 Geographic Templates
-- Local supporters (by canton/city)
-- Regional campaigns
-- International donors
+### 3.3 Package ownership & correctness invariants
+- **Backend** (`packages/api/src/modules/constituents/filters/`): `types.ts`
+  (registry), `query-builder.ts` (DSL → Drizzle SQL, value normalisation),
+  `filter.service.ts` (assembly + tenant queries), `filter.routes.ts` (TypeBox +
+  guards), `pattern-detector.ts` (result-badge enrichment).
+- **Frontend** (`packages/web/src/components/constituents/filters/`):
+  `FilterBuilder`, `FilterCondition`, `FilterChip`, `FilterPreview`,
+  `FilterPresets`, and the pure-data `filter-presets.ts` / `filter-types.ts`.
+- **Correctness invariants enforced in this PR**:
+  - **Tenant + soft-delete**: every filter query filters `eq(orgId)` **and**
+    `isNull(deleted_at)` explicitly (issue #430), in addition to RLS.
+  - **Aggregate existence**: a donation-metric predicate means "has stats AND
+    predicate holds" — constituents with zero cleared donations no longer leak
+    through an `IS NULL OR (…)` escape hatch.
+  - **Logical operator**: `OR` is honoured across the regular/aggregate boundary
+    and across multiple aggregate conditions (was silently forced to `AND`).
+  - **Units**: amount fields carry `valueUnit: "cents"`; the builder multiplies
+    the EUR input by 100 before comparing against `*_cents` columns.
+  - **Date `between`**: the upper bound is extended to end-of-day so an
+    inclusive-looking `…-12-31` range doesn't drop that day's records.
 
-### 4.3 Engagement Templates  
-- Active email subscribers
-- Postal-only constituents
-- Multi-channel supporters
+## 4. Permissions matrix
+| Endpoint | Guard chain | Rate limit |
+|---|---|---|
+| `POST /v1/constituents/filter` | `requireFlag(advanced_filters)` → `requireAuth` | 10/min |
+| `POST /v1/constituents/filter/preview` | `requireFlag` → `requireAuth` | 20/min |
+| `GET /v1/constituents/filter/suggestions` | `requireFlag` → `requireAuth` | — |
+| `GET /v1/constituents/filter/fields` | `requireFlag` → `requireAuth` | — |
+| `POST /v1/campaigns/:id/members/filter` | `requireFlag` → `requireAuth` → `requireWrite` | 5/min |
 
-## 5. Performance Considerations
+With the `advanced_filters` flag **off**, every route returns 404 and the
+campaign "Build a filter" surface is hidden.
 
-### 5.1 Database Indexes
-```sql
--- Optimize common filter patterns
-CREATE INDEX idx_donations_constituent_date 
-  ON donations(constituent_id, donation_date DESC);
+## 5. Privacy / GDPR posture
+- **Soft-delete**: `deleted_at IS NOT NULL` constituents are excluded from every
+  count, result page, and campaign-add — erased/removed people can't be pulled
+  back into a mailing.
+- **Tenant isolation**: explicit `eq(orgId)` on every query plus forced RLS.
+- **No PII in logs**: the SQL-injection guard logs field/operator/value only on a
+  *suspected* injection attempt; normal queries are not value-logged.
+- **Suggestions**: the autocomplete endpoint returns only distinct values the
+  tenant already stores (tags, cities, …), scoped by `orgId`.
 
-CREATE INDEX idx_donations_amount_date 
-  ON donations(amount, donation_date) 
-  WHERE amount > 0;
+## 6. Testing
+- **Backend** (`packages/api/src/tests/integration/filters.test.ts`, "Advanced-filters
+  audit fixes"): zero-donation exclusion, EUR→cents scaling, renamed
+  `address.countryCode` resolves, `isNull`/`isNotNull` on email, OR across the
+  regular/aggregate boundary, soft-delete exclusion, removed-operator 400. Runs
+  under both the owner and `givernance_app` (RLS) roles per issue #455.
+- **Frontend**: `FilterCondition` renders no value input for `isNull`/`isNotNull`;
+  the existing builder/preview/chip suites cover the reconciled catalog.
 
-CREATE INDEX idx_constituents_location 
-  ON constituents(city, postal_code, canton);
+## 7. Out of scope (roadmap)
+Deliberately **not** in this PR — the audit chose a correct, working subset over
+a broad-but-broken surface:
 
--- Materialized view for expensive calculations
-CREATE MATERIALIZED VIEW constituent_metrics AS
-SELECT 
-  constituent_id,
-  COUNT(*) as donation_count,
-  SUM(amount) as lifetime_value,
-  AVG(amount) as avg_gift,
-  MAX(amount) as largest_gift,
-  MAX(donation_date) as last_donation_date,
-  DATE_PART('month', AGE(NOW(), MAX(donation_date))) as months_since_last
-FROM donations
-GROUP BY constituent_id;
-```
+- **More donation aggregates** — *Average gift* and *Largest gift* need the
+  inline `donation_stats` subquery to project `AVG`/`MAX(amount)`; *Number of
+  campaigns* / *In campaign* need a `campaign_stats` join. Their registry entries
+  were removed until the aggregation is actually wired (they previously 500'd).
+- **Fields with no backing column** — canton, preferred language, email
+  deliverability status, communication preferences, last-contact date, and the
+  "Calculated metrics" group (lifetime value / gifts-per-year / recency score)
+  need real schema before they can be filters. Removed from the catalog.
+- **Tag / type negation** — "NOT tagged *board*" needs an `arrayNotContains`
+  operator (BE + wire + FE label).
+- **Combining smart segments** — selecting a second preset replaces the first,
+  and two pattern flags are OR-joined; "major donors who also lapsed" (pattern
+  AND pattern) needs additive preset merge + AND-join of `patterns`.
+- **Nested AND/OR groups in the UI** — the DSL supports `subConditions`, but the
+  builder only renders a flat list; this is why `local-geneva` can't scope its
+  postal band to Switzerland (the "12xx" band also matches DE/FR codes).
+- **Saved / shared filters**, **natural-language / AI query**, and **exporting a
+  filtered list** — future phases.
+- **Richer 400 surfacing** — the preview maps all validation 400s to one generic
+  message; now that catalog drift is fixed these are rare edge cases.
 
-### 5.2 Query Optimization
-- Use materialized views for aggregations
-- Implement query result caching
-- Paginate large result sets
-- Background processing for exports
-
-## 6. UI/UX Principles
-
-### 6.1 Progressive Disclosure
-- Start with simple search
-- Reveal advanced options on demand
-- Show common templates first
-- Allow custom field selection
-
-### 6.2 Visual Feedback
-- Real-time count updates
-- Loading states during calculation
-- Clear filter chip display
-- Validation messages
-
-### 6.3 Mobile Responsive
-- Touch-friendly controls
-- Simplified mobile layout
-- Swipe to remove filters
-- Bottom sheet on mobile
-
-## 7. Implementation Phases
-
-### Phase 1: Core Filtering (Current)
-- Basic filter UI components
-- Common donation/demographic filters
-- Pre-defined templates
-- Real-time preview
-
-### Phase 2: Advanced Features
-- Save/load filters
-- Filter sharing between users
-- Complex nested conditions
-- Custom calculated fields
-
-### Phase 3: AI Enhancement
-- Natural language query parsing
-- Smart filter suggestions
-- Predictive analytics
-- Anomaly detection
-
-### Phase 4: Integration
-- Export filtered lists
-- Email campaign integration
-- Report generation
-- API access
-
-## 8. Success Metrics
-
-- **Query Performance**: < 2 seconds for 10k constituents
-- **Adoption**: 80% of campaigns use filters vs manual selection
-- **Time Savings**: 90% reduction in constituent selection time
-- **Accuracy**: < 1% false positive/negative rate
-
-## 9. Related Documents
-
-- [NPO Glossary](./glossary-npo.md) - Domain terminology
-- [ADR-033](./adrs/adr-033-advanced-filter-architecture.md) - Technical decisions
-- [Campaign Management](./23-postal-campaigns.md) - Parent feature
-- [Bulk Import](./28-bulk-import.md) - Related bulk operations
+## 8. Related documents
+- [ADR-033](./adrs/adr-033-advanced-filter-architecture.md) — technical decisions
+- [Campaign management](./23-postal-campaigns.md) — parent feature
+- [Constituents & multi-valued type](./34-constituents.md) — `types` array
+- [Bulk import](./28-bulk-import.md) — related bulk operations

@@ -29,6 +29,7 @@ import {
   type FilterPreset,
   type FilterQuery,
   isFilterCondition,
+  isNullaryOperator,
   type LogicalOperator,
 } from "./filter-types";
 import "./filter-accessibility.css";
@@ -146,7 +147,8 @@ export function FilterBuilder({ open, onOpenChange, onApply, initialQuery }: Fil
     const hasIncompleteConditions = query.conditions.some((c) => {
       if (!isFilterCondition(c)) return false;
       if (!c.field) return true;
-      if (c.operator === "exists" || c.operator === "notExists") return false;
+      // Presence checks (isNull / isNotNull) never need a value.
+      if (isNullaryOperator(c.operator)) return false;
       if (Array.isArray(c.value)) {
         return c.value.some((v) => v === "" || v === null || v === undefined);
       }
@@ -183,8 +185,7 @@ export function FilterBuilder({ open, onOpenChange, onApply, initialQuery }: Fil
       .filter(
         (c) =>
           c.field &&
-          (c.operator === "exists" ||
-            c.operator === "notExists" ||
+          (isNullaryOperator(c.operator) ||
             (Array.isArray(c.value) ? c.value.every((v) => v !== "") : c.value !== "")),
       )
       .map((c) => {
@@ -323,7 +324,6 @@ export function FilterBuilder({ open, onOpenChange, onApply, initialQuery }: Fil
                           condition={condition}
                           onChange={(updated) => handleUpdateCondition(index, updated)}
                           onRemove={() => handleRemoveCondition(index)}
-                          isFirst={index === 0}
                         />
                       </div>
                     ))}

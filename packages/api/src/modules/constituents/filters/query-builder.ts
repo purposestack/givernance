@@ -142,14 +142,51 @@ export class FilterQueryBuilder {
   }
 
   /**
+   * Normalise a DSL value before it hits SQL:
+   *  - amount fields declared `valueUnit: "cents"` arrive as a human EUR amount
+   *    and must be multiplied by 100 to compare against the `*_cents` column;
+   *  - `between` on a date field must extend the upper bound to end-of-day, else
+   *    a `YYYY-MM-DD` string casts to midnight and silently excludes every
+   *    record dated later that same day (the inclusive-looking end is exclusive).
+   */
+  private normalizeValue(
+    fieldMeta: FieldMetadata,
+    operator: FilterOperator,
+    value: unknown,
+  ): unknown {
+    let next = value;
+
+    if (fieldMeta.valueUnit === "cents") {
+      const toCents = (v: unknown) =>
+        v === "" || v === null || v === undefined ? v : Math.round(Number(v) * 100);
+      next = Array.isArray(next) ? next.map(toCents) : toCents(next);
+    }
+
+    if (fieldMeta.type === "date" && operator === "between" && Array.isArray(next)) {
+      next = [next[0], this.endOfDay(next[1])];
+    }
+
+    return next;
+  }
+
+  /** Append an end-of-day time to a bare `YYYY-MM-DD` string; pass through the rest. */
+  private endOfDay(value: unknown): unknown {
+    if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      return `${value}T23:59:59.999`;
+    }
+    return value;
+  }
+
+  /**
    * Build SQL condition based on operator type
    */
   private buildOperatorCondition(
     column: SQL,
     operator: FilterOperator,
-    value: unknown,
+    rawValue: unknown,
     fieldMeta: FieldMetadata,
   ): SQL | undefined {
+    const value = this.normalizeValue(fieldMeta, operator, rawValue);
     const arrayTranslation = this.translateScalarOperatorForArray(
       column,
       operator,
@@ -398,19 +435,22 @@ export class FilterQueryBuilder {
   buildAggregateCondition(
     field: string,
     operator: FilterOperator,
-    value: unknown,
+    rawValue: unknown,
   ): SQL | undefined {
     const fieldMeta = FIELD_REGISTRY[field];
     if (!fieldMeta?.aggregate) return undefined;
 
-    // Map field to the aggregated column name
+    const value = this.normalizeValue(fieldMeta, operator, rawValue);
+
+    // Map field to the aggregated column name. Only fields whose column is
+    // actually SELECTed by the runtime `donation_stats` subquery
+    // (filter.service.ts) are listed here — averageAmount/campaign_count were
+    // removed because their columns are never projected (would 42703 → 500).
     const columnMapping: Record<string, string> = {
       "donations.totalAmount": "total_amount_cents",
       "donations.count": "donation_count",
       "donations.lastDate": "last_donation_date",
       "donations.firstDate": "first_donation_date",
-      "donations.averageAmount": "avg_amount_cents",
-      "campaigns.count": "campaign_count",
     };
 
     const columnName = columnMapping[field];
