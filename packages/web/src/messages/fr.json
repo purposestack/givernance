@@ -2260,15 +2260,13 @@
         "lte": "inférieur ou égal à",
         "between": "entre",
         "in": "parmi",
-        "notIn": "pas parmi",
         "contains": "contient",
-        "notContains": "ne contient pas",
         "startsWith": "commence par",
         "endsWith": "se termine par",
-        "exists": "renseigné",
-        "notExists": "non renseigné",
         "arrayContains": "contient tous",
-        "arrayOverlaps": "contient l'un de"
+        "arrayOverlaps": "contient l'un de",
+        "isNull": "non renseigné",
+        "isNotNull": "renseigné"
       },
       "validation": {
         "incomplete": "Veuillez compléter toutes les conditions de filtre",
@@ -2276,10 +2274,8 @@
       },
       "categories": {
         "donation_history": "Historique des dons",
-        "donation_patterns": "Modèles de dons",
         "demographics": "Démographie",
-        "engagement": "Engagement",
-        "calculated": "Métriques calculées"
+        "identity": "Identité & contact"
       },
       "placeholders": {
         "amountEur": "Montant en €",
@@ -2290,92 +2286,34 @@
       "fields": {
         "donations": {
           "lastDate": "Date du dernier don",
-          "lifetime": "Cumul total des dons",
-          "thisYear": "Montant donné cette année",
           "count": "Nombre de dons",
-          "avgGift": "Montant moyen du don",
-          "largestGift": "Plus gros don unique",
           "firstDate": "Date du premier don",
-          "recurring": "Donateur récurrent",
-          "frequency": "Fréquence des dons"
+          "totalAmount": "Cumul total des dons"
         },
         "address": {
           "city": "Ville",
-          "canton": "Canton",
           "postalCode": "Code postal",
-          "country": "Pays"
+          "countryCode": "Pays"
         },
-        "language": "Langue préférée",
         "constituent": {
-          "type": "Type de constituant"
-        },
-        "tags": "Étiquettes",
-        "email": {
-          "status": "Statut de l'email"
-        },
-        "communication": {
-          "preferences": "Préférences de communication"
-        },
-        "engagement": {
-          "lastContact": "Date du dernier contact"
-        },
-        "metrics": {
-          "lifetimeValue": "Valeur sur la durée",
-          "givingFrequency": "Dons par an",
-          "recencyScore": "Mois depuis le dernier don"
+          "type": "Type de constituant",
+          "firstName": "Prénom",
+          "lastName": "Nom",
+          "email": "E-mail",
+          "phone": "Téléphone",
+          "createdAt": "Date d'ajout",
+          "tags": "Étiquettes"
         }
       },
       "fieldOptions": {
-        "donations": {
-          "frequency": {
-            "monthly": "Mensuelle",
-            "quarterly": "Trimestrielle",
-            "annual": "Annuelle",
-            "irregular": "Irrégulière"
-          }
-        },
         "address": {
-          "canton": {
-            "AG": "Argovie",
-            "AI": "Appenzell Rhodes-Intérieures",
-            "AR": "Appenzell Rhodes-Extérieures",
-            "BE": "Berne",
-            "BL": "Bâle-Campagne",
-            "BS": "Bâle-Ville",
-            "FR": "Fribourg",
-            "GE": "Genève",
-            "GL": "Glaris",
-            "GR": "Grisons",
-            "JU": "Jura",
-            "LU": "Lucerne",
-            "NE": "Neuchâtel",
-            "NW": "Nidwald",
-            "OW": "Obwald",
-            "SG": "Saint-Gall",
-            "SH": "Schaffhouse",
-            "SO": "Soleure",
-            "SZ": "Schwytz",
-            "TG": "Thurgovie",
-            "TI": "Tessin",
-            "UR": "Uri",
-            "VD": "Vaud",
-            "VS": "Valais",
-            "ZG": "Zoug",
-            "ZH": "Zurich"
-          },
-          "country": {
+          "countryCode": {
             "CH": "Suisse",
             "FR": "France",
             "DE": "Allemagne",
             "IT": "Italie",
             "AT": "Autriche"
           }
-        },
-        "language": {
-          "fr": "Français",
-          "de": "Allemand",
-          "it": "Italien",
-          "en": "Anglais"
         },
         "constituent": {
           "type": {
@@ -2384,22 +2322,6 @@
             "member": "Membre",
             "beneficiary": "Bénéficiaire",
             "partner": "Partenaire"
-          }
-        },
-        "email": {
-          "status": {
-            "valid": "Valide",
-            "bounced": "Rebondi",
-            "unsubscribed": "Désabonné",
-            "unknown": "Inconnu"
-          }
-        },
-        "communication": {
-          "preferences": {
-            "email": "Email",
-            "postal": "Courrier postal",
-            "sms": "SMS",
-            "phone": "Téléphone"
           }
         }
       },
@@ -2450,7 +2372,9 @@
         "recurring": "Donateurs récurrents",
         "lapsed": "Donateurs inactifs",
         "majorDonor": "Grands donateurs"
-      }
+      },
+      "noOptions": "Aucune option disponible",
+      "removeFilter": "Retirer le filtre {label}"
     },
     "actions": {
       "new": "Nouveau constituant",

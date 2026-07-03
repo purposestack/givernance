@@ -2260,15 +2260,13 @@
         "lte": "less than or equal",
         "between": "between",
         "in": "in",
-        "notIn": "not in",
         "contains": "contains",
-        "notContains": "does not contain",
         "startsWith": "starts with",
         "endsWith": "ends with",
-        "exists": "exists",
-        "notExists": "does not exist",
         "arrayContains": "includes all of",
-        "arrayOverlaps": "includes any of"
+        "arrayOverlaps": "includes any of",
+        "isNull": "is empty",
+        "isNotNull": "has a value"
       },
       "validation": {
         "incomplete": "Please complete all filter conditions",
@@ -2276,10 +2274,8 @@
       },
       "categories": {
         "donation_history": "Donation History",
-        "donation_patterns": "Donation Patterns",
         "demographics": "Demographics",
-        "engagement": "Engagement",
-        "calculated": "Calculated Metrics"
+        "identity": "Identity & contact"
       },
       "placeholders": {
         "amountEur": "Amount in €",
@@ -2290,92 +2286,34 @@
       "fields": {
         "donations": {
           "lastDate": "Last donation date",
-          "lifetime": "Total donated (lifetime)",
-          "thisYear": "Amount donated this year",
           "count": "Number of donations",
-          "avgGift": "Average gift size",
-          "largestGift": "Largest single gift",
           "firstDate": "First gift date",
-          "recurring": "Is recurring donor",
-          "frequency": "Donation frequency"
+          "totalAmount": "Total donated (lifetime)"
         },
         "address": {
           "city": "City",
-          "canton": "Canton",
           "postalCode": "Postal code",
-          "country": "Country"
+          "countryCode": "Country"
         },
-        "language": "Preferred language",
         "constituent": {
-          "type": "Constituent type"
-        },
-        "tags": "Tags",
-        "email": {
-          "status": "Email status"
-        },
-        "communication": {
-          "preferences": "Communication preferences"
-        },
-        "engagement": {
-          "lastContact": "Last contact date"
-        },
-        "metrics": {
-          "lifetimeValue": "Lifetime value",
-          "givingFrequency": "Gifts per year",
-          "recencyScore": "Months since last gift"
+          "type": "Constituent type",
+          "firstName": "First name",
+          "lastName": "Last name",
+          "email": "Email",
+          "phone": "Phone",
+          "createdAt": "Date added",
+          "tags": "Tags"
         }
       },
       "fieldOptions": {
-        "donations": {
-          "frequency": {
-            "monthly": "Monthly",
-            "quarterly": "Quarterly",
-            "annual": "Annual",
-            "irregular": "Irregular"
-          }
-        },
         "address": {
-          "canton": {
-            "AG": "Aargau",
-            "AI": "Appenzell Innerrhoden",
-            "AR": "Appenzell Ausserrhoden",
-            "BE": "Bern",
-            "BL": "Basel-Landschaft",
-            "BS": "Basel-Stadt",
-            "FR": "Fribourg",
-            "GE": "Geneva",
-            "GL": "Glarus",
-            "GR": "Graubünden",
-            "JU": "Jura",
-            "LU": "Lucerne",
-            "NE": "Neuchâtel",
-            "NW": "Nidwalden",
-            "OW": "Obwalden",
-            "SG": "St. Gallen",
-            "SH": "Schaffhausen",
-            "SO": "Solothurn",
-            "SZ": "Schwyz",
-            "TG": "Thurgau",
-            "TI": "Ticino",
-            "UR": "Uri",
-            "VD": "Vaud",
-            "VS": "Valais",
-            "ZG": "Zug",
-            "ZH": "Zürich"
-          },
-          "country": {
+          "countryCode": {
             "CH": "Switzerland",
             "FR": "France",
             "DE": "Germany",
             "IT": "Italy",
             "AT": "Austria"
           }
-        },
-        "language": {
-          "fr": "French",
-          "de": "German",
-          "it": "Italian",
-          "en": "English"
         },
         "constituent": {
           "type": {
@@ -2384,22 +2322,6 @@
             "member": "Member",
             "beneficiary": "Beneficiary",
             "partner": "Partner"
-          }
-        },
-        "email": {
-          "status": {
-            "valid": "Valid",
-            "bounced": "Bounced",
-            "unsubscribed": "Unsubscribed",
-            "unknown": "Unknown"
-          }
-        },
-        "communication": {
-          "preferences": {
-            "email": "Email",
-            "postal": "Postal mail",
-            "sms": "SMS",
-            "phone": "Phone"
           }
         }
       },
@@ -2450,7 +2372,9 @@
         "recurring": "Recurring donors",
         "lapsed": "Lapsed donors",
         "majorDonor": "Major donors"
-      }
+      },
+      "noOptions": "No options available",
+      "removeFilter": "Remove {label} filter"
     },
     "actions": {
       "new": "New constituent",

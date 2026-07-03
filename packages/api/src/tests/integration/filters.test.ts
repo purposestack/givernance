@@ -10,7 +10,7 @@ import {
   donations,
   featureFlags,
 } from "@givernance/shared/schema";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { flagService } from "../../lib/flags/flag-service.js";
@@ -560,6 +560,121 @@ describe("Advanced Constituent Filters", () => {
       const body = response.json();
       expect(body.data.count).toBe(2);
       expect(body.data.estimatedTime).toBeDefined();
+    });
+  });
+
+  describe("Advanced-filters audit fixes", () => {
+    // Fixtures (ORG_A, seeded in beforeEach):
+    //   John Doe   — donor, New York, email set, lifetime 3000 EUR (3×1000)
+    //   Jane Smith — donor, Los Angeles, email set, lifetime 50 EUR
+    //   Bob Johnson— volunteer, New York, email set, lifetime 25 EUR
+    //   Alice Williams — member, Chicago, email set, ZERO donations
+    const preview = (query: FilterQuery) =>
+      app.inject({
+        method: "POST",
+        url: "/v1/constituents/filter/preview",
+        headers: authHeader(token),
+        payload: { query },
+      });
+
+    it("excludes zero-donation constituents from a positive donation-count filter (no aggregate NULL leak)", async () => {
+      const res = await preview({
+        operator: "AND",
+        conditions: [{ field: "donations.count", operator: "gte", value: 1 }],
+      });
+      expect(res.statusCode).toBe(200);
+      // Alice (0 donations) must NOT leak in via the removed `IS NULL OR` wrap.
+      expect(res.json().data.count).toBe(3);
+    });
+
+    it("compares donations.totalAmount in EUR, scaling the value to cents", async () => {
+      // Threshold 500 EUR → only John (3000 EUR). A cents/EUR bug would compare
+      // 500 cents and wrongly match John + Jane + Bob.
+      const res = await preview({
+        operator: "AND",
+        conditions: [{ field: "donations.totalAmount", operator: "gte", value: 500 }],
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().data.count).toBe(1);
+    });
+
+    it("resolves the renamed address.countryCode field instead of 400 Unknown field", async () => {
+      const res = await preview({
+        operator: "AND",
+        conditions: [{ field: "address.countryCode", operator: "eq", value: "US" }],
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().data.count).toBe(4);
+    });
+
+    it("supports isNull / isNotNull on the nullable email column", async () => {
+      await withTenantContext(ORG_A, async (txDb) => {
+        await txDb.insert(constituents).values({
+          orgId: ORG_A,
+          firstName: "No",
+          lastName: "Email",
+          email: null,
+          type: "donor",
+        });
+      });
+
+      const empties = await preview({
+        operator: "AND",
+        conditions: [{ field: "constituent.email", operator: "isNull", value: null }],
+      });
+      expect(empties.statusCode).toBe(200);
+      expect(empties.json().data.count).toBe(1);
+
+      const present = await preview({
+        operator: "AND",
+        conditions: [{ field: "constituent.email", operator: "isNotNull", value: null }],
+      });
+      expect(present.statusCode).toBe(200);
+      expect(present.json().data.count).toBe(4);
+    });
+
+    it("honours OR across the regular/aggregate boundary (was silently AND)", async () => {
+      // Chicago (Alice, 0 gifts) OR lifetime ≥ 500 EUR (John). Under the old
+      // always-AND join this returned 0 (Alice has no donations); OR must be 2.
+      const res = await preview({
+        operator: "OR",
+        conditions: [
+          { field: "address.city", operator: "eq", value: "Chicago" },
+          { field: "donations.totalAmount", operator: "gte", value: 500 },
+        ],
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().data.count).toBe(2);
+    });
+
+    it("excludes soft-deleted constituents from filter results", async () => {
+      const before = await preview({
+        operator: "AND",
+        conditions: [{ field: "address.countryCode", operator: "eq", value: "US" }],
+      });
+      expect(before.json().data.count).toBe(4);
+
+      await withTenantContext(ORG_A, async (txDb) => {
+        await txDb
+          .update(constituents)
+          .set({ deletedAt: new Date() })
+          .where(and(eq(constituents.orgId, ORG_A), eq(constituents.id, testConstituents[0]!.id)));
+      });
+
+      const after = await preview({
+        operator: "AND",
+        conditions: [{ field: "address.countryCode", operator: "eq", value: "US" }],
+      });
+      expect(after.json().data.count).toBe(3);
+    });
+
+    it("rejects an operator the BE no longer accepts (exists) at the schema layer", async () => {
+      const res = await preview({
+        // `exists` was removed from the wire vocabulary in favour of isNull.
+        operator: "AND",
+        conditions: [{ field: "donations.lastDate", operator: "exists" as never, value: null }],
+      });
+      expect(res.statusCode).toBe(400);
     });
   });
 

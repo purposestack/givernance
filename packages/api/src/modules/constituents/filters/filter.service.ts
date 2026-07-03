@@ -8,7 +8,18 @@ import {
   constituents,
   donations,
 } from "@givernance/shared/schema";
-import { and, asc, desc, eq, getTableColumns, inArray, type SQL, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  getTableColumns,
+  inArray,
+  isNull,
+  or,
+  type SQL,
+  sql,
+} from "drizzle-orm";
 import type { FastifyBaseLogger } from "fastify";
 import { withTenantContext } from "../../../lib/db.js";
 import { PatternDetector } from "./pattern-detector.js";
@@ -70,7 +81,7 @@ export class FilterService {
           ) as donation_stats`,
           sql`donation_stats.constituent_id = ${constituents.id}`,
         )
-        .where(and(eq(constituents.orgId, this.orgId), whereClause))
+        .where(and(eq(constituents.orgId, this.orgId), isNull(constituents.deletedAt), whereClause))
         .execute();
 
       const totalCount = Number(countResult[0]?.count || 0);
@@ -99,7 +110,7 @@ export class FilterService {
           ) as donation_stats`,
           sql`donation_stats.constituent_id = ${constituents.id}`,
         )
-        .where(and(eq(constituents.orgId, this.orgId), whereClause))
+        .where(and(eq(constituents.orgId, this.orgId), isNull(constituents.deletedAt), whereClause))
         .orderBy(orderByClause)
         .limit(perPage)
         .offset(offset)
@@ -160,7 +171,7 @@ export class FilterService {
           ) as donation_stats`,
           sql`donation_stats.constituent_id = ${constituents.id}`,
         )
-        .where(and(eq(constituents.orgId, this.orgId), whereClause))
+        .where(and(eq(constituents.orgId, this.orgId), isNull(constituents.deletedAt), whereClause))
         .execute();
 
       return {
@@ -320,7 +331,7 @@ export class FilterService {
           ) as donation_stats`,
           sql`donation_stats.constituent_id = ${constituents.id}`,
         )
-        .where(and(eq(constituents.orgId, this.orgId), whereClause))
+        .where(and(eq(constituents.orgId, this.orgId), isNull(constituents.deletedAt), whereClause))
         .execute();
 
       const constituentIds = matchingConstituents.map((c) => c.id);
@@ -403,17 +414,28 @@ export class FilterService {
         .filter((c): c is SQL => c !== undefined);
 
       if (aggregateClauses.length > 0) {
+        // Combine with the SAME logical operator as the query. Previously the
+        // OR branch emitted only `aggregateClauses[0]`, silently dropping every
+        // other aggregate condition.
         aggregateWhere =
-          query.operator === "AND" ? and(...aggregateClauses) : sql`${aggregateClauses[0]}`;
+          query.operator === "AND" ? and(...aggregateClauses) : or(...aggregateClauses);
 
-        // Wrap in a subquery condition
-        aggregateWhere = sql`(donation_stats.constituent_id IS NULL OR (${aggregateWhere}))`;
+        // No `donation_stats.constituent_id IS NULL OR (...)` escape hatch. An
+        // aggregate predicate means "the constituent HAS donation stats AND the
+        // predicate holds". Constituents with zero cleared donations have no
+        // donation_stats row (LEFT JOIN → NULL columns), so `NULL >= 5` is not
+        // true and they are correctly excluded instead of leaking into every
+        // donation-metric segment.
       }
     }
 
-    // Combine conditions
+    // Combine the regular and aggregate halves with the query operator too
+    // (was hard-coded to AND, so any OR that spanned the regular/aggregate
+    // boundary silently became an intersection).
     if (regularWhere && aggregateWhere) {
-      return and(regularWhere, aggregateWhere);
+      return query.operator === "OR"
+        ? or(regularWhere, aggregateWhere)
+        : and(regularWhere, aggregateWhere);
     }
     return regularWhere || aggregateWhere;
   }

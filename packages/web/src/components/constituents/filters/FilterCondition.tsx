@@ -2,6 +2,7 @@
 
 import { Check, ChevronDown, Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { CheckboxVisual } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -13,14 +14,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { createClientApiClient } from "@/lib/api/client-browser";
 import { cn } from "@/lib/utils";
 import { filterFields, getOperatorLabel } from "./filter-presets";
-import type {
-  FilterCategory,
-  FilterCondition as FilterConditionType,
-  FilterField,
-  FilterOperator,
-  FilterValue,
+import {
+  type FilterCategory,
+  type FilterCondition as FilterConditionType,
+  type FilterField,
+  type FilterOperator,
+  type FilterValue,
+  isNullaryOperator,
 } from "./filter-types";
 
 /**
@@ -45,7 +48,6 @@ function trDynamic(t: StrictTranslator, key: string, values?: Record<string, str
  */
 const MULTI_VALUE_OPERATORS = new Set<FilterOperator>([
   "in",
-  "notIn",
   // Array-column operators (issue #465) — both take a SET of values rendered
   // through the same Popover + Checkbox multiselect.
   "arrayContains",
@@ -69,7 +71,8 @@ function reshapeValueForOperator(
   toOp: FilterOperator,
 ): FilterValue {
   if (toOp === "between") return ["", ""];
-  if (toOp === "exists" || toOp === "notExists") return null;
+  // Presence checks (isNull / isNotNull) take no value.
+  if (isNullaryOperator(toOp)) return null;
 
   const goingMulti = isMultiValueOperator(toOp);
   const wasMulti = isMultiValueOperator(fromOp);
@@ -90,27 +93,71 @@ interface FilterConditionProps {
   condition: FilterConditionType;
   onChange: (condition: FilterConditionType) => void;
   onRemove: () => void;
-  isFirst: boolean;
 }
 
 /**
  * Single filter condition editor with field, operator, and value inputs.
  */
-export function FilterCondition({ condition, onChange, onRemove, isFirst }: FilterConditionProps) {
+export function FilterCondition({ condition, onChange, onRemove }: FilterConditionProps) {
   const t = useTranslations("constituents.filters");
 
   const selectedField = filterFields.find((f) => f.name === condition.field);
   const availableOperators = selectedField?.operators || ["eq"];
 
+  // Tenant-defined option lists (e.g. tags) fetched at edit-time from the
+  // suggestions endpoint. Empty for fields with a static picklist.
+  const [asyncOptions, setAsyncOptions] = useState<Array<{ value: string; label: string }>>([]);
+  useEffect(() => {
+    if (!selectedField?.asyncSuggestions) {
+      setAsyncOptions([]);
+      return;
+    }
+    let cancelled = false;
+    const fieldName = selectedField.name;
+    void (async () => {
+      try {
+        const client = createClientApiClient();
+        const res = await client.get<{ data: string[] }>(
+          `/v1/constituents/filter/suggestions?field=${encodeURIComponent(fieldName)}`,
+        );
+        if (!cancelled) setAsyncOptions((res.data ?? []).map((v) => ({ value: v, label: v })));
+      } catch {
+        // Suggestions are best-effort: on failure the multiselect just shows
+        // no options; isNull/isNotNull on the same field still work.
+        if (!cancelled) setAsyncOptions([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedField?.asyncSuggestions, selectedField?.name]);
+
+  // Resolve the option list for a field: fetched suggestions for async fields,
+  // otherwise the static picklist. Async option labels are the raw value.
+  const optionsFor = (field: FilterField): Array<{ value: string; label: string }> =>
+    field.asyncSuggestions ? asyncOptions : (field.options ?? []);
+
   const handleFieldChange = (fieldName: string) => {
     const field = filterFields.find((f) => f.name === fieldName);
     if (field) {
-      // Reset operator and value when field changes
+      // Reset operator and seed a value shaped for that operator when the field
+      // changes: nullary → null (no input), multi-value → [], between →
+      // ["",""], boolean → false, else "".
+      const defaultOp = field.operators[0] || "eq";
+      const seedValue: FilterValue = isNullaryOperator(defaultOp)
+        ? null
+        : isMultiValueOperator(defaultOp)
+          ? []
+          : defaultOp === "between"
+            ? ["", ""]
+            : field.type === "boolean"
+              ? false
+              : "";
       onChange({
         ...condition,
         field: fieldName,
-        operator: field.operators[0] || "eq",
-        value: field.type === "boolean" ? false : "",
+        operator: defaultOp,
+        value: seedValue,
       });
     }
   };
@@ -216,6 +263,7 @@ export function FilterCondition({ condition, onChange, onRemove, isFirst }: Filt
    * switched to `in` picks up multi-select behaviour automatically.
    */
   const renderMultiselectInput = (selectedField: FilterField) => {
+    const fieldOptions = optionsFor(selectedField);
     const selectedValues = Array.isArray(condition.value)
       ? (condition.value as Array<string | number>).map(String)
       : [];
@@ -232,7 +280,7 @@ export function FilterCondition({ condition, onChange, onRemove, isFirst }: Filt
       selectedValues.length === 0
         ? t("selectValues")
         : selectedValues.length <= 2
-          ? (selectedField.options ?? [])
+          ? fieldOptions
               .filter((opt) => selectedSet.has(opt.value))
               .map((opt) => trDynamic(t, opt.label))
               .join(", ")
@@ -256,7 +304,10 @@ export function FilterCondition({ condition, onChange, onRemove, isFirst }: Filt
         </PopoverTrigger>
         <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-1" align="start">
           <ul className="max-h-64 overflow-y-auto">
-            {selectedField.options?.map((option) => {
+            {fieldOptions.length === 0 ? (
+              <li className="px-2 py-1.5 text-sm text-on-surface-variant">{t("noOptions")}</li>
+            ) : null}
+            {fieldOptions.map((option) => {
               const checked = selectedSet.has(option.value);
               return (
                 <li key={option.value}>
@@ -329,22 +380,25 @@ export function FilterCondition({ condition, onChange, onRemove, isFirst }: Filt
   const renderValueInput = () => {
     if (!selectedField) return null;
 
-    if (condition.operator === "exists" || condition.operator === "notExists") {
+    // Presence checks (isNull / isNotNull) take no value — render nothing.
+    if (isNullaryOperator(condition.operator)) {
       return null;
     }
 
     if (condition.operator === "between") return renderBetweenInput(selectedField);
 
-    // Multi-value operators (in / notIn) take precedence over the field's
-    // nominal `type` — a `select` field with the `in` operator picks one-
-    // or-many. Falls back to the single-value renderers otherwise.
-    if (isMultiValueOperator(condition.operator) && selectedField.options) {
+    const hasOptions =
+      selectedField.options !== undefined || selectedField.asyncSuggestions === true;
+
+    // Multi-value operators (in / arrayContains / arrayOverlaps) take precedence
+    // over the field's nominal `type` — a `select` field with the `in` operator
+    // picks one-or-many. Falls back to the single-value renderers otherwise.
+    if (isMultiValueOperator(condition.operator) && hasOptions) {
       return renderMultiselectInput(selectedField);
     }
 
-    if (selectedField.type === "select" && selectedField.options)
-      return renderSelectInput(selectedField);
-    if (selectedField.type === "multiselect" && selectedField.options)
+    if (selectedField.type === "select" && hasOptions) return renderSelectInput(selectedField);
+    if (selectedField.type === "multiselect" && hasOptions)
       return renderMultiselectInput(selectedField);
     if (selectedField.type === "boolean") return renderBooleanInput(selectedField);
 
@@ -417,7 +471,6 @@ export function FilterCondition({ condition, onChange, onRemove, isFirst }: Filt
         variant="ghost"
         size="sm"
         onClick={onRemove}
-        disabled={isFirst}
         aria-label={t("removeCondition")}
         className="mt-1"
       >

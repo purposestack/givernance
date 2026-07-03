@@ -6,7 +6,12 @@ import { useEffect, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ApiProblem } from "@/lib/api";
 import { createClientApiClient } from "@/lib/api/client-browser";
-import { type FilterPreviewResponse, type FilterQuery, isFilterCondition } from "./filter-types";
+import {
+  type FilterPreviewResponse,
+  type FilterQuery,
+  isFilterCondition,
+  isNullaryOperator,
+} from "./filter-types";
 
 interface FilterPreviewProps {
   query: FilterQuery;
@@ -67,7 +72,7 @@ function trDynamic(t: StrictTranslator, key: string): string {
 function hasIncompleteCondition(query: FilterQuery): boolean {
   return query.conditions.some((c) => {
     if (!isFilterCondition(c)) return false;
-    if (c.operator === "exists" || c.operator === "notExists") return false;
+    if (isNullaryOperator(c.operator)) return false;
     if (Array.isArray(c.value)) {
       return c.value.some((v) => v === "" || v === null || v === undefined);
     }

@@ -4,7 +4,10 @@
 import { SlidersHorizontal } from "lucide-react";
 import { useState } from "react";
 import { FilterBuilder, FilterChip, filterFields } from "@/components/constituents/filters";
-import { isFilterCondition } from "@/components/constituents/filters/filter-types";
+import {
+  isFilterCondition,
+  isNullaryOperator,
+} from "@/components/constituents/filters/filter-types";
 import { Button } from "@/components/ui/button";
 import type { FilterQuery } from "@/services/PostalCampaignService";
 
@@ -62,8 +65,7 @@ function getActiveFilters(query: FilterQuery | null) {
     .filter(
       (c) =>
         c.field &&
-        (c.operator === "exists" ||
-          c.operator === "notExists" ||
+        (isNullaryOperator(c.operator) ||
           (Array.isArray(c.value) ? c.value.every((v) => v !== "") : c.value !== "")),
     )
     .map((c) => {

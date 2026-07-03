@@ -84,14 +84,14 @@ describe("FilterPreview", () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it.skip("handles exists/notExists operators without values", async () => {
+  it.skip("handles isNull/isNotNull operators without values", async () => {
     const query: FilterQuery = {
       operator: "AND",
       conditions: [
         {
           id: "1",
-          field: "email",
-          operator: "exists",
+          field: "constituent.email",
+          operator: "isNull",
           value: null,
         },
       ],

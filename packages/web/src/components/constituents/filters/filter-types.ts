@@ -2,6 +2,18 @@
  * Advanced filter type definitions for constituent segmentation.
  */
 
+/**
+ * Operator vocabulary — kept in exact lockstep with the BE `FilterOperator`
+ * union (`packages/api/src/modules/constituents/filters/types.ts`) and the
+ * TypeBox `FilterOperatorSchema` on the wire (`filter.routes.ts`). Any operator
+ * the FE emits that the BE doesn't list is rejected with a 400 before the query
+ * runs, so this union must never drift.
+ *
+ * Nullable presence is expressed with `isNull` / `isNotNull` (BE names),
+ * surfaced to operators as "is empty" / "has a value". The earlier FE-only
+ * `exists` / `notExists` names never matched the BE and always 400'd; likewise
+ * `notIn` / `notContains` had no BE mapping and were removed.
+ */
 export type FilterOperator =
   | "eq"
   | "neq"
@@ -11,18 +23,33 @@ export type FilterOperator =
   | "lte"
   | "between"
   | "in"
-  | "notIn"
   | "contains"
-  | "notContains"
   | "startsWith"
   | "endsWith"
-  | "exists"
-  | "notExists"
-  // Array-column operators (issue #465). `constituent.type` migrated from a
-  // scalar to a `text[]`; these map to Drizzle `arrayContains` (all-of) /
+  // Array-column operators (issue #465). `constituent.type` / `constituent.tags`
+  // are `text[]`; these map to Drizzle `arrayContains` (all-of) /
   // `arrayOverlaps` (any-of) BE-side.
   | "arrayContains"
-  | "arrayOverlaps";
+  | "arrayOverlaps"
+  // Presence checks on nullable columns. Value-less — the value input is hidden
+  // and these are treated as "complete" everywhere a condition is validated.
+  | "isNull"
+  | "isNotNull";
+
+/**
+ * Operators that take NO value (presence checks). Rendered without a value
+ * input and always considered "complete". Referenced everywhere instead of
+ * inline string equality so a future value-less operator is a one-line change.
+ */
+export const NULLARY_OPERATORS: ReadonlySet<FilterOperator> = new Set<FilterOperator>([
+  "isNull",
+  "isNotNull",
+]);
+
+/** True when the operator takes no value (isNull / isNotNull). */
+export function isNullaryOperator(operator: FilterOperator): boolean {
+  return NULLARY_OPERATORS.has(operator);
+}
 
 export type LogicalOperator = "AND" | "OR";
 
@@ -86,6 +113,12 @@ export interface FilterField {
   operators: FilterOperator[];
   // For select fields
   options?: Array<{ value: string; label: string }>;
+  /**
+   * When true the multiselect options are fetched at edit-time from
+   * `GET /v1/constituents/filter/suggestions?field=<name>` rather than being a
+   * fixed picklist. Used by `constituent.tags`, where values are tenant-defined.
+   */
+  asyncSuggestions?: boolean;
   // For numeric/date fields
   min?: number | string;
   max?: number | string;
@@ -93,12 +126,13 @@ export interface FilterField {
   placeholder?: string;
 }
 
-export type FilterCategory =
-  | "donation_history"
-  | "donation_patterns"
-  | "demographics"
-  | "engagement"
-  | "calculated";
+/**
+ * Field groups shown as section headers in the field picker. Trimmed to the
+ * categories actually backed by data — the former `donation_patterns`,
+ * `engagement` and `calculated` groups were removed because every field in them
+ * referenced a column that doesn't exist and 400'd on use.
+ */
+export type FilterCategory = "identity" | "demographics" | "donation_history";
 
 export interface FilterPreviewResponse {
   count: number;
