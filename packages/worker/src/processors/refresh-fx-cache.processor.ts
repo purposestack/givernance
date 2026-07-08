@@ -46,6 +46,40 @@ function createFxCacheQueue(): Queue {
   });
 }
 
+/**
+ * Platform base / reporting currency (ADR-032 §2.1). Always included in the
+ * warm-set, regardless of tenant data.
+ */
+const PLATFORM_BASE_CURRENCY = "EUR";
+
+/**
+ * Build the deduplicated, upper-cased set of currencies the FX cache must warm.
+ *
+ * ALWAYS includes the platform base currency (EUR). The `/readyz` `fx` health
+ * canary probes `fx:rates:EUR` unconditionally (`packages/api/src/modules/health/
+ * routes.ts`), so the warm-up must guarantee EUR is fetched even when no tenant
+ * has a bank account or a display-currency override yet. Without this, a fresh
+ * deploy — or a tenant set that settles entirely in non-EUR currencies — leaves
+ * `fx:rates:EUR` cold and flaps the fx subsystem to `down` despite a valid
+ * FIXER_API_KEY and a running worker.
+ *
+ * Pure + exported so the always-warm-EUR contract is unit-testable without
+ * booting Drizzle/Redis/BullMQ (mirrors `computeBalanceDelta`, ADR-032 §2.10).
+ */
+export function collectCurrenciesToWarm(
+  bankAccountCurrencies: ReadonlyArray<{ currency: string | null }>,
+  userDisplayCurrencies: ReadonlyArray<{ currency: string | null }>,
+): string[] {
+  const currencySet = new Set<string>([PLATFORM_BASE_CURRENCY]);
+  for (const row of bankAccountCurrencies) {
+    if (row.currency) currencySet.add(row.currency.toUpperCase());
+  }
+  for (const row of userDisplayCurrencies) {
+    if (row.currency) currencySet.add(row.currency.toUpperCase());
+  }
+  return [...currencySet];
+}
+
 export async function processRefreshFxCache(job: Job<RefreshFxCachePayload>): Promise<void> {
   const { triggeredBy } = job.data;
   const log = jobLogger({ jobId: job.id });
@@ -76,22 +110,11 @@ export async function processRefreshFxCache(job: Job<RefreshFxCachePayload>): Pr
     .from(users)
     .where(and(isNotNull(users.displayCurrency), isNull(users.deletedAt)));
 
-  // Deduplicate
-  const currencySet = new Set<string>();
-  for (const row of bankAccountCurrencies) {
-    if (row.currency) currencySet.add(row.currency.toUpperCase());
-  }
-  for (const row of userDisplayCurrencies) {
-    if (row.currency) currencySet.add(row.currency.toUpperCase());
-  }
-
-  const currencies = [...currencySet];
+  // Union {bank-account currencies} ∪ {user display currencies} ∪ {EUR base}.
+  // EUR is always present (see collectCurrenciesToWarm), so the set is never
+  // empty and the health canary key fx:rates:EUR always gets warmed.
+  const currencies = collectCurrenciesToWarm(bankAccountCurrencies, userDisplayCurrencies);
   log.info({ currencies, count: currencies.length }, "refresh_fx_cache: currencies to warm");
-
-  if (currencies.length === 0) {
-    log.info({ triggeredBy }, "refresh_fx_cache: no currencies to warm — done");
-    return;
-  }
 
   // FxRateService bound to the worker's shared Redis + FIXER_API_KEY (issue #480).
   const fxService = makeFxRateService(log);
