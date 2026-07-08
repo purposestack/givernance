@@ -1,2 +1,17 @@
 packages:
   - "packages/*"
+# Migrated from package.json `pnpm.overrides` — pnpm 11 no longer reads the
+# `pnpm` field of package.json (https://pnpm.io/settings). The `ioredis` pin
+# collapses the transitive 5.10.1 / 5.11.x split that otherwise breaks the
+# worker's BullMQ connection types (TS2322 at every `new Redis(...)` site).
+overrides:
+  vite: "^6.4.2"
+  esbuild: "^0.25.0"
+  postcss: "^8.5.10"
+  ioredis: "5.10.1"
+allowBuilds:
+  '@parcel/watcher': true
+  '@swc/core': true
+  esbuild: true
+  msgpackr-extract: true
+  sharp: true
