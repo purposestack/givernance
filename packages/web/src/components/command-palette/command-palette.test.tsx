@@ -99,6 +99,31 @@ describe("CommandPalette — empty-state surfaces", () => {
   });
 });
 
+describe("CommandPalette — empty-state entrance cascade (ADR-035 D16/B12)", () => {
+  it("staggers the empty-state groups via .cascade on open", () => {
+    const { baseElement } = render(<CommandPalette open={true} onClose={vi.fn()} />);
+    // Radix portals into the body, so query from baseElement.
+    expect(baseElement.querySelector(".cascade")).not.toBeNull();
+  });
+
+  it("drops the cascade after the first keystroke and never replays it (rule B12)", () => {
+    const { baseElement } = render(<CommandPalette open={true} onClose={vi.fn()} />);
+    const input = screen.getByRole("combobox") as HTMLInputElement;
+
+    // One character: below MIN_QUERY_LENGTH, so the empty state is
+    // still rendered — but the hasTyped latch must already have
+    // dropped the entrance class.
+    fireEvent.change(input, { target: { value: "m" } });
+    expect(baseElement.querySelector(".cascade")).toBeNull();
+
+    // Clearing back to the empty state must NOT restore the cascade:
+    // returning mid-session is instant, entrances play once per open.
+    fireEvent.change(input, { target: { value: "" } });
+    expect(screen.getByRole("option", { name: /go to dashboard/i })).toBeDefined();
+    expect(baseElement.querySelector(".cascade")).toBeNull();
+  });
+});
+
 describe("CommandPalette — debounce + search", () => {
   // Note: these tests use REAL timers and the actual 200 ms debounce.
   // user-event + fake timers + Radix Dialog's internal effects deadlock
