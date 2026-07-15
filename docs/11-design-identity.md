@@ -215,6 +215,8 @@ The Givernance brand mark is **three interlocking isometric cubes** rendered in 
 - No gratuitous loading spinners — use skeleton screens for content-heavy pages
 - Use spring easing sparingly — this is a professional tool, not a game
 
+**Loading & data-transition choreography** (cascade order, directional data-draw, ghost placeholders, refetch rules, modal replay) is codified in [ADR-035](adrs/adr-035-loading-motion-choreography.md) — the binding spec for any screen that loads or transitions data.
+
 ### 2.7 Shadows
 
 | Token | Usage |

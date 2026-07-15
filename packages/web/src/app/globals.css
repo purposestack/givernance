@@ -342,6 +342,9 @@
   --duration-normal: 150ms;
   --duration-slow: 250ms;
   --duration-slower: 300ms;
+  /* Loading choreography (ADR-035): per-block cascade offset + data-draw sweep */
+  --stagger-step: 50ms;
+  --duration-sweep: 600ms;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
   --ease-in-out: cubic-bezier(0.45, 0, 0.55, 1);

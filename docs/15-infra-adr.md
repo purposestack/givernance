@@ -36,3 +36,4 @@ This document serves as an index for the Givernance Architecture Decision Record
 - [ADR-032: Multi-Currency Strategy — Currency Layers, Ledger Design, FX Rate Policy](./adrs/adr-032-multi-currency-strategy.md)
 - [ADR-033: Advanced Constituent Filter Architecture — query DSL, pattern detection, registry-driven fields](./adrs/adr-033-advanced-filter-architecture.md)
 - [ADR-034: SeaweedFS over MinIO for Self-Hosted / Local-Dev / Staging Object Storage](./adrs/adr-034-seaweedfs-over-minio-for-self-hosted-object-storage.md)
+- [ADR-035: Loading & Motion Choreography — Orchestrated Cascade, Directional Data-Draw, No Spinners](./adrs/adr-035-loading-motion-choreography.md)
