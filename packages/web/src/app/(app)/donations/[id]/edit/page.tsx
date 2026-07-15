@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
+import type { CSSProperties } from "react";
 
 import { DonationForm } from "@/components/donations/donation-form";
 import { PageHeader } from "@/components/shared/page-header";
@@ -35,9 +36,12 @@ export default async function EditDonationPage({ params }: EditDonationPageProps
   const t = await getTranslations("donations.form");
   const tDonations = await getTranslations("donations");
 
+  // ADR-035 rules A2 + E19 — header reveals, then the form enters as ONE
+  // block (no per-field choreography), mirroring /donations/new.
   return (
     <>
       <PageHeader
+        className="reveal-item"
         title={t("editTitle")}
         description={t("editSubtitle")}
         breadcrumbs={[
@@ -50,7 +54,9 @@ export default async function EditDonationPage({ params }: EditDonationPageProps
           { label: t("breadcrumbEdit") },
         ]}
       />
-      <DonationForm mode="edit" donation={donation} />
+      <div className="reveal-item" style={{ "--cascade-i": 1 } as CSSProperties}>
+        <DonationForm mode="edit" donation={donation} />
+      </div>
     </>
   );
 }

@@ -2,11 +2,13 @@ import { ArrowLeft, Gift, Globe, Pencil, Trophy } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
+import type { ReactNode } from "react";
 
 import { CampaignRoiChart } from "@/components/campaigns/campaign-roi-chart";
 import { CampaignStatusActions } from "@/components/campaigns/campaign-status-actions";
 import { PostalCampaignSection } from "@/components/campaigns/postal-campaign-section";
 import { QrTrackingCard } from "@/components/campaigns/qr-tracking-card";
+import { CountUp } from "@/components/shared/count-up";
 import { EmptyState } from "@/components/shared/empty-state";
 import { InfoTooltipButton } from "@/components/shared/info-tooltip-button";
 import { PageHeader } from "@/components/shared/page-header";
@@ -17,7 +19,7 @@ import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
 import { hasPermission, requireAuth } from "@/lib/auth/guards";
 import { isPostalMergedPdfEnabled } from "@/lib/feature-flags/server";
-import { formatCurrency, formatDate, formatNumber, formatPercent } from "@/lib/format";
+import { formatCurrency, formatDate, formatPercent } from "@/lib/format";
 import type { Campaign, CampaignRoiMetrics, CampaignStats } from "@/models/campaign";
 import type { DonationListResponse, DonationSortField, DonationSortOrder } from "@/models/donation";
 import { BankAccountService } from "@/services/BankAccountService";
@@ -270,9 +272,16 @@ export default async function CampaignDetailPage({
   const roiDisplayValue =
     roiMetrics.roiPct !== null ? formatPercent(roiMetrics.roiPct, locale, 1) : t("roi.unavailable");
 
+  // ADR-035 rule A2 — entrance cascade in reading order: header (slot 0),
+  // then each column staggers its own cards via `.cascade` (nth-child ×
+  // --stagger-step). Client cards inside (members, exports, donations)
+  // re-render in place on interaction and Radix dialogs portal out of the
+  // container, so nth-child indices never shift post-mount and the
+  // entrance never replays on refetch (rule B12).
   return (
     <>
       <PageHeader
+        className="reveal-item"
         title={campaign.name}
         description={
           <span className="flex flex-wrap items-center gap-2">
@@ -317,11 +326,11 @@ export default async function CampaignDetailPage({
       />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(280px,340px)_minmax(0,1fr)]">
-        <aside className="space-y-6">
+        <aside className="cascade space-y-6">
           <StatsCard campaign={campaign} stats={stats} roiMetrics={roiMetrics} locale={locale} />
           <StatusCard campaign={campaign} canManage={auth.roles.includes("org_admin")} />
         </aside>
-        <div className="space-y-6">
+        <div className="cascade space-y-6">
           <CampaignDescriptionCard
             campaignId={campaign.id}
             description={campaign.description}
@@ -424,7 +433,7 @@ async function StatsCard({
           )}
           <StatRow
             label={t("stats.donors")}
-            value={formatNumber(stats.uniqueDonors, locale)}
+            value={<CountUp value={stats.uniqueDonors} locale={locale} />}
             hint={t("stats.donationsHint", { count: stats.donationCount })}
           />
           <StatRow
@@ -480,7 +489,19 @@ function GoalProgressRow({
         ) : null}
       </div>
       <dd className="mt-1 font-mono text-2xl font-semibold tabular-nums text-on-surface">
-        {raisedFormatted}
+        {/* ADR-035 rule A7 — the KPI counts up over the same 600 ms window
+            as the meter-fill below so both land together. The Intl options
+            mirror formatCurrency's defaults (EUR, two decimals). */}
+        <CountUp
+          value={raisedCents / 100}
+          locale={locale}
+          formatOptions={{
+            style: "currency",
+            currency: "EUR",
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          }}
+        />
       </dd>
       <div
         className="mt-3 h-2 overflow-hidden rounded-md bg-surface-container-highest"
@@ -490,10 +511,11 @@ function GoalProgressRow({
         aria-valuemax={100}
         aria-label={labels.aria(raisedFormatted, goalFormatted)}
       >
+        {/* ADR-035 rules A7/E18 — the width is static (server-resolved);
+            the entrance fills via the shared .meter-fill scaleX sweep,
+            never a width animation. */}
         <div
-          className={`h-full rounded-md transition-all duration-500 ease-out ${
-            reached ? "bg-success" : "bg-secondary"
-          }`}
+          className={`meter-fill h-full rounded-md ${reached ? "bg-success" : "bg-secondary"}`}
           style={{ width: `${cappedProgress}%` }}
         />
       </div>
@@ -693,7 +715,7 @@ async function DonationBreakdownCard({
   );
 }
 
-function StatRow({ label, value, hint }: { label: string; value: string; hint?: string }) {
+function StatRow({ label, value, hint }: { label: string; value: ReactNode; hint?: string }) {
   return (
     <div className="rounded-xl bg-surface-container p-4">
       <dt className="text-sm text-on-surface-variant">{label}</dt>

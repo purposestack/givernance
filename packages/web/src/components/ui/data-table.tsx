@@ -19,12 +19,19 @@ import {
   Rows3,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export type Density = "comfortable" | "compact";
+
+/**
+ * ADR-035 rule A2 — the entrance cascade covers the first ~10 rows; rows
+ * past the cap enter together on the last step so a 100-row page never
+ * stretches the choreography past the 1 s budget (rule A4).
+ */
+const ENTRANCE_ROW_CAP = 10;
 
 export interface DataTablePagination {
   page: number;
@@ -60,6 +67,22 @@ export interface DataTableProps<TData> {
    * screen-reader users.
    */
   isPending?: boolean;
+  /**
+   * Opt-in entrance choreography (ADR-035 rule A2): the first
+   * ~10 rows cascade in via the shared `.reveal-item` utility, once
+   * per mount only. Gated on the mount-time `data` reference — every
+   * filter/sort/pagination/refetch round-trip swaps in a NEW array,
+   * which disables the animation classes, so data swaps never replay
+   * the entrance (rule B12).
+   */
+  animateEntrance?: boolean;
+  /**
+   * Reading-order offset for the entrance cascade — set to the number
+   * of `.reveal-item` blocks above the table (page header, filter
+   * bar…) so rows enter after them (ADR-035 rule A2). Ignored unless
+   * `animateEntrance` is set.
+   */
+  entranceCascadeOffset?: number;
   emptyState?: React.ReactNode;
   defaultDensity?: Density;
   className?: string;
@@ -125,6 +148,8 @@ export function DataTable<TData>({
   sorting: controlledSorting,
   onSortingChange,
   isPending = false,
+  animateEntrance = false,
+  entranceCascadeOffset = 0,
   emptyState,
   defaultDensity = "comfortable",
   className,
@@ -132,6 +157,16 @@ export function DataTable<TData>({
   const t = useTranslations("dataTable");
   const [density, setDensity] = useState<Density>(defaultDensity);
   const [internalSorting, setInternalSorting] = useState<SortingState>([]);
+
+  // ADR-035 rule B12 — the entrance runs once per mount, never on data
+  // swaps. Filter/sort/pagination/refetch round-trips always deliver a
+  // new array reference, so reference equality against the mount-time
+  // array is the gate: the first dataset animates, every later swap
+  // renders animation-free. Client-only re-renders (density toggle, row
+  // selection) keep the same reference AND the same row DOM nodes, so
+  // the CSS animation (`forwards` fill) never restarts either.
+  const initialData = useRef(data);
+  const animateRows = animateEntrance && data === initialData.current;
 
   const sorting = controlledSorting ?? internalSorting;
   const setSorting = onSortingChange ?? setInternalSorting;
@@ -254,14 +289,23 @@ export function DataTable<TData>({
           </thead>
           <tbody>
             {hasRows ? (
-              table.getRowModel().rows.map((row) => (
+              table.getRowModel().rows.map((row, index) => (
                 <tr
                   key={row.id}
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
                   className={cn(
                     "border-t border-border-brand transition-colors duration-normal ease-out hover:bg-surface-container-low",
                     onRowClick && "cursor-pointer",
+                    animateRows && "reveal-item",
                   )}
+                  style={
+                    animateRows
+                      ? ({
+                          "--cascade-i":
+                            entranceCascadeOffset + Math.min(index, ENTRANCE_ROW_CAP - 1),
+                        } as React.CSSProperties)
+                      : undefined
+                  }
                 >
                   {row.getVisibleCells().map((cell) => {
                     const metaClassName = (

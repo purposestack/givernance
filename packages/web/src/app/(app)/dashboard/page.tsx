@@ -13,6 +13,7 @@ import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
 
 import { StatCardTrend } from "@/components/dashboard/stat-card-trend";
+import { CountUp } from "@/components/shared/count-up";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
 import { ApiProblem } from "@/lib/api";
@@ -90,7 +91,7 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-6 sm:space-y-8">
-      <div>
+      <div className="reveal-item" style={cascadeStyle(1)}>
         <h1 className="font-heading text-4xl font-normal leading-tight text-on-surface sm:text-5xl">
           {t("greeting", { name: auth.firstName ?? "" })}
         </h1>
@@ -105,28 +106,42 @@ export default async function DashboardPage() {
       >
         <StatCard
           label={t("stats.totalRaised")}
-          value={formatCurrencyRounded(totalRaisedCents, locale, primaryCurrency)}
+          value={
+            <CountUp
+              value={totalRaisedCents / 100}
+              locale={locale}
+              formatOptions={{
+                style: "currency",
+                currency: primaryCurrency,
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 0,
+              }}
+            />
+          }
           description={t("stats.totalRaisedHint")}
           valueClassName="font-mono"
           icon={Banknote}
           color="primary"
           trend={trendRaised}
+          cascadeIndex={2}
         />
         <StatCard
           label={t("stats.activeCampaigns")}
-          value={formatNumber(activeCampaignCount, locale)}
+          value={<CountUp value={activeCampaignCount} locale={locale} />}
           description={t("stats.activeCampaignsHint")}
           icon={Megaphone}
           color="secondary"
           trend={trendCampaigns}
+          cascadeIndex={3}
         />
         <StatCard
           label={t("stats.donors")}
-          value={formatNumber(donorResult?.pagination.total ?? 0, locale)}
+          value={<CountUp value={donorResult?.pagination.total ?? 0} locale={locale} />}
           description={t("stats.newDonorsThisMonth", { count: newDonorsThisMonth })}
           icon={Users}
           color="tertiary"
           trend={trendDonors}
+          cascadeIndex={4}
         />
         <StatCard
           label={t("stats.grantDeadlines")}
@@ -134,17 +149,21 @@ export default async function DashboardPage() {
           description={t("stats.noGrantDeadlinesHint")}
           icon={Timer}
           color="amber"
+          cascadeIndex={5}
         />
       </section>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]">
-        <section className="rounded-2xl bg-surface-container-lowest p-5 border border-border-brand sm:p-6">
+        <section
+          className="reveal-item rounded-2xl bg-surface-container-lowest p-5 border border-border-brand sm:p-6"
+          style={cascadeStyle(6)}
+        >
           <SectionHeader
             title={t("recentDonations.title")}
             actionHref="/donations"
             actionLabel={t("viewAll")}
           />
-          <div className="mt-4 divide-y divide-outline-variant/50">
+          <div className="cascade mt-4 divide-y divide-outline-variant/50">
             {(recentDonations?.data ?? []).length > 0 ? (
               recentDonations?.data.map((donation) => (
                 <DonationFeedItem key={donation.id} donation={donation} t={t} locale={locale} />
@@ -161,12 +180,15 @@ export default async function DashboardPage() {
         </section>
 
         {canWrite ? (
-          <section className="rounded-2xl bg-surface-container-lowest p-5 border border-border-brand sm:p-6">
+          <section
+            className="reveal-item rounded-2xl bg-surface-container-lowest p-5 border border-border-brand sm:p-6"
+            style={cascadeStyle(7)}
+          >
             <SectionHeader
               title={t("quickActions.title")}
               description={t("quickActions.description")}
             />
-            <div className="mt-4 grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+            <div className="cascade mt-4 grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
               <QuickAction href="/donations/new" label={t("quickActions.newDonation")} />
               <QuickAction href="/constituents/new" label={t("quickActions.newConstituent")} />
               <QuickAction href="/campaigns/new" label={t("quickActions.newCampaign")} />
@@ -176,7 +198,10 @@ export default async function DashboardPage() {
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]">
-        <section className="rounded-2xl bg-surface-container-lowest p-5 border border-border-brand sm:p-6">
+        <section
+          className="reveal-item rounded-2xl bg-surface-container-lowest p-5 border border-border-brand sm:p-6"
+          style={cascadeStyle(8)}
+        >
           <SectionHeader
             title={t("campaigns.title")}
             actionHref="/campaigns"
@@ -198,7 +223,7 @@ export default async function DashboardPage() {
           </div>
         </section>
 
-        <div className="space-y-6">
+        <div className="reveal-item space-y-6" style={cascadeStyle(8)}>
           <section className="rounded-2xl border border-primary/20 bg-ai-bg p-5 sm:p-6">
             <div className="flex items-center gap-2 text-ai-text">
               <Lightbulb size={18} aria-hidden="true" />
@@ -273,6 +298,14 @@ interface TrendProp {
   detail: { current: string; previous: string };
 }
 
+/**
+ * Inline style feeding the ADR-035 `.reveal-item` cascade order — the shared
+ * utility in globals.css reads `--cascade-i` for its animation-delay (rule A2).
+ */
+function cascadeStyle(index: number): React.CSSProperties {
+  return { "--cascade-i": index } as React.CSSProperties;
+}
+
 function SectionHeader({
   title,
   description,
@@ -307,14 +340,17 @@ function StatCard({
   icon: Icon,
   color = "primary",
   trend,
+  cascadeIndex,
 }: {
   label: string;
-  value: string;
+  value: React.ReactNode;
   description: string;
   valueClassName?: string;
   icon?: React.ElementType;
   color?: "primary" | "secondary" | "tertiary" | "amber";
   trend?: TrendProp;
+  /** ADR-035 cascade order — the card (value + trend badge) is the animated unit. */
+  cascadeIndex: number;
 }) {
   // Semantic icon background: maps stat type to palette.
   // `amber` used for deadline/warning cards (grant deadlines).
@@ -326,7 +362,10 @@ function StatCard({
   };
 
   return (
-    <article className="min-h-36 rounded-2xl bg-surface-container-lowest p-5 border border-border-brand">
+    <article
+      className="reveal-item min-h-36 rounded-2xl bg-surface-container-lowest p-5 border border-border-brand"
+      style={cascadeStyle(cascadeIndex)}
+    >
       <div className="flex items-center justify-between">
         <p className="text-sm font-medium text-on-surface-variant">{label}</p>
         <div className="flex items-center gap-2">
@@ -427,7 +466,7 @@ function CampaignProgressItem({
         <>
           <div className="mt-4 h-2 overflow-hidden rounded-md bg-surface-container">
             <div
-              className="h-full rounded-md bg-secondary transition-all duration-500 ease-out"
+              className="meter-fill h-full rounded-md bg-secondary"
               style={{ width: `${progress}%` }}
             />
           </div>

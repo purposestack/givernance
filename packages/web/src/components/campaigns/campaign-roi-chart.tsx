@@ -31,6 +31,12 @@ interface SeriesItem {
   value: number;
   displayValue: string;
   barClassName: string;
+  /**
+   * ADR-035 rule A8 — a not-yet-computed value (cost unavailable) renders
+   * as a hatched texture inside the track, never a blank bar. A real zero
+   * keeps the plain empty track.
+   */
+  unavailable: boolean;
 }
 
 export function CampaignRoiChart({
@@ -58,6 +64,7 @@ export function CampaignRoiChart({
       value: costCents ?? 0,
       displayValue: costDisplayValue,
       barClassName: "bg-amber",
+      unavailable: costCents === null,
     },
     {
       key: "raised",
@@ -65,6 +72,7 @@ export function CampaignRoiChart({
       value: totalRaisedCents,
       displayValue: raisedDisplayValue,
       barClassName: "bg-primary",
+      unavailable: false,
     },
   ];
 
@@ -89,7 +97,15 @@ export function CampaignRoiChart({
         </div>
       </div>
 
-      <figure className="mt-5 space-y-4" aria-describedby={figureCaptionId} aria-details={tableId}>
+      {/* ADR-035 rule A7 — the plot area draws left→right once per mount
+          via the shared .sweep-in clip-path utility. Server component: it
+          only re-renders through RSC reconciliation (DOM nodes persist),
+          so background refetches never replay the sweep (rule B12). */}
+      <figure
+        className="sweep-in mt-5 space-y-4"
+        aria-describedby={figureCaptionId}
+        aria-details={tableId}
+      >
         {series.map((item) => {
           const width = Math.max((item.value / chartMax) * 100, item.value > 0 ? 8 : 0);
           return (
@@ -107,10 +123,17 @@ export function CampaignRoiChart({
                 className="mt-3 h-3 overflow-hidden rounded-pill bg-surface-container-highest"
                 aria-hidden="true"
               >
-                <div
-                  className={`h-full rounded-pill ${item.barClassName}`}
-                  style={{ width: `${Math.min(width, 100)}%` }}
-                />
+                {item.unavailable ? (
+                  // Rule A8 — diagonal hatching says "no data here" instead
+                  // of a blank track (the sr-only table + displayValue carry
+                  // the "unavailable" copy for assistive tech).
+                  <div className="h-full rounded-pill bg-[repeating-linear-gradient(-45deg,transparent,transparent_4px,var(--color-outline-variant)_4px,var(--color-outline-variant)_6px)]" />
+                ) : (
+                  <div
+                    className={`h-full rounded-pill ${item.barClassName}`}
+                    style={{ width: `${Math.min(width, 100)}%` }}
+                  />
+                )}
               </div>
             </CardContent>
           );

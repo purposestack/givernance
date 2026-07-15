@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import type { ChangeEvent } from "react";
+import type { ChangeEvent, CSSProperties } from "react";
 
 import { FilterBar } from "@/components/shared/filter-bar";
 
@@ -29,8 +29,14 @@ export function DonationsFilters({ dateFrom, dateTo }: DonationsFiltersProps) {
     router.push(query ? `${pathname}?${query}` : pathname);
   }
 
+  // ADR-035 — slot 1 of the list-page entrance cascade (header 0 →
+  // filters 1 → table 2). Changing a date re-renders this client
+  // component in place (no remount), so the entrance never replays on
+  // filter interaction (rule B12) and the inputs stay instant.
   return (
     <FilterBar
+      className="reveal-item"
+      style={{ "--cascade-i": 1 } as CSSProperties}
       filters={
         <>
           <DateField

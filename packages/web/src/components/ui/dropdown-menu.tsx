@@ -19,7 +19,25 @@ export const DropdownMenuSub = DropdownMenuPrimitive.Sub;
 export const DropdownMenuRadioGroup = DropdownMenuPrimitive.RadioGroup;
 
 const itemBase =
-  "relative flex min-h-10 cursor-default select-none items-center gap-2 rounded-[var(--radius-sm)] px-3 py-2 text-sm font-medium outline-none transition-colors duration-normal ease-out focus:bg-surface-container data-[disabled]:pointer-events-none data-[disabled]:opacity-50";
+  "relative flex min-h-10 cursor-default select-none items-center gap-2 rounded-[var(--radius-sm)] px-3 py-2 text-sm font-medium outline-none transition-colors duration-[var(--duration-normal)] ease-out focus:bg-surface-container data-[disabled]:pointer-events-none data-[disabled]:opacity-50";
+
+/*
+ * ADR-035 D15 — overlay enter/exit for menu content. Enter: fade + slight
+ * scale from the trigger-side origin over --duration-normal --ease-out via
+ * @starting-style, once per open. Exit: faster plain fade (--duration-fast
+ * --ease-in) — the shared `cascade-in` keyframe played in reverse against
+ * the closed-state opacity gives Radix Presence a real animation to await
+ * before unmounting (pure transitions are not awaited). Compositor
+ * properties only (E18); the global reduced-motion block collapses both to
+ * instant final state (E17).
+ */
+const contentMotion = [
+  "origin-[var(--radix-dropdown-menu-content-transform-origin)]",
+  "transition-[opacity,scale] duration-[var(--duration-normal)] ease-out",
+  "starting:opacity-0 starting:scale-[0.98]",
+  "data-[state=closed]:opacity-0",
+  "data-[state=closed]:animate-[cascade-in_var(--duration-fast)_var(--ease-in)_reverse_forwards]",
+];
 
 export const DropdownMenuSubTrigger = forwardRef<
   ElementRef<typeof DropdownMenuPrimitive.SubTrigger>,
@@ -46,8 +64,7 @@ export const DropdownMenuSubContent = forwardRef<
       "z-[var(--z-popover)] min-w-[12rem] overflow-hidden p-1.5",
       "bg-surface-container-lowest text-on-surface",
       "border border-border-brand rounded-[var(--radius-md)] shadow-overlay",
-      "data-[state=open]:animate-in data-[state=closed]:animate-out",
-      "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      ...contentMotion,
       className,
     )}
     {...props}
@@ -67,8 +84,7 @@ export const DropdownMenuContent = forwardRef<
         "z-[var(--z-popover)] min-w-[12rem] overflow-hidden p-1.5",
         "bg-surface-container-lowest text-on-surface",
         "border border-border-brand rounded-[var(--radius-md)] shadow-overlay",
-        "data-[state=open]:animate-in data-[state=closed]:animate-out",
-        "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+        ...contentMotion,
         className,
       )}
       {...props}

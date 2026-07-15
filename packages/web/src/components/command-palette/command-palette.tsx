@@ -52,10 +52,12 @@ import {
   CommandItem,
   CommandList,
   CommandSeparator,
+  commandDialogMotion,
 } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { createClientApiClient } from "@/lib/api/client-browser";
 import { useAuth } from "@/lib/auth";
+import { cn } from "@/lib/utils";
 import { type SearchGroups, type SearchHit, SearchService } from "@/services/SearchService";
 
 const DEBOUNCE_MS = 200;
@@ -82,6 +84,11 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
   const canWrite = hasAppRole("org_admin") || hasAppRole("user");
 
   const [query, setQuery] = useState("");
+  // First-keystroke latch for this open "session": the empty-state
+  // mini-cascade (ADR-035 rule D16) plays only until the user starts
+  // typing, so clearing the query back to empty never replays the
+  // entrance (rule B12 — typing/filtering must not re-run choreography).
+  const [hasTyped, setHasTyped] = useState(false);
   const [groups, setGroups] = useState<SearchGroups>(EMPTY_GROUPS);
   const [loading, setLoading] = useState(false);
   const [errored, setErrored] = useState(false);
@@ -101,6 +108,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
   useEffect(() => {
     if (open) {
       setQuery("");
+      setHasTyped(false);
       setGroups(EMPTY_GROUPS);
       setLoading(false);
       setErrored(false);
@@ -162,6 +170,11 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
     [onClose, router],
   );
 
+  const handleQueryChange = useCallback((value: string) => {
+    setHasTyped(true);
+    setQuery(value);
+  }, []);
+
   // Static "Go to …" commands stay in sync with the sidebar. Keep this
   // list short — the palette is a quick-jump aid, not a sitemap.
   const navigationCommands = useMemo(
@@ -212,8 +225,11 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
 
   return (
     <Dialog open={open} onOpenChange={(next) => (next ? null : onClose())}>
+      {/* `commandDialogMotion` — ADR-035 rule D15 overlay entrance/exit
+          (the stock `animate-in` classes on DialogContent are inert:
+          no tw-animate plugin is installed). */}
       <DialogContent
-        className="overflow-hidden p-0 shadow-modal max-w-[640px]"
+        className={cn("overflow-hidden p-0 shadow-modal max-w-[640px]", commandDialogMotion)}
         aria-label={t("title")}
       >
         {/* `DialogTitle` is visually hidden but required by Radix for SR
@@ -239,7 +255,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
         >
           <CommandInput
             value={query}
-            onValueChange={setQuery}
+            onValueChange={handleQueryChange}
             placeholder={t("placeholder")}
             autoFocus
             aria-label={t("placeholder")}
@@ -297,7 +313,14 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
             ) : null}
 
             {!hasQuery ? (
-              <>
+              /* ADR-035 rule D16 — the static groups stagger in once per
+                 open (group-level mini-cascade: ≤3 direct children, well
+                 inside the 600 ms half-scale budget). The class is
+                 dropped after the first keystroke of this open, so
+                 returning to the empty state mid-session is instant; the
+                 live search results above are animation-free by design
+                 (rule B12: filtering never replays entrances). */
+              <div className={hasTyped ? undefined : "cascade"}>
                 <CommandGroup heading={t("groups.navigation")}>
                   {navigationCommands.map((cmd) => (
                     <CommandItem
@@ -328,7 +351,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
                     </CommandGroup>
                   </>
                 ) : null}
-              </>
+              </div>
             ) : null}
           </CommandList>
 

@@ -24,8 +24,17 @@ export const DialogOverlay = forwardRef<
     ref={ref}
     className={cn(
       "fixed inset-0 z-[var(--z-modal)] bg-overlay",
-      "data-[state=open]:animate-in data-[state=closed]:animate-out",
-      "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      // ADR-035 D15 — scrim fades in with the dialog entrance (300ms
+      // --ease-out via @starting-style) and lifts with the faster exit
+      // fade. Exit plays the shared `cascade-in` keyframe in reverse
+      // against the closed-state opacity so Radix Presence has a real
+      // animation to await before unmounting (pure transitions are not
+      // awaited). The global reduced-motion block collapses both to
+      // instant final state (E17).
+      "transition-opacity duration-[var(--duration-slower)] ease-out",
+      "starting:opacity-0",
+      "data-[state=closed]:opacity-0",
+      "data-[state=closed]:animate-[cascade-in_var(--duration-normal)_var(--ease-in)_reverse_forwards]",
       className,
     )}
     {...props}
@@ -47,8 +56,17 @@ export const DialogContent = forwardRef<
         "bg-surface-container-lowest text-on-surface",
         "border border-border-brand rounded-[var(--radius-lg)]",
         "shadow-overlay",
-        "data-[state=open]:animate-in data-[state=closed]:animate-out",
-        "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+        // ADR-035 D15 — enter: opacity 0→1 + scale(0.98)→1 over
+        // --duration-slower (300ms) --ease-out via @starting-style, once
+        // per open. Exit: plain fade, faster than entrance, --ease-in
+        // (D15's 200ms has no motion token — --duration-normal is the
+        // nearest faster-than-entrance step). Radix centering rides the
+        // `translate` property, so the opacity/scale motion never touches
+        // it — compositor properties only (E18).
+        "transition-[opacity,scale] duration-[var(--duration-slower)] ease-out",
+        "starting:opacity-0 starting:scale-[0.98]",
+        "data-[state=closed]:opacity-0",
+        "data-[state=closed]:animate-[cascade-in_var(--duration-normal)_var(--ease-in)_reverse_forwards]",
         "focus:outline-none",
         className,
       )}
