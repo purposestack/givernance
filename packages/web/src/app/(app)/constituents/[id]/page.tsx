@@ -282,7 +282,10 @@ function ProfileCard({
   return (
     <section
       aria-label={labels.ariaLabel}
-      className="mb-6 flex flex-col gap-5 rounded-2xl bg-surface-container-lowest p-6 border border-border-brand md:flex-row md:items-start"
+      // ADR-035 rule A2 — content cascades in reading order: profile
+      // header (0) → AI suggestion (1) → tabs block (2). Breadcrumbs are
+      // static structure (rule A1). Pure CSS on server-rendered markup.
+      className="mb-6 flex flex-col gap-5 rounded-2xl bg-surface-container-lowest p-6 border border-border-brand md:flex-row md:items-start reveal-item"
     >
       <div
         aria-hidden="true"
@@ -419,7 +422,8 @@ function AiSuggestionCard({
   return (
     <section
       aria-label={labels.ariaLabel}
-      className="mb-6 rounded-2xl border border-primary/20 bg-primary-50/40 p-5"
+      className="mb-6 rounded-2xl border border-primary/20 bg-primary-50/40 p-5 reveal-item"
+      style={{ "--cascade-i": 1 } as React.CSSProperties}
     >
       <div className="flex items-center gap-2 text-primary">
         <Sparkles size={16} aria-hidden="true" />

@@ -1,6 +1,7 @@
 import { Megaphone, Plus } from "lucide-react";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
+import type { CSSProperties } from "react";
 
 import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
@@ -101,9 +102,16 @@ export default async function CampaignsPage({ searchParams }: CampaignsPageProps
   );
   const hasAny = result.pagination.total > 0;
 
+  // ADR-035 rule A2 — entrance cascade in reading order: header (0) →
+  // search/filter row (1) → table container (2); the last two slots live
+  // inside CampaignsTable. Filter/sort/page changes re-render this RSC in
+  // place (React reconciles the same wrappers, DOM nodes persist), so the
+  // cascade runs once per navigation and never replays on a filter
+  // round-trip (rules B9/B12).
   return (
     <>
       <PageHeader
+        className="reveal-item"
         title={t("title")}
         description={
           hasAny ? t("subtitleWithCount", { count: result.pagination.total }) : t("subtitleEmpty")
@@ -131,7 +139,10 @@ export default async function CampaignsPage({ searchParams }: CampaignsPageProps
           order={order}
         />
       ) : (
-        <div className="rounded-2xl bg-surface-container-lowest border border-border-brand">
+        <div
+          className="reveal-item rounded-2xl bg-surface-container-lowest border border-border-brand"
+          style={{ "--cascade-i": 1 } as CSSProperties}
+        >
           <EmptyState icon={Megaphone} title={t("empty.title")} description={t("empty.seedHint")} />
         </div>
       )}

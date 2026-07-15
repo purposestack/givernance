@@ -59,7 +59,15 @@ export default async function EditConstituentPage({ params }: EditConstituentPag
           { label: t("breadcrumbEdit") },
         ]}
       />
-      <ConstituentForm mode="edit" constituent={constituent} multiTypeEnabled={multiTypeEnabled} />
+      {/* ADR-035 rule E19 — a single fade-rise on the whole form block;
+          forms get no per-field choreography. Header stays static. */}
+      <div className="reveal-item">
+        <ConstituentForm
+          mode="edit"
+          constituent={constituent}
+          multiTypeEnabled={multiTypeEnabled}
+        />
+      </div>
     </>
   );
 }

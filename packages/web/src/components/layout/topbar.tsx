@@ -47,8 +47,13 @@ interface TopbarProps {
   onCommandPaletteOpen?: () => void;
 }
 
+/*
+ * ADR-035 rule A1: the topbar is static structure — it renders instantly
+ * and never gets an entrance animation. Hover/open feedback below stays on
+ * the --duration-normal / --ease-out tokens (docs/11 §2.10 rule 7).
+ */
 const avatarTriggerClasses =
-  "flex h-9 w-9 items-center justify-center rounded-full bg-primary text-xs font-semibold text-on-primary outline-none transition-shadow duration-normal ease-out hover:shadow-[0_0_0_4px_rgba(8,103,91,0.10)] data-[state=open]:shadow-[0_0_0_4px_rgba(8,103,91,0.15)] focus-visible:shadow-ring";
+  "flex h-9 w-9 items-center justify-center rounded-full bg-primary text-xs font-semibold text-on-primary outline-none transition-shadow duration-[var(--duration-normal)] ease-out hover:shadow-[0_0_0_4px_rgba(8,103,91,0.10)] data-[state=open]:shadow-[0_0_0_4px_rgba(8,103,91,0.15)] focus-visible:shadow-ring";
 
 export function Topbar({
   title,
@@ -121,7 +126,7 @@ export function Topbar({
       <button
         ref={hamburgerRef}
         type="button"
-        className="flex shrink-0 items-center justify-center rounded-md p-1.5 text-text transition-colors duration-normal ease-out hover:bg-surface-container-low focus-visible:ring-2 focus-visible:ring-primary md:hidden"
+        className="flex shrink-0 items-center justify-center rounded-md p-1.5 text-text transition-colors duration-[var(--duration-normal)] ease-out hover:bg-surface-container-low focus-visible:ring-2 focus-visible:ring-primary md:hidden"
         onClick={onMenuToggle}
         aria-label={sidebarOpen ? t("closeMenu") : t("openMenu")}
         aria-expanded={sidebarOpen}

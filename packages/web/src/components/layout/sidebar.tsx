@@ -115,6 +115,11 @@ interface SidebarProps {
 /**
  * Sidebar navigation — 288px fixed, collapsible on mobile.
  * Matches dashboard.html mockup layout and base.css sidebar specs.
+ *
+ * ADR-035 rule A1: the sidebar is static structure — it renders instantly
+ * and never gets an entrance animation. The only motion here is
+ * user-initiated (mobile drawer slide, hover/active color feedback on the
+ * --duration tokens), never load choreography.
  */
 export function Sidebar({
   open,
@@ -179,7 +184,7 @@ export function Sidebar({
     <>
       {/* Mobile overlay */}
       <div
-        className={`fixed inset-0 z-[var(--z-overlay)] bg-overlay transition-opacity duration-slow ease-out md:hidden ${
+        className={`fixed inset-0 z-[var(--z-overlay)] bg-overlay transition-opacity duration-[var(--duration-slow)] ease-out md:hidden ${
           open ? "opacity-100" : "pointer-events-none opacity-0"
         }`}
         onClick={onClose}
@@ -189,7 +194,7 @@ export function Sidebar({
       {/* Sidebar */}
       <aside
         id="sidebar-nav"
-        className={`fixed top-0 left-0 z-[var(--z-modal)] flex h-screen w-[var(--sidebar-width)] flex-col overflow-y-auto overflow-x-hidden border-r border-border-brand bg-surface-container-lowest transition-transform duration-slow ease-out md:z-[var(--z-sticky)] md:translate-x-0 ${
+        className={`fixed top-0 left-0 z-[var(--z-modal)] flex h-screen w-[var(--sidebar-width)] flex-col overflow-y-auto overflow-x-hidden border-r border-border-brand bg-surface-container-lowest transition-transform duration-[var(--duration-slow)] ease-out md:z-[var(--z-sticky)] md:translate-x-0 ${
           open ? "translate-x-0 shadow-overlay" : "-translate-x-full"
         }`}
         aria-label={t("mainNav")}
@@ -222,7 +227,7 @@ export function Sidebar({
                   onClick={() => {
                     handleMobileClose();
                   }}
-                  className={`flex items-center gap-4 rounded-[var(--radius-lg)] px-4 py-3 text-sm transition-colors duration-normal ease-out focus-visible:outline-none focus-visible:shadow-ring ${
+                  className={`flex items-center gap-4 rounded-[var(--radius-lg)] px-4 py-3 text-sm transition-colors duration-[var(--duration-normal)] ease-out focus-visible:outline-none focus-visible:shadow-ring ${
                     isActive
                       ? "bg-surface-container font-medium text-primary"
                       : "text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface"
@@ -263,7 +268,7 @@ export function Sidebar({
                     key={item.href}
                     href={item.href}
                     onClick={handleMobileClose}
-                    className={`flex items-center gap-4 rounded-[var(--radius-lg)] px-4 py-3 text-sm transition-colors duration-normal ease-out focus-visible:outline-none focus-visible:shadow-ring ${
+                    className={`flex items-center gap-4 rounded-[var(--radius-lg)] px-4 py-3 text-sm transition-colors duration-[var(--duration-normal)] ease-out focus-visible:outline-none focus-visible:shadow-ring ${
                       isActive
                         ? "bg-surface-container font-medium text-primary"
                         : "text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface"
@@ -318,7 +323,7 @@ export function Sidebar({
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className="flex w-full items-center gap-3 rounded-xl border border-transparent px-3 py-3 text-left transition-colors duration-normal ease-out hover:bg-surface-container-low focus-visible:outline-none focus-visible:shadow-ring"
+                className="flex w-full items-center gap-3 rounded-xl border border-transparent px-3 py-3 text-left transition-colors duration-[var(--duration-normal)] ease-out hover:bg-surface-container-low focus-visible:outline-none focus-visible:shadow-ring"
               >
                 <div
                   className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-on-primary"

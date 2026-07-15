@@ -34,7 +34,11 @@ export default async function NewConstituentPage() {
           { label: t("breadcrumbNew") },
         ]}
       />
-      <ConstituentForm mode="create" multiTypeEnabled={multiTypeEnabled} />
+      {/* ADR-035 rule E19 — a single fade-rise on the whole form block;
+          forms get no per-field choreography. Header stays static. */}
+      <div className="reveal-item">
+        <ConstituentForm mode="create" multiTypeEnabled={multiTypeEnabled} />
+      </div>
     </>
   );
 }

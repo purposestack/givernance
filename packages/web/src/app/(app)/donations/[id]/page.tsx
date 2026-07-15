@@ -66,9 +66,15 @@ export default async function DonationDetailPage({ params }: DonationDetailPageP
   const canRefund =
     canDelete && donation.paymentMethod === "stripe" && donation.status !== "refunded";
 
+  // ADR-035 rule A2 — entrance cascade in reading order: header + its
+  // action row (receipt / refund / delete) reveal first, then the content
+  // cards stagger in via `.cascade`. Server-rendered classes only; a
+  // router.refresh after refund/delete reconciles the same DOM nodes, so
+  // the choreography never replays on a data refresh (rule B12).
   return (
     <>
       <PageHeader
+        className="reveal-item"
         title={`${t("title")} — ${amountLabel}`}
         description={donorName}
         breadcrumbs={[
@@ -110,7 +116,7 @@ export default async function DonationDetailPage({ params }: DonationDetailPageP
         }
       />
 
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="cascade grid gap-6 md:grid-cols-2">
         <InfoCard
           donation={donation}
           donorName={donorName}

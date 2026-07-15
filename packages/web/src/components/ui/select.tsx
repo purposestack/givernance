@@ -22,7 +22,7 @@ export const SelectTrigger = forwardRef<
       "bg-surface-container-lowest text-on-surface",
       "border border-outline-variant rounded-[var(--radius-input)]",
       "font-body text-base placeholder:text-text-muted",
-      "transition-[border-color,box-shadow] duration-normal ease-out",
+      "transition-[border-color,box-shadow] duration-[var(--duration-normal)] ease-out",
       "focus-visible:outline-none focus-visible:border-primary focus-visible:shadow-ring",
       "disabled:cursor-not-allowed disabled:opacity-70 disabled:contrast-more:opacity-80",
       "aria-invalid:border-error aria-invalid:focus-visible:shadow-ring-error",
@@ -84,8 +84,20 @@ export const SelectContent = forwardRef<
         "bg-surface-container-lowest text-on-surface",
         "border border-border-brand rounded-[var(--radius-md)]",
         "shadow-overlay",
-        "data-[state=open]:animate-in data-[state=closed]:animate-out",
-        "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+        // ADR-035 D15 — enter: fade + slight scale from the trigger-side
+        // origin over --duration-normal --ease-out via @starting-style,
+        // once per open. Exit: faster plain fade (--duration-fast
+        // --ease-in) — the shared `cascade-in` keyframe played in reverse
+        // against the closed-state opacity gives Radix Presence a real
+        // animation to await before unmounting. Compositor properties
+        // only (E18); the popper offset below rides the `translate`
+        // property so the scale motion never touches it. The global
+        // reduced-motion block collapses both to instant (E17).
+        "origin-[var(--radix-select-content-transform-origin)]",
+        "transition-[opacity,scale] duration-[var(--duration-normal)] ease-out",
+        "starting:opacity-0 starting:scale-[0.98]",
+        "data-[state=closed]:opacity-0",
+        "data-[state=closed]:animate-[cascade-in_var(--duration-fast)_var(--ease-in)_reverse_forwards]",
         position === "popper" &&
           "data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1",
         className,
@@ -129,7 +141,7 @@ export const SelectItem = forwardRef<
     className={cn(
       "relative flex w-full cursor-default select-none items-center",
       "py-1.5 pl-8 pr-2 text-sm rounded-[var(--radius-sm)]",
-      "outline-none transition-colors duration-normal ease-out",
+      "outline-none transition-colors duration-[var(--duration-normal)] ease-out",
       "focus:bg-surface-container text-on-surface",
       "data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
       className,

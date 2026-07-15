@@ -20,7 +20,12 @@ export default async function NewCampaignPage() {
           { label: t("breadcrumbNew") },
         ]}
       />
-      <CampaignForm mode="create" />
+      {/* ADR-035 rule A2 — single entrance slot for the form container;
+          header/shell stay static (rule A1). The wrapper animates
+          opacity/transform only — zero layout shift (rule A6). */}
+      <div className="reveal-item">
+        <CampaignForm mode="create" />
+      </div>
     </>
   );
 }

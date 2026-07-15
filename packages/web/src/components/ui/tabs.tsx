@@ -33,7 +33,11 @@ export const TabsTrigger = forwardRef<
     className={cn(
       "inline-flex items-center justify-center whitespace-nowrap",
       "px-3 py-1.5 text-sm font-medium",
-      "rounded-[var(--radius-sm)] transition-colors duration-normal ease-out",
+      // ADR-035 B11 — the active state restyles per-trigger (color/weight
+      // only, no sliding pill), so the transition is colors over the
+      // --duration-normal / --ease-out tokens. `duration-normal` is not a
+      // Tailwind theme namespace, hence the arbitrary-value form.
+      "rounded-[var(--radius-sm)] transition-colors duration-[var(--duration-normal)] ease-out",
       "focus-visible:outline-none focus-visible:shadow-ring",
       "disabled:pointer-events-none disabled:opacity-50",
       "data-[state=active]:bg-surface-container-lowest data-[state=active]:text-primary data-[state=active]:font-semibold",

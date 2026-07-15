@@ -23,8 +23,19 @@ export const PopoverContent = forwardRef<
         "bg-surface-container-lowest text-on-surface",
         "border border-border-brand rounded-[var(--radius-md)]",
         "shadow-overlay outline-none",
-        "data-[state=open]:animate-in data-[state=closed]:animate-out",
-        "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+        // ADR-035 D15 — enter: fade + slight scale from the trigger-side
+        // origin over --duration-normal --ease-out via @starting-style,
+        // once per open. Exit: faster plain fade (--duration-fast
+        // --ease-in) — the shared `cascade-in` keyframe played in reverse
+        // against the closed-state opacity gives Radix Presence a real
+        // animation to await before unmounting. Compositor properties
+        // only (E18); the global reduced-motion block collapses both to
+        // instant final state (E17).
+        "origin-[var(--radix-popover-content-transform-origin)]",
+        "transition-[opacity,scale] duration-[var(--duration-normal)] ease-out",
+        "starting:opacity-0 starting:scale-[0.98]",
+        "data-[state=closed]:opacity-0",
+        "data-[state=closed]:animate-[cascade-in_var(--duration-fast)_var(--ease-in)_reverse_forwards]",
         className,
       )}
       {...props}

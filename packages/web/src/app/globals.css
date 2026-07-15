@@ -776,23 +776,118 @@ h4 {
  *     surfaces that need staggered card entrance). Defined globally
  *     so component-level call-sites (e.g. KPITile) can opt in via
  *     className="reveal" without re-declaring the keyframes.
- *     Source: docs/design/admin/dashboard.html `.reveal`. */
+ *     Source: docs/design/admin/dashboard.html `.reveal`.
+ *     Delays + duration migrated onto the ADR-035 motion tokens
+ *     (--stagger-step / --duration-slow) per the ADR consequence note. */
 .reveal {
   opacity: 0;
   transform: translateY(12px);
-  animation: revealIn 0.6s var(--ease-out) forwards;
+  animation: revealIn var(--duration-slow) var(--ease-out) forwards;
 }
-.reveal:nth-child(1) { animation-delay: 0.02s; }
-.reveal:nth-child(2) { animation-delay: 0.06s; }
-.reveal:nth-child(3) { animation-delay: 0.10s; }
-.reveal:nth-child(4) { animation-delay: 0.14s; }
+.reveal:nth-child(1) { animation-delay: calc(1 * var(--stagger-step)); }
+.reveal:nth-child(2) { animation-delay: calc(2 * var(--stagger-step)); }
+.reveal:nth-child(3) { animation-delay: calc(3 * var(--stagger-step)); }
+.reveal:nth-child(4) { animation-delay: calc(4 * var(--stagger-step)); }
 
 @keyframes revealIn {
   to { opacity: 1; transform: translateY(0); }
 }
 
+/*
+ * ══════════════════════════════════════════════
+ * ADR-035 — Loading & motion choreography
+ * ══════════════════════════════════════════════
+ * Shared utilities for the orchestrated cascade + directional data-draw
+ * (docs/adrs/adr-035-loading-motion-choreography.md). Pure CSS so they
+ * compose onto server-rendered markup; compositor properties only —
+ * opacity / transform / clip-path, never width/height/inset (rule E18).
+ * Each animation runs ONCE per mount via `forwards` fill: background
+ * refetches / re-renders must never re-key these classes (rule B12).
+ * Reduced motion collapses everything to instant final state (rule E17)
+ * in the media block at the end of this section.
+ */
+
+/* Cascade container — direct children stagger in reading order (rule A2):
+   opacity 0→1 + translateY(4px)→0, delay = nth-child index × --stagger-step.
+   Covers 12 children; children beyond 12 appear with the max delay. */
+.cascade > *,
+.reveal-item {
+  opacity: 0;
+  transform: translateY(4px);
+  animation: cascade-in var(--duration-slow) var(--ease-out) forwards;
+}
+.cascade > * { animation-delay: calc(12 * var(--stagger-step)); }
+.cascade > *:nth-child(1) { animation-delay: calc(1 * var(--stagger-step)); }
+.cascade > *:nth-child(2) { animation-delay: calc(2 * var(--stagger-step)); }
+.cascade > *:nth-child(3) { animation-delay: calc(3 * var(--stagger-step)); }
+.cascade > *:nth-child(4) { animation-delay: calc(4 * var(--stagger-step)); }
+.cascade > *:nth-child(5) { animation-delay: calc(5 * var(--stagger-step)); }
+.cascade > *:nth-child(6) { animation-delay: calc(6 * var(--stagger-step)); }
+.cascade > *:nth-child(7) { animation-delay: calc(7 * var(--stagger-step)); }
+.cascade > *:nth-child(8) { animation-delay: calc(8 * var(--stagger-step)); }
+.cascade > *:nth-child(9) { animation-delay: calc(9 * var(--stagger-step)); }
+.cascade > *:nth-child(10) { animation-delay: calc(10 * var(--stagger-step)); }
+.cascade > *:nth-child(11) { animation-delay: calc(11 * var(--stagger-step)); }
+.cascade > *:nth-child(12) { animation-delay: calc(12 * var(--stagger-step)); }
+
+/* Standalone cascade participant — override order per element with
+   style={{ "--cascade-i": n }} (matches the .cascade nth-child scheme). */
+.reveal-item { animation-delay: calc(var(--cascade-i, 0) * var(--stagger-step)); }
+
+@keyframes cascade-in {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Directional data-draw — charts / timeline bars sweep left→right over
+   --duration-sweep (rule A7). clip-path so the element keeps its final
+   geometry from the first frame (zero layout shift, rule A6). */
+.sweep-in {
+  clip-path: inset(0 100% 0 0);
+  animation: sweep-in var(--duration-sweep) var(--ease-out) forwards;
+}
+
+@keyframes sweep-in {
+  from { clip-path: inset(0 100% 0 0); }
+  to { clip-path: inset(0 0 0 0); }
+}
+
+/* Progress/meter fill — scaleX from the left edge, never a width
+   animation (rule E18). Apply to the value bar inside a static track. */
+.meter-fill {
+  transform: scaleX(0);
+  transform-origin: left;
+  animation: meter-fill var(--duration-sweep) var(--ease-out) forwards;
+}
+
+@keyframes meter-fill {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+/* Data-shaped ghost placeholder — static muted surface, NO shimmer, NO
+   spinner (rule A5). Size it to the exact final geometry of the data it
+   stands in for so the reveal causes zero layout shift (rule A6). */
+.ghost {
+  background: var(--color-surface-container);
+  border-radius: 6px;
+}
+
+/* ADR-035 rule E17 — prefers-reduced-motion resolves the whole
+   choreography instantly to final state. The global reduced-motion block
+   near the top of this file shortens durations but leaves animation-delay
+   intact, which would hold cascaded content invisible for up to 600 ms —
+   so these utilities collapse entirely instead. */
 @media (prefers-reduced-motion: reduce) {
-  .reveal { opacity: 1; transform: none; animation: none; }
+  .reveal,
+  .cascade > *,
+  .reveal-item,
+  .sweep-in,
+  .meter-fill {
+    opacity: 1;
+    transform: none;
+    clip-path: none;
+    animation: none;
+  }
 }
 
 /* SurveyInvitationPrompt (issue #444) — in-app survey modal layout. */

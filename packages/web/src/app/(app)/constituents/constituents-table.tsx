@@ -473,7 +473,15 @@ export function ConstituentsTable({
 
   return (
     <>
-      <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-center">
+      {/* ADR-035 rule A2 — the filter bar is step 1 of the page cascade
+          (header is 0, rows start at 2). The class lives on a container
+          that survives every filter/search/sort re-render (only its
+          children swap), so interacting with a filter never replays the
+          entrance (rule B12). */}
+      <div
+        className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-center reveal-item"
+        style={{ "--cascade-i": 1 } as React.CSSProperties}
+      >
         <div className="relative flex-1">
           <Search
             className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant opacity-50"
@@ -557,6 +565,12 @@ export function ConstituentsTable({
         sorting={sorting}
         onSortingChange={onSortingChange}
         isPending={isPending}
+        // ADR-035 rule A2 — rows cascade in once per mount, after the
+        // header (0) and filter bar (1). The DataTable itself gates the
+        // replay on the mount-time data reference (rule B12), so search
+        // keystrokes / filter chips / sort / pagination stay instant.
+        animateEntrance
+        entranceCascadeOffset={2}
         onRowClick={(row) => router.push(`/constituents/${row.original.id}`)}
         emptyState={
           <EmptyState icon={Users} title={t("empty.title")} description={t("empty.description")} />
