@@ -17,9 +17,9 @@ jobs:
       # Reads the pnpm version from `packageManager` in package.json.
       # v4 of pnpm/action-setup refuses to run when both `with.version`
       # and `packageManager` are set, so we keep a single source of truth.
-      - uses: pnpm/action-setup@v6.0.8
+      - uses: pnpm/action-setup@v6.0.9
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v6.4.0
         with:
           node-version: "22"
           cache: "pnpm"
@@ -100,9 +100,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6.0.3
 
-      - uses: pnpm/action-setup@v6.0.8
+      - uses: pnpm/action-setup@v6.0.9
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v6.4.0
         with:
           node-version: "22"
           cache: "pnpm"
