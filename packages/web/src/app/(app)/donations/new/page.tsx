@@ -16,7 +16,6 @@ export default async function NewDonationPage() {
   return (
     <>
       <PageHeader
-        className="reveal-item"
         title={t("createTitle")}
         description={t("createSubtitle")}
         breadcrumbs={[
@@ -25,7 +24,7 @@ export default async function NewDonationPage() {
           { label: t("breadcrumbNew") },
         ]}
       />
-      <div className="reveal-item" style={{ "--cascade-i": 1 } as CSSProperties}>
+      <div className="reveal-item">
         <DonationForm mode="create" />
       </div>
     </>

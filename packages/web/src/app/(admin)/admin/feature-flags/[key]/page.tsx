@@ -51,21 +51,26 @@ export default async function PerFlagTenantsPage({ params }: { params: Promise<{
 
   return (
     <div className="space-y-6">
+      {/* ADR-035 rule A1 — the back link is static shell; the content
+          below (banner or per-flag manager) enters as one block at slot 0
+          (container-level reveal only). */}
       <a href="/admin/feature-flags" className="text-xs text-primary hover:underline">
         {t("backToList")}
       </a>
 
-      {fetchFailed || !flag ? (
-        <div
-          role="alert"
-          className="flex items-start gap-3 rounded-2xl border border-error bg-error-container p-4 text-on-error-container"
-        >
-          <AlertTriangle aria-hidden="true" className="mt-0.5 shrink-0" size={20} />
-          <p className="text-sm">{t("fetchFailed")}</p>
-        </div>
-      ) : (
-        <PerFlagTenants flag={flag} initialTenants={tenants} />
-      )}
+      <div className="reveal-item">
+        {fetchFailed || !flag ? (
+          <div
+            role="alert"
+            className="flex items-start gap-3 rounded-2xl border border-error bg-error-container p-4 text-on-error-container"
+          >
+            <AlertTriangle aria-hidden="true" className="mt-0.5 shrink-0" size={20} />
+            <p className="text-sm">{t("fetchFailed")}</p>
+          </div>
+        ) : (
+          <PerFlagTenants flag={flag} initialTenants={tenants} />
+        )}
+      </div>
     </div>
   );
 }

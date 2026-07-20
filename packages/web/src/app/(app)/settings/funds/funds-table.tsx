@@ -203,6 +203,13 @@ export function FundsTable({ funds, pagination, canManageFunds, sort, order }: F
         sorting={sorting}
         onSortingChange={onSortingChange}
         isPending={isPending}
+        // ADR-035 rules A2/A3 — the table container is slot 0 of the
+        // content cascade, rows follow from slot 1. The DataTable gates
+        // the replay on the mount-time data + sorting references (rule
+        // B12), so sort / pagination round-trips stay instant.
+        className="reveal-item"
+        animateEntrance
+        entranceCascadeOffset={1}
         emptyState={
           <EmptyState
             icon={PiggyBank}

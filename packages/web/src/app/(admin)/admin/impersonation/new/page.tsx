@@ -15,11 +15,15 @@ export default async function NewImpersonationPage() {
   const t = await getTranslations("admin.impersonation.new");
   return (
     <main id="main-content" className="mx-auto max-w-2xl space-y-6 p-6">
+      {/* ADR-035 rules A1 + E19 — header stays static; the form enters
+          as ONE block (slot 0), no per-field choreography. */}
       <header className="space-y-2">
         <h1 className="text-2xl font-semibold">{t("title")}</h1>
         <p className="text-sm text-muted-foreground">{t("subtitle")}</p>
       </header>
-      <StartImpersonationForm />
+      <div className="reveal-item">
+        <StartImpersonationForm />
+      </div>
     </main>
   );
 }

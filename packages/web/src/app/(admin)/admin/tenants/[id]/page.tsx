@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
+import type { CSSProperties } from "react";
 import { FirstAdminCard } from "@/components/admin/first-admin-card";
 import {
   formatAdminDate,
@@ -266,49 +267,66 @@ export default async function TenantDetailPage({
        * Suspend/Archive. Once the tenant has users or an active invitation
        * on file, lifecycle controls take precedence.
        */}
+      {/* ADR-035 rules A1/A2 — the header above is static shell; the
+          action cards + tabs below cascade top→bottom (slots 0-3), each
+          as one container-level block. */}
       {firstAdminInvitation === null && users.length === 0 ? (
         <>
-          <TenantOwnershipActions
-            tenantId={tenant.id}
-            createdVia={tenant.createdVia}
-            ownershipConfirmedAt={tenant.ownershipConfirmedAt}
-          />
-          <FirstAdminCard
-            tenantId={tenant.id}
-            tenantDefaultLocale={tenant.defaultLocale}
-            invitation={firstAdminInvitation}
-            initialError={
-              search.inviteFailed === "1" ? tFirstAdmin("errors.formInviteFailed") : undefined
-            }
-          />
-          <TenantLifecycleActions tenantId={tenant.id} currentStatus={tenant.status} />
+          <div className="reveal-item">
+            <TenantOwnershipActions
+              tenantId={tenant.id}
+              createdVia={tenant.createdVia}
+              ownershipConfirmedAt={tenant.ownershipConfirmedAt}
+            />
+          </div>
+          <div className="reveal-item" style={{ "--cascade-i": 1 } as CSSProperties}>
+            <FirstAdminCard
+              tenantId={tenant.id}
+              tenantDefaultLocale={tenant.defaultLocale}
+              invitation={firstAdminInvitation}
+              initialError={
+                search.inviteFailed === "1" ? tFirstAdmin("errors.formInviteFailed") : undefined
+              }
+            />
+          </div>
+          <div className="reveal-item" style={{ "--cascade-i": 2 } as CSSProperties}>
+            <TenantLifecycleActions tenantId={tenant.id} currentStatus={tenant.status} />
+          </div>
         </>
       ) : (
         <>
-          <TenantOwnershipActions
-            tenantId={tenant.id}
-            createdVia={tenant.createdVia}
-            ownershipConfirmedAt={tenant.ownershipConfirmedAt}
-          />
-          <TenantLifecycleActions tenantId={tenant.id} currentStatus={tenant.status} />
-          <FirstAdminCard
-            tenantId={tenant.id}
-            tenantDefaultLocale={tenant.defaultLocale}
-            invitation={firstAdminInvitation}
-            initialError={
-              search.inviteFailed === "1" ? tFirstAdmin("errors.formInviteFailed") : undefined
-            }
-          />
+          <div className="reveal-item">
+            <TenantOwnershipActions
+              tenantId={tenant.id}
+              createdVia={tenant.createdVia}
+              ownershipConfirmedAt={tenant.ownershipConfirmedAt}
+            />
+          </div>
+          <div className="reveal-item" style={{ "--cascade-i": 1 } as CSSProperties}>
+            <TenantLifecycleActions tenantId={tenant.id} currentStatus={tenant.status} />
+          </div>
+          <div className="reveal-item" style={{ "--cascade-i": 2 } as CSSProperties}>
+            <FirstAdminCard
+              tenantId={tenant.id}
+              tenantDefaultLocale={tenant.defaultLocale}
+              invitation={firstAdminInvitation}
+              initialError={
+                search.inviteFailed === "1" ? tFirstAdmin("errors.formInviteFailed") : undefined
+              }
+            />
+          </div>
         </>
       )}
 
-      <TenantDetailTabs
-        overview={overview}
-        domains={domainsTab}
-        users={usersTab}
-        audit={auditTab}
-        featureFlags={featureFlagsTab}
-      />
+      <div className="reveal-item" style={{ "--cascade-i": 3 } as CSSProperties}>
+        <TenantDetailTabs
+          overview={overview}
+          domains={domainsTab}
+          users={usersTab}
+          audit={auditTab}
+          featureFlags={featureFlagsTab}
+        />
+      </div>
     </div>
   );
 }

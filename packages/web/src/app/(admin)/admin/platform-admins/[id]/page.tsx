@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
+import type { CSSProperties } from "react";
 import { PlatformAdminDetailActions } from "@/components/admin/platform-admin-detail-actions";
 import { formatAdminDate } from "@/components/admin/tenant-admin-shared";
 import { ApiProblem } from "@/lib/api";
@@ -55,7 +56,10 @@ export default async function PlatformAdminDetailPage({
         </p>
       </header>
 
-      <section className="grid grid-cols-1 gap-4 rounded-2xl border border-outline-variant bg-surface p-6 md:grid-cols-2">
+      {/* ADR-035 rules A1/A2 — the header above is static shell; the
+          detail card (slot 0) and the actions card (slot 1) cascade in
+          reading order, each as one container-level block. */}
+      <section className="reveal-item grid grid-cols-1 gap-4 rounded-2xl border border-outline-variant bg-surface p-6 md:grid-cols-2">
         <Field label={t("fields.email")} value={admin.email} />
         <Field label={t("fields.createdAt")} value={formatAdminDate(admin.createdAt)} />
         <Field
@@ -71,7 +75,9 @@ export default async function PlatformAdminDetailPage({
         )}
       </section>
 
-      <PlatformAdminDetailActions admin={admin} operatorKeycloakId={operatorKeycloakId} />
+      <div className="reveal-item" style={{ "--cascade-i": 1 } as CSSProperties}>
+        <PlatformAdminDetailActions admin={admin} operatorKeycloakId={operatorKeycloakId} />
+      </div>
     </div>
   );
 }

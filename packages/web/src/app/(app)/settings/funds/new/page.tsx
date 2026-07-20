@@ -24,7 +24,11 @@ export default async function NewFundPage() {
         ]}
       />
       <SettingsNavigation />
-      <FundForm mode="create" canManageFunds={auth.roles.includes("org_admin")} />
+      {/* ADR-035 rules A1 + E19 — header + sub-nav are static shell; the
+          form enters as ONE block (no per-field choreography). */}
+      <div className="reveal-item">
+        <FundForm mode="create" canManageFunds={auth.roles.includes("org_admin")} />
+      </div>
     </>
   );
 }

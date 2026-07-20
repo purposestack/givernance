@@ -85,6 +85,9 @@ export default async function FundsPage({ searchParams }: FundsPageProps) {
       />
       <SettingsNavigation />
 
+      {/* ADR-035 rule A1 — header + sub-nav are static shell; the table
+          (or empty state) is cascade slot 0, rows follow from slot 1
+          inside FundsTable (rules A2/A3). */}
       {hasAny ? (
         <FundsTable
           funds={result.data}
@@ -94,7 +97,7 @@ export default async function FundsPage({ searchParams }: FundsPageProps) {
           order={order}
         />
       ) : (
-        <div className="rounded-2xl bg-surface-container-lowest border border-border-brand">
+        <div className="reveal-item rounded-2xl bg-surface-container-lowest border border-border-brand">
           <EmptyState
             icon={PiggyBank}
             title={t("empty.title")}

@@ -23,7 +23,9 @@ export default async function NewPlatformAdminPage() {
         <p className="mt-1 text-sm text-on-surface-variant">{t("subtitle")}</p>
       </header>
 
-      <div className="rounded-2xl border border-outline-variant bg-surface p-6">
+      {/* ADR-035 rules A1 + E19 — header stays static; the form enters
+          as ONE block (slot 0), no per-field choreography. */}
+      <div className="reveal-item rounded-2xl border border-outline-variant bg-surface p-6">
         <NewPlatformAdminForm />
       </div>
     </div>

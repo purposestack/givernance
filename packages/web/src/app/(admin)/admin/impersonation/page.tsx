@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
+import type { CSSProperties } from "react";
 
 import { EndImpersonationSessionButton } from "@/components/admin/end-impersonation-session-button";
 import { ReplicateImpersonationSessionButton } from "@/components/admin/replicate-impersonation-session-button";
@@ -90,13 +91,19 @@ export default async function ImpersonationListPage({ searchParams }: Impersonat
         </Button>
       </header>
 
+      {/* ADR-035 rule A1 — the page header, section headings and the
+          ModeFilterTabs filter bar are static shell; only the table /
+          empty-state containers reveal (slots 0-1, container-level
+          only — no per-row choreography on this hand-rolled table). */}
       <section className="space-y-3">
         <h2 className="text-base font-semibold">{t("sectionActive", { count: active.length })}</h2>
-        {active.length === 0 ? (
-          <EmptyState label={t("emptyActive")} />
-        ) : (
-          <SessionTable rows={active} rowActions="end" />
-        )}
+        <div className="reveal-item">
+          {active.length === 0 ? (
+            <EmptyState label={t("emptyActive")} />
+          ) : (
+            <SessionTable rows={active} rowActions="end" />
+          )}
+        </div>
       </section>
 
       <section className="space-y-3">
@@ -104,19 +111,21 @@ export default async function ImpersonationListPage({ searchParams }: Impersonat
           <h2 className="text-base font-semibold">{t("sectionHistory", { count: past.length })}</h2>
           <ModeFilterTabs activeFilter={modeFilter} counts={counts} />
         </div>
-        {past.length === 0 ? (
-          <EmptyState
-            label={
-              modeFilter === null
-                ? t("emptyHistory")
-                : modeFilter === "delegation"
-                  ? t("emptyHistoryDelegation")
-                  : t("emptyHistoryImpersonation")
-            }
-          />
-        ) : (
-          <SessionTable rows={past} rowActions="replicate" />
-        )}
+        <div className="reveal-item" style={{ "--cascade-i": 1 } as CSSProperties}>
+          {past.length === 0 ? (
+            <EmptyState
+              label={
+                modeFilter === null
+                  ? t("emptyHistory")
+                  : modeFilter === "delegation"
+                    ? t("emptyHistoryDelegation")
+                    : t("emptyHistoryImpersonation")
+              }
+            />
+          ) : (
+            <SessionTable rows={past} rowActions="replicate" />
+          )}
+        </div>
       </section>
     </main>
   );

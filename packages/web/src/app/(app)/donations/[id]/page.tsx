@@ -74,7 +74,6 @@ export default async function DonationDetailPage({ params }: DonationDetailPageP
   return (
     <>
       <PageHeader
-        className="reveal-item"
         title={`${t("title")} — ${amountLabel}`}
         description={donorName}
         breadcrumbs={[

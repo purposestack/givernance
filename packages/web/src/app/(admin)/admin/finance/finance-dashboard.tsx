@@ -987,8 +987,14 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
         <GradeHistogram buckets={gradeBuckets} maxBucket={maxBucket} tenantCount={tenantCount} />
       </section>
 
-      <div className="kpi-grid">
-        <article className="kpi reveal">
+      {/* ADR-035 rules A2/B12 — the KPI row staggers via the shared
+          `.cascade` container (nth-child feeds --cascade-i 1-4), replacing
+          the legacy `.reveal` nth-child utility so this surface speaks the
+          standard motion grammar. The animation runs once per mount:
+          period/filter changes swap values in place without remounting
+          this tree, so the entrance never replays on refetch. */}
+      <div className="kpi-grid cascade">
+        <article className="kpi">
           <div className="kpi-head">
             <div className="kpi-label">{t("kpis.volume.label")}</div>
             <div
@@ -1019,7 +1025,7 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
           </div>
         </article>
 
-        <article className="kpi reveal">
+        <article className="kpi">
           <div className="kpi-head">
             <div className="kpi-label">
               {t("kpis.revenue.label")}{" "}
@@ -1058,7 +1064,7 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
           </div>
         </article>
 
-        <article className="kpi reveal">
+        <article className="kpi">
           <div className="kpi-head">
             <div className="kpi-label">
               {t("kpis.recurring.label")}{" "}
@@ -1093,7 +1099,7 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
           </div>
         </article>
 
-        <article className="kpi reveal">
+        <article className="kpi">
           <div className="kpi-head">
             <div className="kpi-label">
               {t("kpis.stripe.label")}{" "}

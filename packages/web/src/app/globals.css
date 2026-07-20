@@ -844,19 +844,6 @@ h4 {
    style={{ "--cascade-i": n }} (matches the .cascade nth-child scheme). */
 .reveal-item { --cascade-i: 0; }
 
-/* Legacy staggered card entrance (admin finance dashboard, KPITile).
-   Migrated onto the shared cascade-in keyframe + --cascade-i slots per
-   the ADR consequence note; prefer .cascade / .reveal-item for new
-   surfaces. Source: docs/design/admin/dashboard.html `.reveal`. */
-.reveal {
-  animation: cascade-in var(--duration-slow) var(--ease-out) backwards;
-  animation-delay: calc(var(--cascade-i, 0) * var(--stagger-step));
-}
-.reveal:nth-child(1) { --cascade-i: 1; }
-.reveal:nth-child(2) { --cascade-i: 2; }
-.reveal:nth-child(3) { --cascade-i: 3; }
-.reveal:nth-child(4) { --cascade-i: 4; }
-
 /* The single entrance keyframe. Explicit from/to; base = final state. */
 @keyframes cascade-in {
   from { opacity: 0; transform: translateY(4px); }
@@ -944,7 +931,6 @@ h4 {
 @media (prefers-reduced-motion: reduce) {
   .cascade > *,
   .reveal-item,
-  .reveal,
   .sweep-in,
   .meter-reveal {
     animation: none !important;

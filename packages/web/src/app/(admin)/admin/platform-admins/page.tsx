@@ -93,12 +93,15 @@ export default async function PlatformAdminsListPage({
         </Button>
       </header>
 
+      {/* ADR-035 rule A1 — header + filter bar above are static shell;
+          only the content below (banner or table) enters at slot 0.
+          Rows follow from slot 1 inside PlatformAdminsTable. */}
       <PlatformAdminsFilters initialQ={q} initialIncludeDeleted={includeDeleted} />
 
       {fetchFailed ? (
         <div
           role="alert"
-          className="flex items-start gap-3 rounded-2xl border border-error bg-error-container p-4 text-on-error-container"
+          className="reveal-item flex items-start gap-3 rounded-2xl border border-error bg-error-container p-4 text-on-error-container"
         >
           <AlertTriangle aria-hidden="true" className="mt-0.5 shrink-0" size={20} />
           <p className="text-sm">{t("fetchFailed")}</p>

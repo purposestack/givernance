@@ -194,6 +194,13 @@ export function TenantsTable({ tenants, sort, order }: TenantsTableProps) {
       sorting={sorting}
       onSortingChange={onSortingChange}
       isPending={isPending}
+      // ADR-035 rules A2/A3 — the table container is slot 0 of the
+      // content cascade (container before content), rows follow from
+      // slot 1. Entrance runs once per mount; sort round-trips never
+      // replay it (rule B12) — same grammar as donations-table.
+      className="reveal-item"
+      animateEntrance
+      entranceCascadeOffset={1}
       onRowClick={(row) => router.push(`/admin/tenants/${row.original.id}`)}
       emptyState={
         <EmptyState

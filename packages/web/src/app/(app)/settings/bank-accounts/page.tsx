@@ -55,10 +55,12 @@ export default async function BankAccountsPage() {
       />
       <SettingsNavigation />
 
+      {/* ADR-035 rule A1 — header + sub-nav are static shell; the table
+          container (or empty state) is cascade slot 0 (rule A2). */}
       {hasAny ? (
         <BankAccountsTable bankAccounts={result.data} canManage={canManage} />
       ) : (
-        <div className="rounded-2xl bg-surface-container-lowest border border-border-brand">
+        <div className="reveal-item rounded-2xl bg-surface-container-lowest border border-border-brand">
           <EmptyState
             icon={Banknote}
             title={t("empty.title")}

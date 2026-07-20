@@ -36,6 +36,12 @@ interface InvitationsTableProps {
   invitations: Invitation[];
   pagination: DataTablePagination;
   canManageMembers: boolean;
+  /**
+   * ADR-035 rule A2 — cascade slot the invitation rows start from. The
+   * page passes `sectionSlot + 1` (the Invitations section sits at slot
+   * 1 below the Members section for admins, slot 0 for non-admins).
+   */
+  entranceCascadeOffset: number;
 }
 
 const STATUS_VARIANT: Record<InvitationStatus, "success" | "info" | "warning"> = {
@@ -57,6 +63,7 @@ export function InvitationsTable({
   invitations,
   pagination,
   canManageMembers,
+  entranceCascadeOffset,
 }: InvitationsTableProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -207,6 +214,11 @@ export function InvitationsTable({
         data={invitations}
         pagination={pagination}
         onPageChange={navigateToPage}
+        // ADR-035 rules A2/A3 — rows chain to the section's cascade slot
+        // (see the prop doc). Replay is gated on the mount-time data
+        // reference inside DataTable (rule B12).
+        animateEntrance
+        entranceCascadeOffset={entranceCascadeOffset}
         emptyState={
           <EmptyState icon={Users} title={t("empty.title")} description={t("empty.description")} />
         }

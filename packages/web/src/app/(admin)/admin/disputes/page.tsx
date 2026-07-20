@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
+import type { CSSProperties } from "react";
 import { createServerApiClient } from "@/lib/api/client-server";
 import type { DisputeRow, DomainDisputeRow } from "@/services/DisputesService";
 
@@ -41,12 +42,15 @@ export default async function DisputeListPage() {
 
   return (
     <div className="space-y-8">
+      {/* ADR-035 rule A1 — the page header is static shell; the three
+          hand-rolled list sections below are the content and get a
+          container-level reveal each (slots 0-2), no per-row choreography. */}
       <header>
         <h1 className="font-heading text-2xl text-on-surface">{t("title")}</h1>
         <p className="mt-1 text-sm text-on-surface-variant">{t("subtitle")}</p>
       </header>
 
-      <section aria-labelledby="open-disputes-title">
+      <section aria-labelledby="open-disputes-title" className="reveal-item">
         <h2
           id="open-disputes-title"
           className="mb-3 text-sm font-semibold uppercase tracking-wide text-on-surface-variant"
@@ -88,7 +92,11 @@ export default async function DisputeListPage() {
         )}
       </section>
 
-      <section aria-labelledby="domain-disputes-title">
+      <section
+        aria-labelledby="domain-disputes-title"
+        className="reveal-item"
+        style={{ "--cascade-i": 1 } as CSSProperties}
+      >
         <h2
           id="domain-disputes-title"
           className="mb-3 mt-12 text-sm font-semibold uppercase tracking-wide text-on-surface-variant"
@@ -131,7 +139,11 @@ export default async function DisputeListPage() {
         )}
       </section>
 
-      <section aria-labelledby="closed-disputes-title">
+      <section
+        aria-labelledby="closed-disputes-title"
+        className="reveal-item"
+        style={{ "--cascade-i": 2 } as CSSProperties}
+      >
         <h2
           id="closed-disputes-title"
           className="mb-3 text-sm font-semibold uppercase tracking-wide text-on-surface-variant"

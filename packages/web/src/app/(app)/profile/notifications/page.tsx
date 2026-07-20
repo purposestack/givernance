@@ -36,7 +36,13 @@ export default async function NotificationPreferencesPage() {
           { label: t("title") },
         ]}
       />
-      <NotificationPreferencesForm initial={initial} />
+      {/* ADR-035 rules A1 + E19 — header static; the preferences matrix is
+          one form-shaped card, so it enters as ONE block at slot 0. No
+          per-row choreography, and the optimistic toggle PATCHes never
+          re-animate anything (rule B12). */}
+      <div className="reveal-item">
+        <NotificationPreferencesForm initial={initial} />
+      </div>
     </div>
   );
 }
