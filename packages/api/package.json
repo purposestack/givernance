@@ -52,7 +52,7 @@
   "devDependencies": {
     "@types/archiver": "^6.0.4",
     "@types/jsdom": "^28.0.3",
-    "@types/node": "^25.9.3",
+    "@types/node": "^26.1.0",
     "@types/pdfkit": "^0.17.6",
     "@types/pg": "^8.20.0",
     "@types/qrcode": "^1.5.6",
