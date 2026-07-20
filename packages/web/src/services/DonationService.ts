@@ -1,3 +1,4 @@
+import { sanitizeCustomValues } from "@/components/shared/custom-fields/definitions";
 import type { ApiClient } from "@/lib/api";
 import type {
   Donation,
@@ -127,6 +128,10 @@ function mapDonationRow(raw: DonationListRow): DonationListRow {
       : null,
     campaign: raw.campaign ? { name: raw.campaign.name } : null,
     receiptStatus: raw.receiptStatus,
+    // Epic #539 — donation-domain values + the donor's projected values.
+    // Explicit copies: the field-by-field posture would silently drop them.
+    custom: sanitizeCustomValues(raw.custom),
+    donorCustom: sanitizeCustomValues(raw.donorCustom),
   };
 }
 
@@ -151,6 +156,8 @@ function toRequestBody(input: DonationCreateInput): Record<string, unknown> {
   if (input.allocations && input.allocations.length > 0) {
     body.allocations = input.allocations;
   }
+  // Epic #539 — custom-value merge-patch; nulls inside are per-key clears.
+  if (input.custom !== undefined) body.custom = input.custom;
   return body;
 }
 
@@ -167,6 +174,8 @@ function toUpdateRequestBody(input: DonationUpdateInput): Record<string, unknown
   if (input.donatedAt) body.donatedAt = input.donatedAt;
   if (input.fiscalYear !== undefined) body.fiscalYear = input.fiscalYear;
   body.allocations = input.allocations ?? [];
+  // Epic #539 — custom-value merge-patch; nulls inside are per-key clears.
+  if (input.custom !== undefined) body.custom = input.custom;
 
   return body;
 }

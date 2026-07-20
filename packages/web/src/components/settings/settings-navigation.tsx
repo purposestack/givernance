@@ -4,9 +4,16 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 
+import { useSettingsNavFlags } from "@/components/settings/settings-nav-flags";
 import { cn } from "@/lib/utils";
 
-type SettingsNavKey = "organization" | "members" | "funds" | "bankAccounts" | "featureFlags";
+type SettingsNavKey =
+  | "organization"
+  | "members"
+  | "funds"
+  | "bankAccounts"
+  | "featureFlags"
+  | "customFields";
 
 interface SettingsNavItem {
   href: string;
@@ -40,18 +47,29 @@ const SETTINGS_NAV_ITEMS: SettingsNavItem[] = [
     key: "featureFlags",
     match: (pathname: string) => pathname.startsWith("/settings/feature-flags"),
   },
+  {
+    href: "/settings/custom-fields",
+    key: "customFields",
+    match: (pathname: string) => pathname.startsWith("/settings/custom-fields"),
+  },
 ];
 
 /**
  * Settings-area nav strip. The "Feature flags" entry (Epic #365) points
  * at the org-admin self-service page; the settings area is org-admin
- * gated at the route level, so the entry is always surfaced here.
+ * gated at the route level, so the entry is always surfaced here. The
+ * "Custom fields" entry (Epic #539) only renders when at least one
+ * `*.custom_fields` domain flag is on — resolved server-side by the
+ * settings layout and provided via SettingsNavFlagsProvider.
  */
 export function SettingsNavigation() {
   const pathname = usePathname();
   const t = useTranslations("settings.navigation");
+  const { customFieldsEnabled } = useSettingsNavFlags();
 
-  const items = SETTINGS_NAV_ITEMS;
+  const items = SETTINGS_NAV_ITEMS.filter(
+    (item) => item.key !== "customFields" || customFieldsEnabled,
+  );
 
   return (
     <nav aria-label={t("label")} className="overflow-x-auto">

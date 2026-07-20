@@ -3,6 +3,7 @@
  * Converts filter DSL to Drizzle ORM queries
  */
 
+import { CUSTOM_FIELD_KEY_PATTERN } from "@givernance/shared/custom-fields";
 import { campaignConstituents, constituents, donations } from "@givernance/shared/schema";
 import {
   and,
@@ -36,9 +37,17 @@ import { FIELD_REGISTRY } from "./types.js";
 
 export class FilterQueryBuilder {
   private orgId: string;
+  private registry: Record<string, FieldMetadata>;
 
-  constructor(orgId: string) {
+  /**
+   * `registry` is the per-request merged field map (static core registry ∪
+   * the org's filterable custom-field definitions) resolved by
+   * `getFieldRegistryBundle`. Defaults to the static core registry so
+   * callers without custom-field support keep today's behaviour.
+   */
+  constructor(orgId: string, registry: Record<string, FieldMetadata> = FIELD_REGISTRY) {
     this.orgId = orgId;
+    this.registry = registry;
   }
 
   /**
@@ -74,7 +83,7 @@ export class FilterQueryBuilder {
    * Build a single condition
    */
   private buildCondition(condition: FilterCondition): SQL | undefined {
-    const fieldMeta = FIELD_REGISTRY[condition.field];
+    const fieldMeta = this.registry[condition.field];
     if (!fieldMeta) {
       console.warn(`Unknown field: ${condition.field}`);
       return undefined;
@@ -83,6 +92,13 @@ export class FilterQueryBuilder {
     // Handle sub-conditions for complex queries
     if (condition.subConditions) {
       return this.buildWhereClause(condition.subConditions);
+    }
+
+    // Third lane beside regular-column and aggregate: custom fields live in
+    // the `constituents.custom` JSONB blob and never resolve to a Drizzle
+    // column (Epic #539).
+    if (fieldMeta.source === "custom") {
+      return this.buildCustomFieldCondition(condition.operator, condition.value, fieldMeta);
     }
 
     // Get the table column reference
@@ -242,13 +258,13 @@ export class FilterQueryBuilder {
         return undefined;
       case "contains":
         // Use parameterized query to prevent SQL injection
-        return sql`${column} ILIKE ${`%${String(value).replace(/[_%]/g, "\\$&")}%`}`;
+        return sql`${column} ILIKE ${`%${String(value).replace(/[\\_%]/g, "\\$&")}%`}`;
       case "startsWith":
         // Use parameterized query to prevent SQL injection
-        return sql`${column} ILIKE ${`${String(value).replace(/[_%]/g, "\\$&")}%`}`;
+        return sql`${column} ILIKE ${`${String(value).replace(/[\\_%]/g, "\\$&")}%`}`;
       case "endsWith":
         // Use parameterized query to prevent SQL injection
-        return sql`${column} ILIKE ${`%${String(value).replace(/[_%]/g, "\\$&")}`}`;
+        return sql`${column} ILIKE ${`%${String(value).replace(/[\\_%]/g, "\\$&")}`}`;
       case "arrayContains":
         if (fieldMeta.type === "array") {
           return arrayContains(column, Array.isArray(value) ? value : [value]);
@@ -265,6 +281,197 @@ export class FilterQueryBuilder {
         return isNotNull(column);
       default:
         console.warn(`Unknown operator: ${operator}`);
+        return undefined;
+    }
+  }
+
+  /**
+   * Build a condition against the `constituents.custom` JSONB blob.
+   *
+   * The JSON key comes from `fieldMeta.jsonKey` (server-resolved from the
+   * per-org registry — the DSL only ever carries the dotted `custom.<key>`
+   * name) and every value is a bound parameter, so nothing client-supplied
+   * is ever interpolated into SQL text. Equality on boolean / picklist /
+   * multi_picklist compiles to `@>` containment so the `jsonb_path_ops`
+   * GIN index serves it; text / number / currency / date run as cast
+   * expressions on `->>` (unindexed by design — acceptable at NPO scale,
+   * per-field expression indexes are the documented escape hatch).
+   */
+  private buildCustomFieldCondition(
+    operator: FilterOperator,
+    rawValue: unknown,
+    fieldMeta: FieldMetadata,
+  ): SQL | undefined {
+    const key = fieldMeta.jsonKey;
+    // Defence-in-depth: the registry only admits regex-clean keys, but this
+    // string reaches JSONB path expressions — re-verify before emitting SQL.
+    if (!key || !CUSTOM_FIELD_KEY_PATTERN.test(key)) return undefined;
+
+    const custom = constituents.custom;
+    // "Has a value" ≡ key present AND not a stored JSON null. The validator
+    // never persists nulls, but imported / legacy blobs must still read as
+    // empty rather than as a value.
+    const present = sql`(jsonb_exists(${custom}, ${key}) AND ${custom} -> ${key} <> 'null'::jsonb)`;
+    if (operator === "isNull") return sql`NOT ${present}`;
+    if (operator === "isNotNull") return present;
+
+    // Reuses the shared normalization verbatim: currency (valueUnit "cents")
+    // gets the EUR → cents ×100, date operators get end-of-day upper bounds
+    // and string → Date coercion.
+    const value = this.normalizeValue(fieldMeta, operator, rawValue);
+
+    switch (fieldMeta.customType) {
+      case "text":
+      case "long_text":
+        return this.buildCustomTextCondition(key, operator, value);
+
+      case "number":
+      case "currency":
+        return this.buildCustomComparableCondition(
+          sql`(${custom} ->> ${key})::numeric`,
+          operator,
+          value,
+        );
+
+      case "date":
+        // Values are stored as 'YYYY-MM-DD'; the bound side arrives as a Date
+        // (normalizeValue) and is truncated back to a calendar day so the
+        // end-of-day upper-bound convention maps onto date semantics:
+        // `lte`/`between`-upper/`gt` were bumped to 23:59:59 and now cast to
+        // the same day, keeping the boundary day inclusive/exclusive exactly
+        // like the core date fields.
+        return this.buildCustomComparableCondition(
+          sql`(${custom} ->> ${key})::date`,
+          operator,
+          value,
+          (v) => sql`(${v})::date`,
+        );
+
+      case "boolean": {
+        if (typeof value !== "boolean") return undefined;
+        if (operator === "eq") return this.customContainment(key, value);
+        // For a two-valued type, `neq v` ≡ "present and equals ¬v" — stays on
+        // the GIN-served containment path and keeps core-column `neq`
+        // semantics (empty values never match).
+        if (operator === "neq") return this.customContainment(key, !value);
+        return undefined;
+      }
+
+      case "picklist":
+        return this.buildCustomPicklistCondition(key, operator, value);
+
+      case "multi_picklist":
+        return this.buildCustomMultiPicklistCondition(key, operator, value);
+
+      default:
+        return undefined;
+    }
+  }
+
+  private buildCustomPicklistCondition(
+    key: string,
+    operator: FilterOperator,
+    value: unknown,
+  ): SQL | undefined {
+    if (operator === "eq" && typeof value === "string") {
+      return this.customContainment(key, value);
+    }
+    if (operator === "neq" && typeof value === "string") {
+      // `->>` yields SQL NULL for absent keys, so empty values are
+      // excluded from neq — same semantics as `ne()` on a core column.
+      return sql`${constituents.custom} ->> ${key} <> ${value}`;
+    }
+    if (operator === "in" && Array.isArray(value)) {
+      const clauses = value
+        .filter((v): v is string => typeof v === "string")
+        .map((v) => this.customContainment(key, v));
+      if (clauses.length === 0) return undefined;
+      return clauses.length === 1 ? clauses[0] : or(...clauses);
+    }
+    return undefined;
+  }
+
+  private buildCustomMultiPicklistCondition(
+    key: string,
+    operator: FilterOperator,
+    value: unknown,
+  ): SQL | undefined {
+    const values = (Array.isArray(value) ? value : [value]).filter(
+      (v): v is string => typeof v === "string",
+    );
+    if (values.length === 0) return undefined;
+    if (operator === "arrayContains") {
+      // JSONB array containment is contains-ALL — one GIN-served probe.
+      return this.customContainment(key, values);
+    }
+    if (operator === "arrayOverlaps") {
+      // Contains-ANY = OR of single-element containments, each GIN-served
+      // (avoids jsonb_array_elements_text + array binding entirely).
+      const clauses = values.map((v) => this.customContainment(key, [v]));
+      return clauses.length === 1 ? clauses[0] : or(...clauses);
+    }
+    return undefined;
+  }
+
+  /** `custom @> '{"<key>": <value>}'` — the GIN-served equality probe. */
+  private customContainment(key: string, value: unknown): SQL {
+    return sql`${constituents.custom} @> ${JSON.stringify({ [key]: value })}::jsonb`;
+  }
+
+  private buildCustomTextCondition(
+    key: string,
+    operator: FilterOperator,
+    value: unknown,
+  ): SQL | undefined {
+    const text = sql`${constituents.custom} ->> ${key}`;
+    const escaped = () => String(value).replace(/[\\_%]/g, "\\$&");
+    switch (operator) {
+      case "eq":
+        return sql`${text} = ${String(value)}`;
+      case "neq":
+        return sql`${text} <> ${String(value)}`;
+      case "contains":
+        return sql`${text} ILIKE ${`%${escaped()}%`}`;
+      case "startsWith":
+        return sql`${text} ILIKE ${`${escaped()}%`}`;
+      case "endsWith":
+        return sql`${text} ILIKE ${`%${escaped()}`}`;
+      default:
+        return undefined;
+    }
+  }
+
+  /**
+   * Comparison operators over a cast JSONB expression (numeric / date lanes).
+   * Absent keys cast to SQL NULL and fail every comparison — the correct
+   * "empty never matches" behaviour. `wrap` lets the date lane cast the
+   * bound side to `::date`.
+   */
+  private buildCustomComparableCondition(
+    expr: SQL,
+    operator: FilterOperator,
+    value: unknown,
+    wrap: (v: unknown) => SQL = (v) => sql`${v}`,
+  ): SQL | undefined {
+    switch (operator) {
+      case "eq":
+        return sql`${expr} = ${wrap(value)}`;
+      case "neq":
+        return sql`${expr} <> ${wrap(value)}`;
+      case "gt":
+        return sql`${expr} > ${wrap(value)}`;
+      case "gte":
+        return sql`${expr} >= ${wrap(value)}`;
+      case "lt":
+        return sql`${expr} < ${wrap(value)}`;
+      case "lte":
+        return sql`${expr} <= ${wrap(value)}`;
+      case "between":
+        if (Array.isArray(value) && value.length === 2) {
+          return sql`${expr} BETWEEN ${wrap(value[0])} AND ${wrap(value[1])}`;
+        }
+        return undefined;
+      default:
         return undefined;
     }
   }
@@ -425,7 +632,7 @@ export class FilterQueryBuilder {
     operator: FilterOperator,
     rawValue: unknown,
   ): SQL | undefined {
-    const fieldMeta = FIELD_REGISTRY[field];
+    const fieldMeta = this.registry[field];
     if (!fieldMeta?.aggregate) return undefined;
 
     const value = this.normalizeValue(fieldMeta, operator, rawValue);

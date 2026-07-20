@@ -17,14 +17,18 @@
  *   row being meaningful.
  */
 
+import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
+import { CUSTOM_FIELDS_IMPORT_TEMPLATE_VERSION } from "@givernance/shared/custom-fields";
 import type { OutboxMetadata } from "@givernance/shared/schema";
 import { bulkImportFiles, bulkImportJobs, outboxEvents } from "@givernance/shared/schema";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import type { FastifyRequest } from "fastify";
 import { withTenantContext } from "../../../lib/db.js";
+import { flagService } from "../../../lib/flags/flag-service.js";
 import { resolveInternalUserId } from "../../../lib/resolve-user.js";
 import { deleteBulkImportObject, putBulkImportObject } from "../../../lib/s3.js";
 import { buildOutboxMetadata } from "../../../lib/trace-context.js";
+import { getActiveDefinitions } from "../../customization/lib/value-service.js";
 import { BulkImportParseError, MAX_BULK_IMPORT_ROWS, parseBulkImportFile } from "./parser.js";
 
 export class BulkImportValidationError extends Error {
@@ -134,6 +138,20 @@ export async function dispatchBulkImport(
 
   const metadata: OutboxMetadata | null = request ? buildOutboxMetadata(request) : null;
 
+  // Epic #539 — record on `bulk_import_files` which template generation
+  // this upload was made against: '1.1' when the tenant's custom-fields
+  // flag is on AND the org has active constituent definitions (i.e. the
+  // served template carried `cf_<key>` columns). Observability only —
+  // the worker resolves custom headers from the live flag + catalog, so
+  // a stale '1.0' file uploaded after the flag flips still imports.
+  let templateVersion = "1.0";
+  if (await flagService.isEnabled(FEATURE_FLAG_KEYS.CONSTITUENTS_CUSTOM_FIELDS, { orgId })) {
+    const customDefs = await getActiveDefinitions(orgId, "constituent");
+    if (customDefs.length > 0) {
+      templateVersion = CUSTOM_FIELDS_IMPORT_TEMPLATE_VERSION;
+    }
+  }
+
   // Pre-generate job id so we can compute the S3 key BEFORE the insert.
   const jobId = globalThis.crypto.randomUUID();
   const s3Key = buildS3Key(orgId, jobId, input.fileName);
@@ -161,6 +179,7 @@ export async function dispatchBulkImport(
           fileName: input.fileName,
           fileSize: input.fileBuffer.byteLength,
           mimeType: input.mimeType,
+          templateVersion,
         })
         .returning({ id: bulkImportFiles.id });
 

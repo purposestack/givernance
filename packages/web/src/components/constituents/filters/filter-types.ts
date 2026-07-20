@@ -108,6 +108,14 @@ export interface FilterPreset {
 export interface FilterField {
   name: string;
   label: string;
+  /**
+   * How `label` (and option labels) must be rendered (Epic #539):
+   * - `"i18n"` (default when absent) — a next-intl key under
+   *   `constituents.filters.*`, resolved through the translator.
+   * - `"literal"` — operator-authored tenant data (custom-field labels),
+   *   rendered verbatim, never through `t()`.
+   */
+  labelKind?: "literal" | "i18n";
   type: FilterFieldType;
   category: FilterCategory;
   operators: FilterOperator[];
@@ -132,7 +140,7 @@ export interface FilterField {
  * `engagement` and `calculated` groups were removed because every field in them
  * referenced a column that doesn't exist and 400'd on use.
  */
-export type FilterCategory = "identity" | "demographics" | "donation_history";
+export type FilterCategory = "identity" | "demographics" | "donation_history" | "custom";
 
 export interface FilterPreviewResponse {
   count: number;

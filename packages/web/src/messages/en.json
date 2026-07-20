@@ -1,4 +1,25 @@
 {
+  "customFields": {
+    "boolean": {
+      "yes": "Yes",
+      "no": "No"
+    },
+    "input": {
+      "selectPlaceholder": "Select…",
+      "selectedCount": "{count} selected",
+      "noOptions": "No options",
+      "noValue": "—"
+    },
+    "form": {
+      "sectionTitle": "Custom fields",
+      "sectionDescription": "Fields configured by your organization.",
+      "requiredMissing": "This field is required."
+    },
+    "detail": {
+      "sectionTitle": "Custom fields",
+      "donorSectionTitle": "Donor details"
+    }
+  },
   "common": {
     "appName": "Givernance",
     "appDescription": "Purpose-built CRM for European nonprofits",
@@ -1406,7 +1427,166 @@
       "members": "Members",
       "funds": "Funds",
       "bankAccounts": "Bank accounts",
-      "featureFlags": "Feature flags"
+      "featureFlags": "Feature flags",
+      "customFields": "Custom fields"
+    },
+    "customFields": {
+      "title": "Custom fields",
+      "subtitle": "Add your own typed fields to constituents, donations and campaigns — no consultant, no support ticket. Renaming an option is free, merging is previewed, nothing is ever silently deleted.",
+      "domainTabsLabel": "Domains",
+      "domains": {
+        "constituent": "Constituents",
+        "donation": "Donations",
+        "campaign": "Campaigns"
+      },
+      "types": {
+        "text": "Short text",
+        "long_text": "Long text",
+        "number": "Number",
+        "date": "Date",
+        "boolean": "Checkbox",
+        "picklist": "Picklist",
+        "multi_picklist": "Multi-select picklist",
+        "currency": "Amount"
+      },
+      "quota": {
+        "label": "Field quota",
+        "unit": "fields on this domain",
+        "hint": "Your plan includes {limit} fields per domain. Archived fields don't count. Need more? Contact us — quota extensions are recorded and justified.",
+        "hintNoLimit": "Archived fields don't count towards your quota."
+      },
+      "table": {
+        "caption": "Custom fields for the selected domain",
+        "reorder": "Reorder",
+        "field": "Field",
+        "type": "Type",
+        "usage": "Usage",
+        "options": "Options",
+        "actions": "Actions"
+      },
+      "badges": {
+        "required": "Required",
+        "sensitive": "Sensitive — Art. 9",
+        "projected": "Projected on donations"
+      },
+      "usage": {
+        "masked": "< 5 records"
+      },
+      "empty": {
+        "title": "No custom fields yet",
+        "description": "Create your first field for this domain — a label, a type, and it immediately appears in forms, detail pages, columns, filters and exports."
+      },
+      "archived": {
+        "label": "Archived fields",
+        "title": "Archived fields ({count})",
+        "valuesKept": "Values already entered are kept: they stay visible on detail pages and in exports, but the field no longer appears in forms, filters and columns."
+      },
+      "actions": {
+        "new": "New field",
+        "edit": "Edit",
+        "archive": "Archive",
+        "restore": "Restore",
+        "restoring": "Restoring…",
+        "moveUp": "Move field {label} up",
+        "moveDown": "Move field {label} down"
+      },
+      "success": {
+        "reordered": "Field order updated.",
+        "archived": "Field \"{label}\" archived. Values are kept.",
+        "restored": "Field \"{label}\" restored.",
+        "created": "Field created.",
+        "updated": "Field updated.",
+        "optionRenamed": "Option renamed — all history is up to date.",
+        "optionAdded": "Option added.",
+        "mergeUndone": "Merge undone — the option is active again and the original values are being restored."
+      },
+      "errors": {
+        "generic": "Something went wrong. Please try again.",
+        "reorder": "Could not save the new order.",
+        "archive": "Could not archive this field.",
+        "restore": "Could not restore this field."
+      },
+      "archiveDialog": {
+        "title": "Archive this field?",
+        "description": "\"{label}\" will disappear from forms, filters, columns and projection — but values already entered are kept and stay visible on detail pages and in exports. You can restore it at any time.",
+        "descriptionFallback": "The field will be archived; values already entered are kept.",
+        "cancel": "Cancel",
+        "confirm": "Archive",
+        "archiving": "Archiving…"
+      },
+      "form": {
+        "createTitle": "New field — {domain}",
+        "editTitle": "Edit \"{label}\"",
+        "typeImmutableHint": "The type is final after creation: to change type, archive the field and recreate it.",
+        "label": "Label",
+        "labelPlaceholder": "E.g. Donor segment",
+        "keyPreview": "Technical key:",
+        "keyPreviewHint": "derived from the label, visible only now, final after creation.",
+        "type": "Type",
+        "typeHint": "Immutable after creation.",
+        "description": "Description",
+        "descriptionPlaceholder": "Help text shown to operators",
+        "options": "Options",
+        "optionsEmpty": "No options yet — add at least one.",
+        "optionAdd": "Add an option",
+        "optionsHint": "Renaming an option updates all history — values store stable identifiers, never labels. Nothing is deleted: deactivate or merge.",
+        "optionQuotaReached": "Limit of {limit} options reached for this picklist.",
+        "optionPlaceholder": "Option label",
+        "optionRename": "Rename option {label}",
+        "optionMoveUp": "Move option {label} up",
+        "optionMoveDown": "Move option {label} down",
+        "optionDeactivate": "Deactivate",
+        "optionReactivate": "Reactivate",
+        "optionInactive": "Deactivated",
+        "optionMerge": "Merge option {label}",
+        "optionMergeShort": "Merge…",
+        "optionRemove": "Remove option {label}",
+        "required": "Required",
+        "requiredHint": "Enforced on new entries only — never blocking on existing records.",
+        "filterable": "Filterable",
+        "filterableHint": "Available in advanced filters and campaign segments.",
+        "exportable": "Exportable",
+        "exportableHint": "Included in CSV export — never gated by your plan.",
+        "projected": "Show on related donations",
+        "projectedHint": "Projects this donor field onto the list and detail of their donations.",
+        "projectedSensitiveHint": "A sensitive field (Art. 9) is structurally excluded from cross-domain projection.",
+        "projectedCapHint": "Limit of {cap} projected fields reached — remove projection from another field first.",
+        "sensitive": "Sensitive data (GDPR Art. 9)",
+        "sensitiveHint": "Health, religion, opinions, orientation… The purpose becomes mandatory.",
+        "art9Title": "GDPR Article 9.",
+        "art9Body": "This field will contain special-category data. It is structurally excluded from cross-domain projection and from all AI processing, badged on every surface, and its purpose is recorded in the processing register (Art. 30).",
+        "purpose": "Purpose of processing",
+        "purposePlaceholder": "Why do you collect this data? E.g. adapting meals served at volunteer events.",
+        "errors": {
+          "labelRequired": "The label is required.",
+          "keyUnderivable": "Could not derive a technical key from this label — use at least one letter.",
+          "optionRequired": "Add at least one active option.",
+          "purposeRequired": "The purpose is mandatory for a sensitive field (Art. 30)."
+        },
+        "cancel": "Cancel",
+        "save": "Save",
+        "create": "Create field",
+        "saving": "Saving…",
+        "optionMerged": "Merged",
+        "optionUndoMerge": "Undo merge"
+      },
+      "mergeDialog": {
+        "title": "Merge \"{source}\"",
+        "description": "Every record carrying \"{source}\" will switch to \"{target}\". The merged option is deactivated, never deleted.",
+        "descriptionNoTarget": "Choose the destination option.",
+        "target": "Destination option",
+        "targetPlaceholder": "Choose an option",
+        "counting": "Counting affected records…",
+        "preview": "{count, plural, =0 {No record will be rewritten.} one {# record will be rewritten. The merge runs in the background and stays undoable for 30 days.} other {# records will be rewritten. The merge runs in the background and stays undoable for 30 days.}}",
+        "countUnavailable": "Count unavailable — the merge is still possible and undoable for 30 days.",
+        "cancel": "Cancel",
+        "confirm": "Start the merge",
+        "merging": "Merging…",
+        "success": "Merge started — it runs in the background and stays undoable for 30 days.",
+        "errors": {
+          "generic": "Could not start the merge. Please try again."
+        }
+      }
     },
     "featureFlags": {
       "title": "Feature flags",
@@ -2280,7 +2460,8 @@
       "categories": {
         "donation_history": "Donation History",
         "demographics": "Demographics",
-        "identity": "Identity & contact"
+        "identity": "Identity & contact",
+        "custom": "Custom fields"
       },
       "placeholders": {
         "amountEur": "Amount in €",

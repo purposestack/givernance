@@ -1,4 +1,25 @@
 {
+  "customFields": {
+    "boolean": {
+      "yes": "Oui",
+      "no": "Non"
+    },
+    "input": {
+      "selectPlaceholder": "Sélectionner…",
+      "selectedCount": "{count} sélectionnés",
+      "noOptions": "Aucune option",
+      "noValue": "—"
+    },
+    "form": {
+      "sectionTitle": "Champs personnalisés",
+      "sectionDescription": "Champs configurés par votre organisation.",
+      "requiredMissing": "Ce champ est obligatoire."
+    },
+    "detail": {
+      "sectionTitle": "Champs personnalisés",
+      "donorSectionTitle": "Détails du donateur"
+    }
+  },
   "common": {
     "appName": "Givernance",
     "appDescription": "CRM conçu pour les associations européennes",
@@ -1406,7 +1427,166 @@
       "members": "Membres",
       "funds": "Fonds",
       "bankAccounts": "Comptes bancaires",
-      "featureFlags": "Feature flags"
+      "featureFlags": "Feature flags",
+      "customFields": "Champs personnalisés"
+    },
+    "customFields": {
+      "title": "Champs personnalisés",
+      "subtitle": "Ajoutez vos propres champs typés aux constituants, dons et campagnes — sans consultant, sans ticket. Renommer une option est gratuit, fusionner est prévisualisé, rien n'est jamais supprimé silencieusement.",
+      "domainTabsLabel": "Domaines",
+      "domains": {
+        "constituent": "Constituants",
+        "donation": "Dons",
+        "campaign": "Campagnes"
+      },
+      "types": {
+        "text": "Texte court",
+        "long_text": "Texte long",
+        "number": "Nombre",
+        "date": "Date",
+        "boolean": "Case à cocher",
+        "picklist": "Liste de choix",
+        "multi_picklist": "Liste à choix multiples",
+        "currency": "Montant"
+      },
+      "quota": {
+        "label": "Quota de champs",
+        "unit": "champs sur ce domaine",
+        "hint": "Votre offre inclut {limit} champs par domaine. Les champs archivés ne comptent pas. Besoin de plus ? Contactez-nous — les extensions de quota sont tracées et motivées.",
+        "hintNoLimit": "Les champs archivés ne comptent pas dans votre quota."
+      },
+      "table": {
+        "caption": "Champs personnalisés du domaine sélectionné",
+        "reorder": "Réordonner",
+        "field": "Champ",
+        "type": "Type",
+        "usage": "Utilisation",
+        "options": "Options",
+        "actions": "Actions"
+      },
+      "badges": {
+        "required": "Requis",
+        "sensitive": "Sensible — Art. 9",
+        "projected": "Projeté sur les dons"
+      },
+      "usage": {
+        "masked": "< 5 fiches"
+      },
+      "empty": {
+        "title": "Aucun champ personnalisé",
+        "description": "Créez votre premier champ pour ce domaine — un libellé, un type, et il apparaît immédiatement dans les formulaires, fiches, colonnes, filtres et exports."
+      },
+      "archived": {
+        "label": "Champs archivés",
+        "title": "Champs archivés ({count})",
+        "valuesKept": "Les valeurs déjà saisies sont conservées : elles restent visibles sur les fiches et dans les exports, mais le champ n'apparaît plus dans les formulaires, filtres et colonnes."
+      },
+      "actions": {
+        "new": "Nouveau champ",
+        "edit": "Modifier",
+        "archive": "Archiver",
+        "restore": "Restaurer",
+        "restoring": "Restauration…",
+        "moveUp": "Monter le champ {label}",
+        "moveDown": "Descendre le champ {label}"
+      },
+      "success": {
+        "reordered": "Ordre des champs mis à jour.",
+        "archived": "Champ « {label} » archivé. Les valeurs sont conservées.",
+        "restored": "Champ « {label} » restauré.",
+        "created": "Champ créé.",
+        "updated": "Champ mis à jour.",
+        "optionRenamed": "Option renommée — tout l'historique est à jour.",
+        "optionAdded": "Option ajoutée.",
+        "mergeUndone": "Fusion annulée — l’option est de nouveau active et les valeurs d’origine sont en cours de restauration."
+      },
+      "errors": {
+        "generic": "Une erreur est survenue. Veuillez réessayer.",
+        "reorder": "Impossible d'enregistrer le nouvel ordre.",
+        "archive": "Impossible d'archiver ce champ.",
+        "restore": "Impossible de restaurer ce champ."
+      },
+      "archiveDialog": {
+        "title": "Archiver ce champ ?",
+        "description": "« {label} » disparaîtra des formulaires, filtres, colonnes et de la projection — mais les valeurs déjà saisies sont conservées et restent visibles sur les fiches et dans les exports. Vous pourrez le restaurer à tout moment.",
+        "descriptionFallback": "Le champ sera archivé ; les valeurs déjà saisies sont conservées.",
+        "cancel": "Annuler",
+        "confirm": "Archiver",
+        "archiving": "Archivage…"
+      },
+      "form": {
+        "createTitle": "Nouveau champ — {domain}",
+        "editTitle": "Modifier « {label} »",
+        "typeImmutableHint": "Le type est définitif après création : pour changer de type, archivez puis recréez le champ.",
+        "label": "Libellé",
+        "labelPlaceholder": "Ex. Segment donateur",
+        "keyPreview": "Clé technique :",
+        "keyPreviewHint": "dérivée du libellé, visible uniquement maintenant, définitive après création.",
+        "type": "Type",
+        "typeHint": "Immutable après création.",
+        "description": "Description",
+        "descriptionPlaceholder": "Aide affichée aux opérateurs",
+        "options": "Options",
+        "optionsEmpty": "Aucune option pour l'instant — ajoutez-en au moins une.",
+        "optionAdd": "Ajouter une option",
+        "optionsHint": "Renommer une option met à jour tout l'historique — les valeurs stockent des identifiants stables, jamais les libellés. Rien n'est supprimé : on désactive ou on fusionne.",
+        "optionQuotaReached": "Limite de {limit} options atteinte pour cette liste.",
+        "optionPlaceholder": "Libellé de l'option",
+        "optionRename": "Renommer l'option {label}",
+        "optionMoveUp": "Monter l'option {label}",
+        "optionMoveDown": "Descendre l'option {label}",
+        "optionDeactivate": "Désactiver",
+        "optionReactivate": "Réactiver",
+        "optionInactive": "Désactivée",
+        "optionMerge": "Fusionner l'option {label}",
+        "optionMergeShort": "Fusionner…",
+        "optionRemove": "Retirer l'option {label}",
+        "required": "Requis",
+        "requiredHint": "Exigé sur les nouvelles saisies uniquement — jamais bloquant sur l'existant.",
+        "filterable": "Filtrable",
+        "filterableHint": "Disponible dans les filtres avancés et les segments de campagne.",
+        "exportable": "Exportable",
+        "exportableHint": "Inclus dans l'export CSV — jamais conditionné à votre offre.",
+        "projected": "Afficher sur les dons liés",
+        "projectedHint": "Projette ce champ du donateur sur la liste et la fiche de ses dons.",
+        "projectedSensitiveHint": "Un champ sensible (Art. 9) est structurellement exclu de la projection inter-domaines.",
+        "projectedCapHint": "Limite de {cap} champs projetés atteinte — retirez la projection d'un autre champ d'abord.",
+        "sensitive": "Donnée sensible (RGPD Art. 9)",
+        "sensitiveHint": "Santé, religion, opinions, orientation… La finalité devient obligatoire.",
+        "art9Title": "Article 9 RGPD.",
+        "art9Body": "Ce champ contiendra des données de catégorie particulière. Il est structurellement exclu de la projection inter-domaines et de tout traitement IA, badgé sur toutes les surfaces, et sa finalité est consignée au registre des traitements (Art. 30).",
+        "purpose": "Finalité du traitement",
+        "purposePlaceholder": "Pourquoi collectez-vous cette donnée ? Ex. adapter les repas servis lors des événements bénévoles.",
+        "errors": {
+          "labelRequired": "Le libellé est requis.",
+          "keyUnderivable": "Impossible de dériver une clé technique de ce libellé — utilisez au moins une lettre.",
+          "optionRequired": "Ajoutez au moins une option active.",
+          "purposeRequired": "La finalité est obligatoire pour un champ sensible (Art. 30)."
+        },
+        "cancel": "Annuler",
+        "save": "Enregistrer",
+        "create": "Créer le champ",
+        "saving": "Enregistrement…",
+        "optionMerged": "Fusionnée",
+        "optionUndoMerge": "Annuler la fusion"
+      },
+      "mergeDialog": {
+        "title": "Fusionner « {source} »",
+        "description": "Toutes les fiches portant « {source} » basculeront sur « {target} ». L'option fusionnée est désactivée, jamais supprimée.",
+        "descriptionNoTarget": "Choisissez l'option de destination.",
+        "target": "Option de destination",
+        "targetPlaceholder": "Choisir une option",
+        "counting": "Calcul du nombre de fiches concernées…",
+        "preview": "{count, plural, =0 {Aucune fiche ne sera réécrite.} one {# fiche sera réécrite. La fusion s'exécute en arrière-plan et reste annulable pendant 30 jours.} other {# fiches seront réécrites. La fusion s'exécute en arrière-plan et reste annulable pendant 30 jours.}}",
+        "countUnavailable": "Décompte indisponible — la fusion reste possible et annulable pendant 30 jours.",
+        "cancel": "Annuler",
+        "confirm": "Lancer la fusion",
+        "merging": "Fusion…",
+        "success": "Fusion lancée — elle s'exécute en arrière-plan et reste annulable pendant 30 jours.",
+        "errors": {
+          "generic": "Impossible de lancer la fusion. Veuillez réessayer."
+        }
+      }
     },
     "featureFlags": {
       "title": "Feature flags",
@@ -2280,7 +2460,8 @@
       "categories": {
         "donation_history": "Historique des dons",
         "demographics": "Démographie",
-        "identity": "Identité & contact"
+        "identity": "Identité & contact",
+        "custom": "Champs personnalisés"
       },
       "placeholders": {
         "amountEur": "Montant en €",

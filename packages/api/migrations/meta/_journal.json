@@ -603,6 +603,34 @@
       "when": 1988180000000,
       "tag": "0085_constituent_types_partial_gin",
       "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1998180000000,
+      "tag": "0086_custom_field_definitions",
+      "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 2008180000000,
+      "tag": "0087_customization_supporting_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 2018180000000,
+      "tag": "0088_domain_custom_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 2028180000000,
+      "tag": "0089_custom_fields_flags",
+      "breakpoints": true
     }
   ]
 }

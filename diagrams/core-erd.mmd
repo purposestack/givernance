@@ -156,6 +156,64 @@ erDiagram
     uuid resolved_by FK
   }
 
+  %% CUSTOMIZATION ENGINE (Epic #539) — see docs/35-customization.md
+  %% Values live in a `custom jsonb NOT NULL DEFAULT '{}'` column on
+  %% constituents / donations / campaigns (GIN jsonb_path_ops; partial
+  %% WHERE deleted_at IS NULL on constituents) — annotated in the
+  %% attribute blocks below. Never per-tenant DDL, never EAV (ADR-036).
+  orgs ||--o{ custom_field_definitions : "defines per (org × domain)"
+  users ||--o{ custom_field_definitions : "created_by (SET NULL)"
+  orgs ||--o{ customization_quota_overrides : "sales-exception raises"
+  orgs ||--o{ custom_field_merge_undo : "30-day undo rows"
+  custom_field_definitions ||--o{ custom_field_merge_undo : "per merged option"
+
+  custom_field_definitions {
+    uuid id PK
+    uuid org_id FK
+    enum domain "constituent | donation | campaign (closed set)"
+    varchar key "immutable, ^[a-z][a-z0-9_]{1,62}$, RESERVED_KEYS-checked; unique per (org, domain) WHERE archived_at IS NULL"
+    varchar label "operator-authored tenant data — rendered literally, never an i18n key"
+    enum type "8 closed types, immutable (type change = archive + recreate)"
+    jsonb options "stable opt_* ids; values store ids never labels — rename-in-place is free"
+    int sort_order "admin ordering, propagates to every surface"
+    boolean required "new writes only — never retro-blocking"
+    boolean filterable "offered to the advanced-filter catalog"
+    boolean exportable "default TRUE; export never plan-gated"
+    boolean show_on_related "projection opt-in; CHECK constituent domain AND NOT sensitive"
+    boolean sensitive "GDPR Art. 9 marker; CHECK forces purpose_text"
+    varchar purpose_text "Art. 30 record support"
+    timestamptz archived_at "soft-archive; values retained, read-only"
+  }
+  customization_quota_overrides {
+    uuid id PK
+    uuid org_id FK
+    enum domain "NULL = org-wide raise"
+    varchar quota_key "fields_per_domain | options_per_picklist | show_on_related_fields"
+    int value "CHECK > 0"
+    text reason "CHECK non-blank — sales exception with a paper trail"
+    timestamptz expires_at "optional; SELECT-only for givernance_app"
+  }
+  custom_field_merge_undo {
+    uuid id PK
+    uuid org_id FK
+    uuid definition_id FK
+    uuid merge_id "groups one merge operation (the undo unit)"
+    varchar source_option_id
+    varchar target_option_id
+    uuid entity_id "the rewritten row"
+    jsonb previous_value "pre-merge value of the touched key ONLY — never in audit_log"
+    timestamptz expires_at "now() + 30 d; purged by worker cron"
+  }
+  constituents {
+    jsonb custom "per-org typed custom fields (Epic #539), GIN jsonb_path_ops partial WHERE deleted_at IS NULL"
+  }
+  donations {
+    jsonb custom "per-org typed custom fields (Epic #539), GIN jsonb_path_ops"
+  }
+  campaigns {
+    jsonb custom "per-org typed custom fields (Epic #539), GIN jsonb_path_ops"
+  }
+
   %% GRANTS
   constituents ||--o{ grants : "funds (as funder org)"
   grants ||--o{ grant_tranches : "disburses"

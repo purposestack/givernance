@@ -1,10 +1,14 @@
 import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
+import type { CustomFieldDefinition, CustomFieldValues } from "@givernance/shared/custom-fields";
 import { Download, FileText, GitMerge, Mail, Pencil, Sparkles, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
-
 import { ConstituentTypeBadges } from "@/components/constituents/constituent-type-badge";
+import {
+  CustomFieldDetailRows,
+  fetchCustomFieldDefinitionsOrEmpty,
+} from "@/components/shared/custom-fields";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ApiProblem } from "@/lib/api";
@@ -106,16 +110,26 @@ export default async function ConstituentDetailPage({ params, searchParams }: De
   // (`types[0]`), identical to today. When on, all types render as chips.
   // A flag-fetch failure defaults to OFF (safest single-badge posture).
   let multiTypeEnabled = false;
+  // Epic #539 — flag off / fetch failure ⇒ no defs ⇒ no custom surface.
+  let customFieldsEnabled = false;
+  const flagClient = await createServerApiClient();
   try {
-    const client = await createServerApiClient();
-    const flags = await FeatureFlagsService.listPublic(client);
+    const flags = await FeatureFlagsService.listPublic(flagClient);
     multiTypeEnabled = isFlagEnabled(flags, FEATURE_FLAG_KEYS.CONSTITUENTS_MULTI_TYPE);
+    customFieldsEnabled = isFlagEnabled(flags, FEATURE_FLAG_KEYS.CONSTITUENTS_CUSTOM_FIELDS);
   } catch {
     multiTypeEnabled = false;
+    customFieldsEnabled = false;
   }
+  const customFieldDefs = await fetchCustomFieldDefinitionsOrEmpty(
+    flagClient,
+    "constituent",
+    customFieldsEnabled,
+  );
 
   const t = await getTranslations("constituentDetail");
   const tType = await getTranslations("constituents.types");
+  const tCustom = await getTranslations("customFields");
   const locale = await getLocale();
 
   const totalDonatedCents = donationsResult.data.reduce(
@@ -165,20 +179,30 @@ export default async function ConstituentDetailPage({ params, searchParams }: De
       />
       <DetailTabs
         overview={
-          <OverviewTab
-            totalDonatedCents={totalDonatedCents}
-            donationCount={donationsResult.pagination.total}
-            lastDonationAt={lastDonation?.donatedAt}
-            locale={locale}
-            labels={{
-              ariaLabel: t("overview.ariaLabel"),
-              title: t("overview.title"),
-              noActivity: t("overview.noActivity"),
-              totalDonated: t("overview.stats.totalDonated"),
-              pledgeCount: t("overview.stats.pledgeCount"),
-              lastActivity: t("overview.stats.lastActivity"),
-            }}
-          />
+          <>
+            <OverviewTab
+              totalDonatedCents={totalDonatedCents}
+              donationCount={donationsResult.pagination.total}
+              lastDonationAt={lastDonation?.donatedAt}
+              locale={locale}
+              labels={{
+                ariaLabel: t("overview.ariaLabel"),
+                title: t("overview.title"),
+                noActivity: t("overview.noActivity"),
+                totalDonated: t("overview.stats.totalDonated"),
+                pledgeCount: t("overview.stats.pledgeCount"),
+                lastActivity: t("overview.stats.lastActivity"),
+              }}
+            />
+            {/* Epic #539 — absent entirely when the flag is off / no defs. */}
+            <CustomFieldsCard
+              definitions={customFieldDefs}
+              values={constituent.custom}
+              locale={locale}
+              title={tCustom("detail.sectionTitle")}
+              booleanLabels={{ yes: tCustom("boolean.yes"), no: tCustom("boolean.no") }}
+            />
+          </>
         }
         donations={
           <DonationsTable
@@ -207,6 +231,43 @@ export default async function ConstituentDetailPage({ params, searchParams }: De
 
 function resolveTypeLabel(type: string, tType: (key: KnownConstituentType) => string): string {
   return KNOWN_TYPES.has(type) ? tType(type as KnownConstituentType) : type;
+}
+
+/**
+ * "Custom fields" group on the Overview tab (Epic #539). Every active
+ * definition renders a row (empty values as an em-dash) so operators see the
+ * full configured surface, not just the filled subset.
+ */
+function CustomFieldsCard({
+  definitions,
+  values,
+  locale,
+  title,
+  booleanLabels,
+}: {
+  definitions: CustomFieldDefinition[];
+  values: CustomFieldValues | undefined;
+  locale: string;
+  title: string;
+  booleanLabels: { yes: string; no: string };
+}) {
+  if (definitions.length === 0) return null;
+  return (
+    <section
+      aria-label={title}
+      className="mt-6 rounded-2xl bg-surface-container-lowest p-6 border border-border-brand"
+    >
+      <h2 className="font-heading text-xl text-on-surface">{title}</h2>
+      <div className="mt-4">
+        <CustomFieldDetailRows
+          definitions={definitions}
+          values={values}
+          locale={locale}
+          booleanLabels={booleanLabels}
+        />
+      </div>
+    </section>
+  );
 }
 
 function DetailBreadcrumbs({

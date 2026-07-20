@@ -11,6 +11,7 @@
  * returns before any DB dup-check, so no real Postgres is needed.
  */
 
+import { buildCustomValidator, type CustomFieldDefinition } from "@givernance/shared/custom-fields";
 import { describe, expect, it, vi } from "vitest";
 import { processOneRow, type RowContext } from "./process-bulk-import.js";
 
@@ -42,13 +43,22 @@ function makeTx(captured: CapturedInsert[]) {
 function makeCtx(
   multiTypeEnabled: boolean,
   typeCell: string,
+  options?: {
+    customFields?: RowContext["customFields"];
+    extraValues?: Record<string, string>;
+  },
 ): { ctx: RowContext; captured: CapturedInsert[] } {
   const captured: CapturedInsert[] = [];
   const ctx = {
     tx: makeTx(captured),
     row: {
       rowNumber: 1,
-      values: { firstName: "Alice", lastName: "Martin", type: typeCell },
+      values: {
+        firstName: "Alice",
+        lastName: "Martin",
+        type: typeCell,
+        ...options?.extraValues,
+      },
     },
     orgId: "00000000-0000-0000-0000-0000000000aa",
     jobId: "00000000-0000-0000-0000-0000000000bb",
@@ -62,6 +72,7 @@ function makeCtx(
     },
     log: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() },
     multiTypeEnabled,
+    customFields: options?.customFields ?? null,
   } as unknown as RowContext;
   return { ctx, captured };
 }
@@ -104,5 +115,78 @@ describe("processOneRow — multi-type gate (issue #465)", () => {
     expect(constituentInsert?.vals.types).toEqual(["donor", "volunteer"]);
     // Back-compat shadow: legacy scalar column tracks types[0].
     expect(constituentInsert?.vals.type).toBe("donor");
+  });
+});
+
+/**
+ * Epic #539 — custom-field cells in the import pipeline. Same stub-tx
+ * style: the coercion + validation reject paths return before any DB
+ * dup-check, and the accept path shows on the captured constituent
+ * insert.
+ */
+describe("processOneRow — custom-field cells (Epic #539)", () => {
+  const segmentDef: CustomFieldDefinition = {
+    id: "def-1",
+    domain: "constituent",
+    key: "donor_segment",
+    label: "Segment donateur",
+    description: null,
+    type: "picklist",
+    options: [
+      { id: "opt_aaaaaaaa", label: "Grand donateur", active: true, sortOrder: 0 },
+      { id: "opt_bbbbbbbb", label: "Ami", active: true, sortOrder: 1 },
+    ],
+    sortOrder: 0,
+    required: false,
+    filterable: true,
+    exportable: true,
+    showOnRelated: false,
+    sensitive: false,
+    purposeText: null,
+  };
+  const customFields = {
+    defs: [segmentDef],
+    validator: buildCustomValidator([segmentDef]),
+  };
+
+  it("persists a resolved picklist label as its option id on the created constituent", async () => {
+    const { ctx, captured } = makeCtx(true, "donor", {
+      customFields,
+      extraValues: { cf_donor_segment: "grand DONATEUR" },
+    });
+    await processOneRow(ctx);
+
+    expect(ctx.batchDelta.failed).toBe(0);
+    expect(ctx.batchDelta.created).toBe(1);
+    const constituentInsert = captured.find((c) => Array.isArray(c.vals.types));
+    expect(constituentInsert?.vals.custom).toEqual({ donor_segment: "opt_aaaaaaaa" });
+  });
+
+  it("rejects an unknown picklist value as a failed row — never auto-creates an option", async () => {
+    const { ctx, captured } = makeCtx(true, "donor", {
+      customFields,
+      extraValues: { cf_donor_segment: "Nouveau segment" },
+    });
+    await processOneRow(ctx);
+
+    expect(ctx.batchDelta.created).toBe(0);
+    expect(ctx.batchDelta.failed).toBe(1);
+    expect(captured).toHaveLength(1);
+    expect(captured[0]?.vals).toMatchObject({
+      status: "failed",
+      errorCode: "UNKNOWN_CUSTOM_OPTION",
+    });
+  });
+
+  it("ignores cf_ cells when custom fields are off for the tenant (customFields null)", async () => {
+    const { ctx, captured } = makeCtx(true, "donor", {
+      customFields: null,
+      extraValues: { cf_donor_segment: "Grand donateur" },
+    });
+    await processOneRow(ctx);
+
+    expect(ctx.batchDelta.created).toBe(1);
+    const constituentInsert = captured.find((c) => Array.isArray(c.vals.types));
+    expect(constituentInsert?.vals.custom).toBeUndefined();
   });
 });

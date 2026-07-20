@@ -22,6 +22,7 @@ import { brandingRoutes } from "./modules/branding/routes.js";
 import { postalCampaignRoutes } from "./modules/campaigns/postal-routes.js";
 import { campaignRoutes } from "./modules/campaigns/routes.js";
 import { constituentRoutes } from "./modules/constituents/routes.js";
+import { customizationRoutes } from "./modules/customization/routes.js";
 import { dashboardRoutes } from "./modules/dashboard/routes.js";
 import { disputeRoutes } from "./modules/disputes/routes.js";
 import { donationRoutes } from "./modules/donations/routes.js";
@@ -188,6 +189,7 @@ export async function createServer(opts: CreateServerOpts = {}): Promise<Fastify
   // --- Routes ---
   await app.register(healthRoutes);
   await app.register(constituentRoutes, { prefix: "/v1" });
+  await app.register(customizationRoutes, { prefix: "/v1" });
   await app.register(tenantRoutes, { prefix: "/v1" });
   await app.register(userRoutes, { prefix: "/v1" });
   await app.register(invitationRoutes, { prefix: "/v1" });

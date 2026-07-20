@@ -10,9 +10,19 @@
  * a "wrong line endings" prompt; macOS / Linux Excel handle CRLF fine.
  * UTF-8 BOM is emitted so Excel for Windows correctly detects UTF-8
  * — without it, French accents render as Latin-1 mojibake.
+ *
+ * Epic #539: the template is per-tenant when custom fields are on — one
+ * extra column per non-archived constituent definition, headered by the
+ * label (falling back to the stable `cf_<key>` alias on collisions),
+ * with a format-revealing sample value on the first example row only.
  */
 
-import { CANONICAL_HEADERS } from "./parser.js";
+import {
+  type CustomFieldDefinition,
+  customTemplateHeader,
+  customTemplateSampleValue,
+} from "@givernance/shared/custom-fields";
+import { CANONICAL_HEADERS, isCoreImportHeader } from "./parser.js";
 
 const HEADER_ROW = [...CANONICAL_HEADERS];
 
@@ -152,6 +162,15 @@ function escapeCell(value: string): string {
   return value;
 }
 
+/**
+ * Formula-injection guard (CWE-1236) for the tenant-authored cells the
+ * custom columns introduce — labels and option labels are operator data,
+ * unlike the hardcoded example rows which never needed it.
+ */
+function neutraliseTenantCell(value: string): string {
+  return /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+}
+
 function toCsvLine(cells: string[]): string {
   return cells.map(escapeCell).join(",");
 }
@@ -162,8 +181,24 @@ const BOM = "﻿";
 /** Filename surfaced in the `Content-Disposition` header. */
 export const TEMPLATE_FILENAME = "givernance-import-template.csv";
 
-/** Generate the CSV body for the import template. */
-export function buildImportTemplateCsv(): string {
-  const lines = [toCsvLine(HEADER_ROW), ...EXAMPLE_ROWS.map((row) => toCsvLine(row))];
+/**
+ * Generate the CSV body for the import template. `customDefs` is the
+ * org's active constituent catalog (empty when the
+ * `constituents.custom_fields` flag is off — the off-state template is
+ * byte-identical to the pre-#539 one).
+ */
+export function buildImportTemplateCsv(customDefs: readonly CustomFieldDefinition[] = []): string {
+  const customHeaders = customDefs.map((def) =>
+    neutraliseTenantCell(customTemplateHeader(def, customDefs, isCoreImportHeader)),
+  );
+  const sampleCells = customDefs.map((def) => neutraliseTenantCell(customTemplateSampleValue(def)));
+  const emptyCells = customDefs.map(() => "");
+
+  const lines = [
+    toCsvLine([...HEADER_ROW, ...customHeaders]),
+    ...EXAMPLE_ROWS.map((row, index) =>
+      toCsvLine([...row, ...(index === 0 ? sampleCells : emptyCells)]),
+    ),
+  ];
   return `${BOM}${lines.join("\r\n")}\r\n`;
 }

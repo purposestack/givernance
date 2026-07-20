@@ -1,5 +1,7 @@
 /** Campaign routes — full CRUD, stats, ROI, document generation, and eligible funds */
 
+import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
+import { buildCustomValidator, type CustomFieldValues } from "@givernance/shared/custom-fields";
 import {
   CAMPAIGN_STATUS_VALUES,
   CAMPAIGN_TYPE_VALUES,
@@ -7,7 +9,9 @@ import {
 } from "@givernance/shared/schema";
 import { MULTI_CURRENCY_VALUES } from "@givernance/shared/validators";
 import { Type } from "@sinclair/typebox";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
+import { customFieldsProblem } from "../../lib/custom-field-values.js";
+import { flagService as defaultFlagService } from "../../lib/flags/flag-service.js";
 import { requireAuth, requireOrgAdmin, requireWrite } from "../../lib/guards.js";
 import {
   DataArrayResponse,
@@ -22,11 +26,17 @@ import {
   UuidSchema,
 } from "../../lib/schemas.js";
 import {
+  buildCustomSerializer,
+  getActiveDefinitions,
+  getReadableDefinitions,
+} from "../customization/lib/value-service.js";
+import {
   CAMPAIGN_SORT_FIELDS,
   CampaignValidationError,
   closeCampaign,
   createCampaign,
   getCampaign,
+  getCampaignCustom,
   getCampaignRoi,
   getCampaignStats,
   listCampaignFunds,
@@ -70,6 +80,123 @@ const IdempotencyKeyHeader = Type.Object({
 const CampaignDescriptionSchema = Type.Union([Type.Null(), Type.String({ maxLength: 2000 })]);
 
 /**
+ * Custom-field values on responses (Epic #539). Keys are org-defined so the
+ * schema is a Record with a closed VALUE union — the strict-response firewall
+ * is the definition-driven serializer in each handler, which only ever emits
+ * keys present in the org's active registry (never the whole stored blob).
+ */
+const CustomValuesResponseSchema = Type.Record(
+  Type.String(),
+  Type.Union([Type.String(), Type.Number(), Type.Boolean(), Type.Array(Type.String())]),
+);
+
+/** Merge-patch payload for `custom` — runtime-validated against the org registry. */
+const CustomPatchBodySchema = Type.Record(Type.String(), Type.Unknown());
+
+type CampaignCustomSerializer = (custom: unknown) => CustomFieldValues;
+
+/**
+ * Per-request serializer for the campaign's own custom values, or null when
+ * `campaigns.custom_fields` is off. Recomputed per request — eligibility is
+ * never baked into caches or SSR props (Epic #539 anti-goal #9).
+ */
+async function buildCampaignCustomSerializer(
+  request: FastifyRequest,
+  orgId: string,
+  options?: {
+    /** Detail read only: archived-definition values stay readable (docs/35). */
+    includeArchived?: boolean;
+  },
+): Promise<CampaignCustomSerializer | null> {
+  const flags = request.flagService ?? defaultFlagService;
+  const enabled = await flags.isEnabled(FEATURE_FLAG_KEYS.CAMPAIGNS_CUSTOM_FIELDS, { orgId });
+  if (!enabled) return null;
+  const defs = options?.includeArchived
+    ? await getReadableDefinitions(orgId, "campaign")
+    : await getActiveDefinitions(orgId, "campaign");
+  return buildCustomSerializer(defs);
+}
+
+/**
+ * Strips the RAW `custom` blob off a service row and re-attaches it
+ * serialized when the flag is on. Raw blobs must never reach the wire
+ * (Epic #539 anti-goal #5).
+ */
+function shapeCampaignCustom<T extends { custom?: unknown }>(
+  row: T,
+  serializer: CampaignCustomSerializer | null,
+) {
+  const { custom: rawCustom, ...rest } = row;
+  return { ...rest, ...(serializer ? { custom: serializer(rawCustom) } : {}) };
+}
+
+function customFieldsDisabledProblem() {
+  return problemDetail(
+    422,
+    "custom_fields_disabled",
+    "Custom fields on campaigns are not enabled for your organisation.",
+  );
+}
+
+const customValidationProblem = customFieldsProblem;
+
+type CampaignCustomWrite =
+  | {
+      ok: true;
+      merged: CustomFieldValues | undefined;
+      serializer: CampaignCustomSerializer | null;
+    }
+  | { ok: false; kind: "unprocessable"; problem: ReturnType<typeof problemDetail> }
+  | { ok: false; kind: "not_found" };
+
+/**
+ * Resolves the `custom` merge-patch of a campaign write. Flag off + values
+ * in the payload → 422 (multi-type precedent, issue #465: the core route
+ * always works, the gated affordance is rejected loudly, never silently
+ * dropped). Flag on → validate against the org registry; `campaignId`
+ * present = update path (patch over the current blob, `required` never
+ * enforced), absent = create path (`required` enforced on new writes only).
+ */
+async function resolveCampaignCustomWrite(
+  request: FastifyRequest,
+  orgId: string,
+  patch: Record<string, unknown> | undefined,
+  campaignId?: string,
+): Promise<CampaignCustomWrite> {
+  const flags = request.flagService ?? defaultFlagService;
+  const enabled = await flags.isEnabled(FEATURE_FLAG_KEYS.CAMPAIGNS_CUSTOM_FIELDS, { orgId });
+  if (!enabled) {
+    if (patch && Object.keys(patch).length > 0) {
+      return { ok: false, kind: "unprocessable", problem: customFieldsDisabledProblem() };
+    }
+    return { ok: true, merged: undefined, serializer: null };
+  }
+
+  const defs = await getActiveDefinitions(orgId, "campaign");
+  const serializer = buildCustomSerializer(defs);
+
+  let existing: CustomFieldValues = {};
+  if (campaignId !== undefined) {
+    if (patch === undefined) {
+      return { ok: true, merged: undefined, serializer };
+    }
+    const current = await getCampaignCustom(orgId, campaignId);
+    if (current === null) {
+      return { ok: false, kind: "not_found" };
+    }
+    existing = current;
+  }
+
+  const result = buildCustomValidator(defs).validatePatch(existing, patch ?? {}, {
+    enforceRequired: campaignId === undefined,
+  });
+  if (!result.ok) {
+    return { ok: false, kind: "unprocessable", problem: customValidationProblem(result.errors) };
+  }
+  return { ok: true, merged: result.merged, serializer };
+}
+
+/**
  * Epic #318 — Swiss QR-bill picker on the campaign form. The optional
  * `bankAccountId` is a same-tenant FK pointing at `bank_accounts.id`;
  * setting it flips the campaign into Swiss QR-bill mode (the worker
@@ -94,6 +221,7 @@ const CampaignCreateBody = Type.Object({
   fundIds: Type.Optional(Type.Array(UuidSchema)),
   bankAccountId: Type.Optional(Type.Union([Type.Null(), UuidSchema])),
   qrReferenceMode: Type.Optional(CampaignQrReferenceModeSchema),
+  custom: Type.Optional(CustomPatchBodySchema),
 });
 
 const CampaignUpdateBody = Type.Object(
@@ -111,6 +239,7 @@ const CampaignUpdateBody = Type.Object(
     fundIds: Type.Optional(Type.Array(UuidSchema)),
     bankAccountId: Type.Optional(Type.Union([Type.Null(), UuidSchema])),
     qrReferenceMode: Type.Optional(CampaignQrReferenceModeSchema),
+    custom: Type.Optional(CustomPatchBodySchema),
   },
   { minProperties: 1 },
 );
@@ -139,6 +268,8 @@ const CampaignResponse = Type.Object({
   qrReferenceMode: CampaignQrReferenceModeSchema,
   createdAt: Type.String(),
   updatedAt: Type.String(),
+  /** Present only when `campaigns.custom_fields` is on; definition-filtered. */
+  custom: Type.Optional(CustomValuesResponseSchema),
 });
 
 const FundTypeSchema = Type.Union(FUND_TYPE_VALUES.map((value) => Type.Literal(value)));
@@ -219,16 +350,24 @@ export async function campaignRoutes(app: FastifyInstance) {
         sort?: (typeof CAMPAIGN_SORT_FIELDS)[number];
         order?: "asc" | "desc";
       };
-      const result = await listCampaigns(orgId, {
-        page: query.page ?? 1,
-        perPage: query.perPage ?? 20,
-        search: query.search,
-        status: query.status,
-        sort: query.sort,
-        order: query.order,
-      });
+      // Serializer built ONCE per request (one cached catalog read, not
+      // per-row lookups) and applied over the page slice — no N+1.
+      const [result, serializer] = await Promise.all([
+        listCampaigns(orgId, {
+          page: query.page ?? 1,
+          perPage: query.perPage ?? 20,
+          search: query.search,
+          status: query.status,
+          sort: query.sort,
+          order: query.order,
+        }),
+        buildCampaignCustomSerializer(request, orgId),
+      ]);
 
-      return { data: result.data, pagination: result.pagination };
+      return {
+        data: result.data.map((row) => shapeCampaignCustom(row, serializer)),
+        pagination: result.pagination,
+      };
     },
   );
 
@@ -247,6 +386,7 @@ export async function campaignRoutes(app: FastifyInstance) {
         response: {
           201: DataResponse(CampaignResponse),
           400: ProblemDetailSchema,
+          422: ProblemDetailSchema,
           ...ErrorResponses,
         },
       },
@@ -269,16 +409,33 @@ export async function campaignRoutes(app: FastifyInstance) {
         fundIds?: string[];
         bankAccountId?: string | null;
         qrReferenceMode?: "auto" | "qrr" | "scor";
+        custom?: Record<string, unknown>;
       };
+
+      const customWrite = await resolveCampaignCustomWrite(request, orgId, body.custom);
+      if (!customWrite.ok) {
+        // `not_found` is unreachable on the create path — the union just
+        // keeps the discriminant exhaustive.
+        return customWrite.kind === "unprocessable"
+          ? reply.status(422).send(customWrite.problem)
+          : reply.status(404).send(problemDetail(404, "Not Found", "Campaign not found"));
+      }
+
       try {
-        const campaign = await createCampaign(orgId, body, userId);
+        const campaign = await createCampaign(
+          orgId,
+          { ...body, custom: customWrite.merged },
+          userId,
+        );
         if (!campaign) {
           return reply
             .status(404)
             .send(problemDetail(404, "Not Found", "Parent campaign not found"));
         }
         reply.header("Location", `/v1/campaigns/${campaign.id}`);
-        return reply.status(201).send({ data: campaign });
+        return reply
+          .status(201)
+          .send({ data: shapeCampaignCustom(campaign, customWrite.serializer) });
       } catch (err) {
         if (err instanceof CampaignValidationError) {
           return reply.status(400).send(problemDetail(400, "Bad Request", err.message));
@@ -306,13 +463,16 @@ export async function campaignRoutes(app: FastifyInstance) {
       }
 
       const { id } = request.params as { id: string };
-      const campaign = await getCampaign(orgId, id);
+      const [campaign, serializer] = await Promise.all([
+        getCampaign(orgId, id),
+        buildCampaignCustomSerializer(request, orgId, { includeArchived: true }),
+      ]);
 
       if (!campaign) {
         return reply.status(404).send(problemDetail(404, "Not Found", "Campaign not found"));
       }
 
-      return { data: campaign };
+      return { data: shapeCampaignCustom(campaign, serializer) };
     },
   );
 
@@ -340,6 +500,7 @@ export async function campaignRoutes(app: FastifyInstance) {
         response: {
           200: DataResponse(CampaignResponse),
           400: ProblemDetailSchema,
+          422: ProblemDetailSchema,
           ...ErrorResponses,
         },
       },
@@ -364,6 +525,7 @@ export async function campaignRoutes(app: FastifyInstance) {
         fundIds?: string[];
         bankAccountId?: string | null;
         qrReferenceMode?: "auto" | "qrr" | "scor";
+        custom?: Record<string, unknown>;
       };
 
       if (body.status !== undefined && request.auth?.role !== "org_admin") {
@@ -374,14 +536,26 @@ export async function campaignRoutes(app: FastifyInstance) {
           );
       }
 
+      const customWrite = await resolveCampaignCustomWrite(request, orgId, body.custom, id);
+      if (!customWrite.ok) {
+        return customWrite.kind === "unprocessable"
+          ? reply.status(422).send(customWrite.problem)
+          : reply.status(404).send(problemDetail(404, "Not Found", "Campaign not found"));
+      }
+
       try {
-        const updated = await updateCampaign(orgId, id, body, userId);
+        const updated = await updateCampaign(
+          orgId,
+          id,
+          { ...body, custom: customWrite.merged },
+          userId,
+        );
 
         if (!updated) {
           return reply.status(404).send(problemDetail(404, "Not Found", "Campaign not found"));
         }
 
-        return { data: updated };
+        return { data: shapeCampaignCustom(updated, customWrite.serializer) };
       } catch (err) {
         if (err instanceof CampaignValidationError) {
           return reply.status(400).send(problemDetail(400, "Bad Request", err.message));
@@ -438,13 +612,16 @@ export async function campaignRoutes(app: FastifyInstance) {
       }
 
       const { id } = request.params as { id: string };
-      const closed = await closeCampaign(orgId, id, userId);
+      const [closed, serializer] = await Promise.all([
+        closeCampaign(orgId, id, userId),
+        buildCampaignCustomSerializer(request, orgId),
+      ]);
 
       if (!closed) {
         return reply.status(404).send(problemDetail(404, "Not Found", "Campaign not found"));
       }
 
-      return { data: closed };
+      return { data: shapeCampaignCustom(closed, serializer) };
     },
   );
 

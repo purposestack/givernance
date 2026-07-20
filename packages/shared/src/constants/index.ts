@@ -46,3 +46,4 @@ export {
 } from "./public-page-styles";
 export { isReservedSlug, RESERVED_SLUGS } from "./reserved-slugs";
 export { DOMAIN_PATTERN, validateTenantDomain } from "./tenant-domain";
+export { isTenantPlan, TENANT_PLAN_VALUES, type TenantPlan } from "./tenant-plans";

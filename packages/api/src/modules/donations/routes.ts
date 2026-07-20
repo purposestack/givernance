@@ -1,7 +1,11 @@
 /** Donation routes — list, get, and create donations */
 
+import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
+import { buildCustomValidator, type CustomFieldValues } from "@givernance/shared/custom-fields";
 import { Type } from "@sinclair/typebox";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
+import { customFieldsProblem } from "../../lib/custom-field-values.js";
+import { flagService as defaultFlagService } from "../../lib/flags/flag-service.js";
 import { requireAuth, requireOrgAdmin, requireWrite } from "../../lib/guards.js";
 import { resolveTranslations } from "../../lib/i18n.js";
 import { fetchReceiptObject } from "../../lib/s3.js";
@@ -17,6 +21,12 @@ import {
   SortOrderSchema,
   UuidSchema,
 } from "../../lib/schemas.js";
+import {
+  buildCustomSerializer,
+  getActiveDefinitions,
+  getProjectableDefinitions,
+  getReadableDefinitions,
+} from "../customization/lib/value-service.js";
 import { getStripe } from "../payments/service.js";
 import {
   AllocationSumMismatchError,
@@ -25,6 +35,7 @@ import {
   DONATION_SORT_FIELDS,
   deleteDonation,
   getDonation,
+  getDonationCustom,
   getReceiptByDonation,
   listDonations,
   refundDonation,
@@ -36,6 +47,174 @@ const ReceiptStatusSchema = Type.Union([
   Type.Literal("generated"),
   Type.Literal("failed"),
 ]);
+
+/**
+ * Custom-field values on responses (Epic #539). Keys are org-defined so the
+ * schema is a Record with a closed VALUE union — the strict-response firewall
+ * is the definition-driven serializer in each handler, which only ever emits
+ * keys present in the org's active registry (never the whole stored blob).
+ */
+const CustomValuesResponseSchema = Type.Record(
+  Type.String(),
+  Type.Union([Type.String(), Type.Number(), Type.Boolean(), Type.Array(Type.String())]),
+);
+
+/** Merge-patch payload for `custom` — runtime-validated against the org registry. */
+const CustomPatchBodySchema = Type.Record(Type.String(), Type.Unknown());
+
+/**
+ * Per-request custom-field serializers for donation read models.
+ * `own` — the donation's own values (`donations.custom_fields` flag).
+ * `donor` — the projected donor values (`constituents.custom_fields` flag,
+ * `show_on_related ∧ ¬sensitive`, cap 5). Both recomputed per request —
+ * eligibility is never baked into caches or SSR props (Epic #539 anti-goal #9).
+ */
+async function buildDonationSerializers(
+  request: FastifyRequest,
+  orgId: string,
+  options?: {
+    /**
+     * Detail read only: archived donation-domain definitions serialize
+     * read-only (docs/35 "values retained, read-only on detail +
+     * exports"). Projection (`donor`) never includes archived defs.
+     */
+    includeArchived?: boolean;
+  },
+) {
+  const flags = request.flagService ?? defaultFlagService;
+  const [valuesEnabled, projectionEnabled] = await Promise.all([
+    flags.isEnabled(FEATURE_FLAG_KEYS.DONATIONS_CUSTOM_FIELDS, { orgId }),
+    flags.isEnabled(FEATURE_FLAG_KEYS.CONSTITUENTS_CUSTOM_FIELDS, { orgId }),
+  ]);
+  const [ownDefs, donorDefs] = await Promise.all([
+    valuesEnabled
+      ? options?.includeArchived
+        ? getReadableDefinitions(orgId, "donation")
+        : getActiveDefinitions(orgId, "donation")
+      : null,
+    projectionEnabled ? getProjectableDefinitions(orgId) : null,
+  ]);
+  return {
+    own: ownDefs ? buildCustomSerializer(ownDefs) : null,
+    donor: donorDefs ? buildCustomSerializer(donorDefs) : null,
+  };
+}
+
+type DonationSerializers = Awaited<ReturnType<typeof buildDonationSerializers>>;
+
+/**
+ * Strips the RAW `custom` / `donorCustomRaw` blobs off a service row and
+ * re-attaches them serialized when the matching flag is on. Raw blobs must
+ * never reach the wire (Epic #539 anti-goal #5).
+ */
+function shapeDonationCustom<T extends { custom?: unknown; donorCustomRaw?: unknown }>(
+  row: T,
+  serializers: DonationSerializers,
+) {
+  const { custom: rawCustom, donorCustomRaw, ...rest } = row;
+  return {
+    ...rest,
+    ...(serializers.own ? { custom: serializers.own(rawCustom) } : {}),
+    ...(serializers.donor && donorCustomRaw !== undefined
+      ? { donorCustom: serializers.donor(donorCustomRaw) }
+      : {}),
+  };
+}
+
+function customFieldsDisabledProblem() {
+  return problemDetail(
+    422,
+    "custom_fields_disabled",
+    "Custom fields on donations are not enabled for your organisation.",
+  );
+}
+
+const customValidationProblem = customFieldsProblem;
+
+type DonationCustomWrite =
+  | {
+      ok: true;
+      merged: CustomFieldValues | undefined;
+      serializer: ((custom: unknown) => CustomFieldValues) | null;
+    }
+  | { ok: false; kind: "unprocessable"; problem: ReturnType<typeof problemDetail> }
+  | { ok: false; kind: "not_found" };
+
+/**
+ * Resolves the `custom` merge-patch of a donation write. Flag off + values
+ * in the payload → 422 (multi-type precedent, issue #465: the core route
+ * always works, the gated affordance is rejected loudly, never silently
+ * dropped). Flag on → validate against the org registry; `donationId`
+ * present = update path (patch over the current blob, `required` never
+ * enforced), absent = create path (`required` enforced on new writes only).
+ */
+async function resolveDonationCustomWrite(
+  request: FastifyRequest,
+  orgId: string,
+  patch: Record<string, unknown> | undefined,
+  donationId?: string,
+): Promise<DonationCustomWrite> {
+  const flags = request.flagService ?? defaultFlagService;
+  const enabled = await flags.isEnabled(FEATURE_FLAG_KEYS.DONATIONS_CUSTOM_FIELDS, { orgId });
+  if (!enabled) {
+    if (patch && Object.keys(patch).length > 0) {
+      return { ok: false, kind: "unprocessable", problem: customFieldsDisabledProblem() };
+    }
+    return { ok: true, merged: undefined, serializer: null };
+  }
+
+  const defs = await getActiveDefinitions(orgId, "donation");
+  const serializer = buildCustomSerializer(defs);
+
+  let existing: CustomFieldValues = {};
+  if (donationId !== undefined) {
+    if (patch === undefined) {
+      return { ok: true, merged: undefined, serializer };
+    }
+    const current = await getDonationCustom(orgId, donationId);
+    if (current === null) {
+      return { ok: false, kind: "not_found" };
+    }
+    existing = current;
+  }
+
+  const result = buildCustomValidator(defs).validatePatch(existing, patch ?? {}, {
+    enforceRequired: donationId === undefined,
+  });
+  if (!result.ok) {
+    return { ok: false, kind: "unprocessable", problem: customValidationProblem(result.errors) };
+  }
+  return { ok: true, merged: result.merged, serializer };
+}
+
+/**
+ * Maps the domain errors a donation write can throw onto their RFC 9457
+ * responses; returns null for anything the handler should rethrow.
+ */
+function donationWriteErrorProblem(
+  err: unknown,
+  t: ReturnType<typeof resolveTranslations>,
+): { status: 404 | 422; problem: ReturnType<typeof problemDetail> } | null {
+  if (err instanceof AllocationSumMismatchError) {
+    return { status: 422, problem: problemDetail(422, "Unprocessable Entity", err.message) };
+  }
+  // Cross-tenant campaign / fund reference → 404 (not 422) so we don't
+  // expose whether the id exists at all. Aligns with forthcoming ADR on
+  // cross-tenant FK violation semantics.
+  if (err instanceof CrossTenantReferenceError) {
+    return {
+      status: 404,
+      problem: problemDetail(
+        404,
+        "Not Found",
+        t("errors.notFound", {
+          resource: err.reference === "campaign" ? t("resources.campaign") : t("resources.fund"),
+        }),
+      ),
+    };
+  }
+  return null;
+}
 
 /**
  * Server-side sort fields whitelist for `GET /donations`. Single source
@@ -77,6 +256,7 @@ const DonationCreateBody = Type.Object({
   donatedAt: Type.Optional(Type.String({ format: "date-time" })),
   fiscalYear: Type.Optional(Type.Integer()),
   allocations: Type.Optional(Type.Array(AllocationSchema)),
+  custom: Type.Optional(CustomPatchBodySchema),
 });
 
 const DonationUpdateBody = Type.Object({
@@ -89,6 +269,7 @@ const DonationUpdateBody = Type.Object({
   donatedAt: Type.Optional(Type.String({ format: "date-time" })),
   fiscalYear: Type.Optional(Type.Union([Type.Integer(), Type.Null()])),
   allocations: Type.Optional(Type.Array(AllocationSchema)),
+  custom: Type.Optional(CustomPatchBodySchema),
 });
 
 /**
@@ -126,6 +307,8 @@ const DonationResponse = Type.Object({
   fiscalYear: Type.Union([Type.Integer(), Type.Null()]),
   createdAt: Type.String(),
   updatedAt: Type.String(),
+  /** Present only when `donations.custom_fields` is on; definition-filtered. */
+  custom: Type.Optional(CustomValuesResponseSchema),
 });
 
 /** Donation list row — enriched with constituent name and latest receipt status for list views */
@@ -153,6 +336,14 @@ const DonationListRow = Type.Object({
     Type.Literal("failed"),
     Type.Null(),
   ]),
+  /** Present only when `donations.custom_fields` is on; definition-filtered. */
+  custom: Type.Optional(CustomValuesResponseSchema),
+  /**
+   * Cross-domain projection of the donor's `show_on_related` constituent
+   * fields (Epic #539 §6). Present only when `constituents.custom_fields`
+   * is on; sensitive/archived defs and erased donors never project.
+   */
+  donorCustom: Type.Optional(CustomValuesResponseSchema),
 });
 
 const DonationStatusSchema = Type.Union([
@@ -193,6 +384,10 @@ const DonationDetailResponse = Type.Object({
       amountCents: Type.Integer(),
     }),
   ),
+  /** Present only when `donations.custom_fields` is on; definition-filtered. */
+  custom: Type.Optional(CustomValuesResponseSchema),
+  /** Donor projection — same contract as the list row (Epic #539 §6). */
+  donorCustom: Type.Optional(CustomValuesResponseSchema),
 });
 
 /**
@@ -261,22 +456,31 @@ export async function donationRoutes(app: FastifyInstance) {
         order?: "asc" | "desc";
       };
 
-      const result = await listDonations(orgId, {
-        page: query.page ?? 1,
-        perPage: query.perPage ?? 20,
-        search: query.search,
-        dateFrom: query.dateFrom,
-        dateTo: query.dateTo,
-        amountMin: query.amountMin,
-        amountMax: query.amountMax,
-        constituentId: query.constituentId,
-        campaignId: query.campaignId,
-        receiptStatus: query.receiptStatus,
-        sort: query.sort,
-        order: query.order,
-      });
+      // Serializers are built ONCE per request (definitions are one cached
+      // catalog read, not per-row lookups) and applied over the join the
+      // list already does — no N+1.
+      const [result, serializers] = await Promise.all([
+        listDonations(orgId, {
+          page: query.page ?? 1,
+          perPage: query.perPage ?? 20,
+          search: query.search,
+          dateFrom: query.dateFrom,
+          dateTo: query.dateTo,
+          amountMin: query.amountMin,
+          amountMax: query.amountMax,
+          constituentId: query.constituentId,
+          campaignId: query.campaignId,
+          receiptStatus: query.receiptStatus,
+          sort: query.sort,
+          order: query.order,
+        }),
+        buildDonationSerializers(request, orgId),
+      ]);
 
-      return { data: result.data, pagination: result.pagination };
+      return {
+        data: result.data.map((row) => shapeDonationCustom(row, serializers)),
+        pagination: result.pagination,
+      };
     },
   );
 
@@ -299,7 +503,10 @@ export async function donationRoutes(app: FastifyInstance) {
       }
 
       const { id } = request.params as { id: string };
-      const donation = await getDonation(orgId, id);
+      const [donation, serializers] = await Promise.all([
+        getDonation(orgId, id),
+        buildDonationSerializers(request, orgId, { includeArchived: true }),
+      ]);
 
       if (!donation) {
         return reply
@@ -313,7 +520,7 @@ export async function donationRoutes(app: FastifyInstance) {
           );
       }
 
-      return { data: donation };
+      return { data: shapeDonationCustom(donation, serializers) };
     },
   );
 
@@ -329,7 +536,11 @@ export async function donationRoutes(app: FastifyInstance) {
         tags: ["Donations"],
         body: DonationCreateBody,
         headers: IdempotencyKeyHeader,
-        response: { 201: DataResponse(DonationResponse), ...ErrorResponses },
+        response: {
+          201: DataResponse(DonationResponse),
+          422: ProblemDetailSchema,
+          ...ErrorResponses,
+        },
       },
     },
     async (request, reply) => {
@@ -350,10 +561,23 @@ export async function donationRoutes(app: FastifyInstance) {
         donatedAt?: string;
         fiscalYear?: number;
         allocations?: { fundId: string; amountCents: number }[];
+        custom?: Record<string, unknown>;
       };
 
+      const customWrite = await resolveDonationCustomWrite(request, orgId, body.custom);
+      if (!customWrite.ok) {
+        // `not_found` is unreachable on the create path — the union just
+        // keeps the discriminant exhaustive.
+        return customWrite.kind === "unprocessable"
+          ? reply.status(422).send(customWrite.problem)
+          : reply.status(404).send(problemDetail(404, "Not Found", "Donation not found"));
+      }
+
       try {
-        const donation = await createDonation(orgId, userId, body);
+        const donation = await createDonation(orgId, userId, {
+          ...body,
+          custom: customWrite.merged,
+        });
 
         if (!donation) {
           return reply.status(404).send({
@@ -365,30 +589,13 @@ export async function donationRoutes(app: FastifyInstance) {
         }
 
         reply.header("Location", `/v1/donations/${donation.id}`);
-        return reply.status(201).send({ data: donation });
+        return reply.status(201).send({
+          data: shapeDonationCustom(donation, { own: customWrite.serializer, donor: null }),
+        });
       } catch (err) {
-        if (err instanceof AllocationSumMismatchError) {
-          return reply.status(422).send({
-            type: "https://httpproblems.com/http-status/422",
-            title: "Unprocessable Entity",
-            status: 422,
-            detail: err.message,
-          });
-        }
-        // Cross-tenant campaign / fund reference → 404 (not 422) so we don't
-        // expose whether the id exists at all. Aligns with forthcoming ADR on
-        // cross-tenant FK violation semantics.
-        if (err instanceof CrossTenantReferenceError) {
-          return reply.status(404).send(
-            problemDetail(
-              404,
-              "Not Found",
-              t("errors.notFound", {
-                resource:
-                  err.reference === "campaign" ? t("resources.campaign") : t("resources.fund"),
-              }),
-            ),
-          );
+        const mapped = donationWriteErrorProblem(err, t);
+        if (mapped) {
+          return reply.status(mapped.status).send(mapped.problem);
         }
         throw err;
       }
@@ -403,7 +610,11 @@ export async function donationRoutes(app: FastifyInstance) {
         tags: ["Donations"],
         params: IdParams,
         body: DonationUpdateBody,
-        response: { 200: DataResponse(DonationResponse), ...ErrorResponses },
+        response: {
+          200: DataResponse(DonationResponse),
+          422: ProblemDetailSchema,
+          ...ErrorResponses,
+        },
       },
     },
     async (request, reply) => {
@@ -424,10 +635,26 @@ export async function donationRoutes(app: FastifyInstance) {
         donatedAt?: string;
         fiscalYear?: number | null;
         allocations?: { fundId: string; amountCents: number }[];
+        custom?: Record<string, unknown>;
       };
 
+      const customWrite = await resolveDonationCustomWrite(request, orgId, body.custom, id);
+      if (!customWrite.ok) {
+        return customWrite.kind === "unprocessable"
+          ? reply.status(422).send(customWrite.problem)
+          : reply
+              .status(404)
+              .send(
+                problemDetail(
+                  404,
+                  "Not Found",
+                  t("errors.notFound", { resource: t("resources.donation") }),
+                ),
+              );
+      }
+
       try {
-        const updated = await updateDonation(orgId, id, body);
+        const updated = await updateDonation(orgId, id, { ...body, custom: customWrite.merged });
 
         if (!updated) {
           return reply.status(404).send({
@@ -438,7 +665,7 @@ export async function donationRoutes(app: FastifyInstance) {
           });
         }
 
-        return { data: updated };
+        return { data: shapeDonationCustom(updated, { own: customWrite.serializer, donor: null }) };
       } catch (err) {
         if (err instanceof AllocationSumMismatchError) {
           return reply.status(422).send({
@@ -471,7 +698,10 @@ export async function donationRoutes(app: FastifyInstance) {
       }
 
       const { id } = request.params as { id: string };
-      const deleted = await deleteDonation(orgId, id);
+      const [deleted, serializers] = await Promise.all([
+        deleteDonation(orgId, id),
+        buildDonationSerializers(request, orgId),
+      ]);
 
       if (!deleted) {
         return reply
@@ -485,7 +715,7 @@ export async function donationRoutes(app: FastifyInstance) {
           );
       }
 
-      return { data: deleted };
+      return { data: shapeDonationCustom(deleted, { own: serializers.own, donor: null }) };
     },
   );
 

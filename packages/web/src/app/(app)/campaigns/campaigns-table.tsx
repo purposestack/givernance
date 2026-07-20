@@ -1,12 +1,13 @@
 "use client";
 
+import type { CustomFieldDefinition } from "@givernance/shared/custom-fields";
 import type { ColumnDef, SortingState } from "@tanstack/react-table";
 import { Megaphone, MoreHorizontal, Pencil, Search, XCircle } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
-
+import { buildCustomFieldColumns } from "@/components/shared/custom-fields";
 import { EmptyState } from "@/components/shared/empty-state";
 import {
   AlertDialog,
@@ -87,6 +88,12 @@ interface CampaignsTableProps {
   /** Server-resolved sort/order — see donations-table.tsx for rationale. */
   sort: CampaignSortField;
   order: CampaignSortOrder;
+  /**
+   * Epic #539 — active campaign-domain definitions rendered as extra columns
+   * from `row.campaign.custom`. Empty (flag off / no defs) ⇒ no custom
+   * columns, table byte-for-byte like today.
+   */
+  customFieldDefs?: CustomFieldDefinition[];
 }
 
 function isCampaignType(value: string): value is CampaignType {
@@ -104,6 +111,7 @@ export function CampaignsTable({
   canManageAdminActions,
   sort,
   order,
+  customFieldDefs = [],
 }: CampaignsTableProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -112,6 +120,7 @@ export function CampaignsTable({
   const t = useTranslations("campaigns");
   const tStatus = useTranslations("campaigns.status");
   const tFilters = useTranslations("campaigns.filters");
+  const tCustom = useTranslations("customFields");
   const [closeTarget, setCloseTarget] = useState<Campaign | null>(null);
   const [isClosing, setIsClosing] = useState(false);
   const initialSearch = searchParams.get("search") ?? "";
@@ -337,6 +346,13 @@ export function CampaignsTable({
       },
       // Drop the actions column entirely when no row action is available
       // (viewer with no write access AND no admin actions). Mirrors the
+      // Epic #539 — custom-field columns (flag-gated by the page: empty defs
+      // spread nothing).
+      ...buildCustomFieldColumns<CampaignWithStats>(customFieldDefs, {
+        locale,
+        getValues: (row) => row.campaign.custom,
+        booleanLabels: { yes: tCustom("boolean.yes"), no: tCustom("boolean.no") },
+      }),
       // donations + constituents tables.
       ...(canWrite || canManageAdminActions
         ? [
@@ -365,7 +381,7 @@ export function CampaignsTable({
           ]
         : []),
     ],
-    [canManageAdminActions, canWrite, t, locale],
+    [canManageAdminActions, canWrite, customFieldDefs, t, tCustom, locale],
   );
 
   // ADR-035 rule A1 — the search/filter row is static shell: no entrance

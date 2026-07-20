@@ -1,12 +1,13 @@
 "use client";
 
+import type { CustomFieldDefinition } from "@givernance/shared/custom-fields";
 import type { ColumnDef, SortingState } from "@tanstack/react-table";
 import { Gift } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { useCallback, useMemo, useTransition } from "react";
-
+import { buildCustomFieldColumns } from "@/components/shared/custom-fields";
 import { EmptyState } from "@/components/shared/empty-state";
 import { DataTable, type DataTablePagination } from "@/components/ui/data-table";
 import { formatCurrency, formatDate } from "@/lib/format";
@@ -30,15 +31,28 @@ interface DonationsTableProps {
    */
   sort: DonationSortField;
   order: DonationSortOrder;
+  /**
+   * Epic #539 §6 — projected (showOnRelated ∧ ¬sensitive) constituent
+   * definitions rendered as extra donor columns from `row.donorCustom`.
+   * Empty ⇒ no custom columns (flag off / nothing projected).
+   */
+  donorCustomDefs?: CustomFieldDefinition[];
 }
 
-export function DonationsTable({ donations, pagination, sort, order }: DonationsTableProps) {
+export function DonationsTable({
+  donations,
+  pagination,
+  sort,
+  order,
+  donorCustomDefs = [],
+}: DonationsTableProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
   const locale = useLocale();
   const t = useTranslations("campaigns.detail.donations");
+  const tCustom = useTranslations("customFields");
 
   const navigateToPage = useCallback(
     (page: number) => {
@@ -137,6 +151,14 @@ export function DonationsTable({ donations, pagination, sort, order }: Donations
           </span>
         ),
       },
+      // Epic #539 §6 — donor projection columns (flag-gated: empty defs ⇒
+      // spread nothing, table byte-for-byte like today).
+      ...buildCustomFieldColumns<DonationListRow>(donorCustomDefs, {
+        locale,
+        getValues: (row) => row.donorCustom,
+        idPrefix: "donorCustom",
+        booleanLabels: { yes: tCustom("boolean.yes"), no: tCustom("boolean.no") },
+      }),
       {
         // `id` matches the API sort field `amountCents`.
         id: "amountCents",
@@ -149,7 +171,7 @@ export function DonationsTable({ donations, pagination, sort, order }: Donations
         ),
       },
     ],
-    [locale, t],
+    [donorCustomDefs, locale, t, tCustom],
   );
 
   return (

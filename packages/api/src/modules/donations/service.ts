@@ -1,5 +1,6 @@
 /** Donations service — business logic for donation operations */
 
+import type { CustomFieldValues } from "@givernance/shared/custom-fields";
 import {
   campaigns,
   constituents,
@@ -194,6 +195,12 @@ export interface DonationInput {
   donatedAt?: string;
   fiscalYear?: number;
   allocations?: { fundId: string; amountCents: number }[];
+  /**
+   * Pre-validated + merged custom blob (Epic #539). The ROUTE owns
+   * validation via the customization value-service; the service persists
+   * whatever it receives verbatim — never pass a raw client patch here.
+   */
+  custom?: CustomFieldValues;
 }
 
 export interface DonationUpdateInput {
@@ -206,6 +213,8 @@ export interface DonationUpdateInput {
   donatedAt?: string;
   fiscalYear?: number | null;
   allocations?: { fundId: string; amountCents: number }[];
+  /** See `DonationInput.custom` — validated + merged upstream; `undefined` = no change. */
+  custom?: CustomFieldValues;
 }
 
 function normalizeNullableString(value: string | null | undefined) {
@@ -387,11 +396,21 @@ export async function listDonations(orgId: string, query: ListDonationsQuery) {
           ...getTableColumns(donations),
           _constituentFirstName: constituents.firstName,
           _constituentLastName: constituents.lastName,
+          _constituentCustom: constituents.custom,
+          _constituentDeletedAt: constituents.deletedAt,
           _campaignName: campaigns.name,
         })
         .from(donations)
-        .leftJoin(constituents, eq(donations.constituentId, constituents.id))
-        .leftJoin(campaigns, eq(donations.campaignId, campaigns.id))
+        // Issue #430: the join clauses carry the explicit org predicate too —
+        // a leaked cross-tenant constituent/campaign id must never enrich a row.
+        .leftJoin(
+          constituents,
+          and(eq(donations.constituentId, constituents.id), eq(constituents.orgId, orgId)),
+        )
+        .leftJoin(
+          campaigns,
+          and(eq(donations.campaignId, campaigns.id), eq(campaigns.orgId, orgId)),
+        )
         .where(where)
         .orderBy(...buildDonationOrderBy(sort, order))
         .limit(perPage)
@@ -412,13 +431,23 @@ export async function listDonations(orgId: string, query: ListDonationsQuery) {
     }
 
     const shaped = data.map(
-      ({ _constituentFirstName, _constituentLastName, _campaignName, ...d }) => ({
+      ({
+        _constituentFirstName,
+        _constituentLastName,
+        _constituentCustom,
+        _constituentDeletedAt,
+        _campaignName,
+        ...d
+      }) => ({
         ...d,
         constituent:
           _constituentFirstName !== null && _constituentLastName !== null
             ? { firstName: _constituentFirstName, lastName: _constituentLastName }
             : null,
         campaign: _campaignName !== null ? { name: _campaignName } : null,
+        // Raw donor blob for the route's projection serializer. Soft-deleted
+        // (erased) donors project nothing — Epic #539 §6.
+        donorCustomRaw: _constituentDeletedAt === null ? (_constituentCustom ?? {}) : {},
       }),
     );
 
@@ -445,6 +474,8 @@ export async function getDonation(orgId: string, id: string) {
         firstName: constituents.firstName,
         lastName: constituents.lastName,
         email: constituents.email,
+        custom: constituents.custom,
+        deletedAt: constituents.deletedAt,
       })
       .from(constituents)
       .where(and(eq(constituents.id, donation.constituentId), eq(constituents.orgId, orgId)));
@@ -460,7 +491,39 @@ export async function getDonation(orgId: string, id: string) {
       .innerJoin(funds, and(eq(funds.id, donationAllocations.fundId), eq(funds.orgId, orgId)))
       .where(and(eq(donationAllocations.donationId, id), eq(donationAllocations.orgId, orgId)));
 
-    return { ...donation, constituent: constituent ?? null, allocations };
+    if (!constituent) {
+      return { ...donation, constituent: null, donorCustomRaw: {}, allocations };
+    }
+
+    const { custom: donorCustom, deletedAt: donorDeletedAt, ...constituentPublic } = constituent;
+    return {
+      ...donation,
+      constituent: constituentPublic,
+      // Soft-deleted (erased) donors project nothing — Epic #539 §6. The
+      // route serializes this through the projectable-definitions filter.
+      donorCustomRaw: donorDeletedAt === null ? (donorCustom ?? {}) : {},
+      allocations,
+    };
+  });
+}
+
+/**
+ * Current custom blob of one donation — the read the update route needs
+ * to apply a merge-patch over. Returns null when the donation doesn't
+ * exist in this tenant (route maps to 404, indistinguishable from a
+ * cross-tenant id per ADR-019).
+ */
+export async function getDonationCustom(
+  orgId: string,
+  id: string,
+): Promise<CustomFieldValues | null> {
+  return withTenantContext(orgId, async (tx) => {
+    const [row] = await tx
+      .select({ custom: donations.custom })
+      .from(donations)
+      .where(and(eq(donations.id, id), eq(donations.orgId, orgId)));
+
+    return row ? (row.custom ?? {}) : null;
   });
 }
 
@@ -532,6 +595,7 @@ export async function createDonation(orgId: string, userId: string, input: Donat
         paymentRef: input.paymentRef,
         donatedAt: input.donatedAt ? new Date(input.donatedAt) : new Date(),
         fiscalYear: input.fiscalYear,
+        ...(input.custom !== undefined ? { custom: input.custom } : {}),
       })
       .returning();
 
@@ -612,6 +676,9 @@ export async function updateDonation(orgId: string, id: string, input: DonationU
         paymentRef: normalizeNullableString(input.paymentRef) ?? null,
         donatedAt: input.donatedAt ? new Date(input.donatedAt) : undefined,
         fiscalYear: input.fiscalYear === undefined ? undefined : input.fiscalYear,
+        // Full replacement blob — the route already merge-patched it over
+        // the existing values. `undefined` leaves the column untouched.
+        custom: input.custom,
         updatedAt: new Date(),
       })
       .where(and(eq(donations.id, id), eq(donations.orgId, orgId)))

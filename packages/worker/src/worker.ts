@@ -1,5 +1,6 @@
 /** BullMQ Worker entry point — registers all job processors */
 
+import { CUSTOM_FIELD_JOBS, CUSTOM_FIELDS_QUEUE } from "@givernance/shared/custom-fields";
 import {
   BRANDING_EVENT_TYPES,
   FINANCE_DASHBOARD_JOBS,
@@ -20,6 +21,9 @@ import { processBrandingActivateLogo } from "./processors/branding-activate-logo
 import { processBrandingGcAsset } from "./processors/branding-gc-asset.js";
 import { processBrandingAsset } from "./processors/branding-process-asset.js";
 import { processGenerateCampaignDocuments } from "./processors/campaign-documents.js";
+import { processCustomFieldOptionMerge } from "./processors/custom-field-option-merge.js";
+import { processCustomFieldOptionMergeUndo } from "./processors/custom-field-option-merge-undo.js";
+import { processCustomFieldUndoPurge } from "./processors/custom-field-undo-purge.js";
 import { processConstituentCountRefresh } from "./processors/finance-constituent-count-refresh.js";
 import { processSurveyRetention } from "./processors/finance-survey-retention.js";
 import { processSurveySend } from "./processors/finance-survey-send.js";
@@ -81,6 +85,21 @@ const notificationsDigestQueue = new Queue(QUEUE_NAMES.NOTIFICATIONS_DIGEST, {
   },
 });
 const bulkImportQueue = new Queue(QUEUE_NAMES.BULK_IMPORT, { connection: queueConnection });
+
+// Epic #539 — custom-field background work: option-merge backfills
+// (routed from the outbox) + the daily merge-undo purge cron. Carries a
+// repeatable job, so retry policy must live on the Queue's
+// defaultJobOptions (Worker-level attempts/backoff are ignored — see
+// the notifications-digest comment above).
+const customFieldsQueue = new Queue(CUSTOM_FIELDS_QUEUE, {
+  connection: queueConnection,
+  defaultJobOptions: {
+    attempts: 3,
+    backoff: { type: "exponential", delay: 60_000 },
+    removeOnComplete: { count: 10 },
+    removeOnFail: { count: 50 },
+  },
+});
 
 // #436 — Super-admin finance dashboard enrichment queue. Carries three
 // cron-scheduled job names (constituent-count refresh, survey send,
@@ -191,6 +210,21 @@ async function scheduleRepeatableJobs() {
     {
       jobId: "finance-survey-retention-weekly",
       repeat: { pattern: "0 4 * * 0", tz: "UTC" },
+      removeOnComplete: { count: 10 },
+      removeOnFail: { count: 50 },
+    },
+  );
+
+  // Epic #539 — daily merge-undo purge at 03:45 UTC (after the nightly
+  // expiry/refresh crons, before the EU morning window). Deletes
+  // `custom_field_merge_undo` rows past their 30-day expires_at. Fixed
+  // `jobId` so worker restarts don't fan out duplicate schedules.
+  await customFieldsQueue.add(
+    CUSTOM_FIELD_JOBS.MERGE_UNDO_PURGE,
+    {},
+    {
+      jobId: "custom-field-merge-undo-purge-daily",
+      repeat: { pattern: "45 3 * * *", tz: "UTC" },
       removeOnComplete: { count: 10 },
       removeOnFail: { count: 50 },
     },
@@ -480,6 +514,51 @@ async function processDomainEvent(job: Job): Promise<void> {
       return;
     }
 
+    case "custom-field-option-merge": {
+      // Epic #539 — deterministic per-merge job id: a transactional
+      // retry of the outbox row collapses onto the same backfill job
+      // instead of running the rewrite twice in parallel.
+      await customFieldsQueue.add(
+        CUSTOM_FIELD_JOBS.OPTION_MERGE_BACKFILL,
+        {
+          orgId: decision.orgId,
+          mergeId: decision.mergeId,
+          definitionId: decision.definitionId,
+          sourceOptionId: decision.sourceOptionId,
+          targetOptionId: decision.targetOptionId,
+          requestedBy: decision.requestedBy,
+          traceparent: decision.traceparent,
+        },
+        { jobId: `option-merge-${decision.mergeId}` },
+      );
+      log.info(
+        { mergeId: decision.mergeId, definitionId: decision.definitionId },
+        "Enqueued custom-field option-merge backfill",
+      );
+      return;
+    }
+
+    case "custom-field-option-merge-undo": {
+      await customFieldsQueue.add(
+        CUSTOM_FIELD_JOBS.OPTION_MERGE_UNDO_BACKFILL,
+        {
+          orgId: decision.orgId,
+          mergeId: decision.mergeId,
+          definitionId: decision.definitionId,
+          sourceOptionId: decision.sourceOptionId,
+          targetOptionId: decision.targetOptionId,
+          requestedBy: decision.requestedBy,
+          traceparent: decision.traceparent,
+        },
+        { jobId: `option-merge-undo-${decision.mergeId}` },
+      );
+      log.info(
+        { mergeId: decision.mergeId, definitionId: decision.definitionId },
+        "Enqueued custom-field option-merge undo",
+      );
+      return;
+    }
+
     case "unhandled":
       log.warn({ eventType: decision.type }, "Unhandled event type");
       return;
@@ -629,6 +708,35 @@ function startWorkers() {
     },
   );
 
+  // ── Custom-fields queue (Epic #539) ─────────────────────────────────
+  // Two job names: the option-merge backfill (chunked JSONB rewrite) and
+  // the daily merge-undo purge. Concurrency 1 — a backfill walks the
+  // domain table in 500-row transactions and must not race a second
+  // merge on the same definition; scale by adding pods, not concurrency.
+  const customFieldsWorker = new Worker(
+    CUSTOM_FIELDS_QUEUE,
+    async (job: Job) => {
+      if (job.name === CUSTOM_FIELD_JOBS.OPTION_MERGE_BACKFILL) {
+        // biome-ignore lint/suspicious/noExplicitAny: BullMQ Job is heterogeneously typed at runtime
+        return processCustomFieldOptionMerge(job as Job<any>);
+      }
+      if (job.name === CUSTOM_FIELD_JOBS.OPTION_MERGE_UNDO_BACKFILL) {
+        // biome-ignore lint/suspicious/noExplicitAny: BullMQ Job is heterogeneously typed at runtime
+        return processCustomFieldOptionMergeUndo(job as Job<any>);
+      }
+      if (job.name === CUSTOM_FIELD_JOBS.MERGE_UNDO_PURGE) {
+        return processCustomFieldUndoPurge(job);
+      }
+      logger.warn({ jobName: job.name }, "Unknown custom-fields job — skipping");
+      return null;
+    },
+    {
+      connection: createRedisConnection(),
+      concurrency: 1,
+      ...defaultJobOpts,
+    },
+  );
+
   const keycloakSyncWorker = new Worker(
     QUEUE_NAMES.KEYCLOAK_SYNC,
     async (job: Job) => {
@@ -725,6 +833,7 @@ function startWorkers() {
     webhooksWorker,
     tenantLifecycleWorker,
     brandingWorker,
+    customFieldsWorker,
     keycloakSyncWorker,
     notificationsDigestWorker,
     bulkImportWorker,

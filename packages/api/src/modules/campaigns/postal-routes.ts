@@ -13,6 +13,7 @@
  */
 
 import { PassThrough } from "node:stream";
+import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
 import { resolvePostalExportMode } from "@givernance/shared/postal-export-mode";
 import { hasPageFromStatus } from "@givernance/shared/postal-print-layout";
 import {
@@ -31,6 +32,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { env } from "../../env.js";
 import { systemDb } from "../../lib/db.js";
+import { flagService as defaultFlagService } from "../../lib/flags/flag-service.js";
 import { requireOrgAdmin } from "../../lib/guards.js";
 import { fetchCampaignObject } from "../../lib/s3.js";
 import {
@@ -45,6 +47,10 @@ import {
   UuidSchema,
 } from "../../lib/schemas.js";
 import { getActivePdfLetterhead } from "../branding/logo-cache.js";
+import {
+  buildCustomSerializer,
+  getProjectableDefinitions,
+} from "../customization/lib/value-service.js";
 import {
   addCampaignMembers,
   CAMPAIGN_MEMBER_SORT_FIELDS,
@@ -94,6 +100,19 @@ const MemberRow = Type.Object({
   type: Type.String(),
   addedAt: Type.String(),
   campaignDonationCents: Type.Integer(),
+  /**
+   * Cross-domain projection of the member's `show_on_related` constituent
+   * custom fields (Epic #539 §6). Present only when
+   * `constituents.custom_fields` is on; keys are org-defined, values pass
+   * through a definition-driven serializer (sensitive/archived defs never
+   * project) — never the raw stored blob.
+   */
+  constituentCustom: Type.Optional(
+    Type.Record(
+      Type.String(),
+      Type.Union([Type.String(), Type.Number(), Type.Boolean(), Type.Array(Type.String())]),
+    ),
+  ),
 });
 
 const AddMembersBody = Type.Object({
@@ -223,16 +242,32 @@ export async function postalCampaignRoutes(app: FastifyInstance) {
         sort?: CampaignMemberSortField;
         order?: CampaignMemberSortOrder;
       };
-      const result = await listCampaignMembers(orgId, id, {
-        page: query.page ?? 1,
-        perPage: query.perPage ?? 25,
-        sort: query.sort,
-        order: query.order,
-      });
+      // Projection eligibility (`show_on_related ∧ ¬sensitive ∧ ¬archived`)
+      // is recomputed per request; the serializer is built once and applied
+      // over the page slice — no per-row definition lookups (Epic #539 §6).
+      const flags = request.flagService ?? defaultFlagService;
+      const [result, projectionEnabled] = await Promise.all([
+        listCampaignMembers(orgId, id, {
+          page: query.page ?? 1,
+          perPage: query.perPage ?? 25,
+          sort: query.sort,
+          order: query.order,
+        }),
+        flags.isEnabled(FEATURE_FLAG_KEYS.CONSTITUENTS_CUSTOM_FIELDS, { orgId }),
+      ]);
       if (!result) {
         return reply.status(404).send(problemDetail(404, "Not Found", "Campaign not found"));
       }
-      return result;
+      const serialize = projectionEnabled
+        ? buildCustomSerializer(await getProjectableDefinitions(orgId))
+        : null;
+      return {
+        data: result.data.map(({ customRaw, ...member }) => ({
+          ...member,
+          ...(serialize ? { constituentCustom: serialize(customRaw) } : {}),
+        })),
+        pagination: result.pagination,
+      };
     },
   );
 

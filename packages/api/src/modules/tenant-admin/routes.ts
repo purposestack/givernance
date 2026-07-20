@@ -23,6 +23,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { TENANT_PLAN_VALUES, type TenantPlan } from "@givernance/shared/constants";
 import { SUPPORTED_LOCALES } from "@givernance/shared/i18n";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
@@ -64,9 +65,7 @@ const DomainRootParams = Type.Object({ orgId: UuidSchema });
 const CreateEnterpriseBody = Type.Object({
   name: Type.String({ minLength: 2, maxLength: 255 }),
   slug: Type.String({ minLength: 2, maxLength: 50 }),
-  plan: Type.Optional(
-    Type.Union([Type.Literal("starter"), Type.Literal("pro"), Type.Literal("enterprise")]),
-  ),
+  plan: Type.Optional(Type.Union(TENANT_PLAN_VALUES.map((value) => Type.Literal(value)))),
 });
 
 const CreateEnterpriseResponse = Type.Object({
@@ -288,7 +287,7 @@ export async function tenantAdminRoutes(app: FastifyInstance) {
       const body = request.body as {
         name: string;
         slug: string;
-        plan?: "starter" | "pro" | "enterprise";
+        plan?: TenantPlan;
       };
       try {
         const res = await createEnterpriseTenant({

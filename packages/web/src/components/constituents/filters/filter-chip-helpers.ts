@@ -11,6 +11,7 @@
 import { filterFields } from "./filter-presets";
 import {
   type FilterChipData,
+  type FilterField,
   type FilterPattern,
   type FilterQuery,
   isFilterCondition,
@@ -43,8 +44,11 @@ export function patternI18nKey(pattern: FilterPattern): string {
  * hasn't catalogued yet) so the chip still reads as something rather than
  * collapsing to empty. `FilterChip` resolves the key to the active locale.
  */
-export function chipLabelForField(field: string): string {
-  const known = filterFields.find((f) => f.name === field);
+export function chipLabelForField(field: string, catalog: FilterField[] = filterFields): string {
+  const known = catalog.find((f) => f.name === field);
+  // Custom-field labels are literals; core labels are i18n keys — both
+  // shapes flow through `FilterChip`, which renders unregistered keys
+  // verbatim (Epic #539 contract).
   if (known) return known.label;
   return field.split(".").pop() || field;
 }
@@ -60,11 +64,12 @@ export function chipLabelForField(field: string): string {
 export function chipsFromQuery(
   query: FilterQuery,
   patternLabelFor: (pattern: FilterPattern) => string,
+  catalog: FilterField[] = filterFields,
 ): FilterChipData[] {
   const conditionChips: FilterChipData[] = query.conditions.filter(isFilterCondition).map((c) => ({
     id: c.id,
     kind: "condition" as const,
-    label: chipLabelForField(c.field),
+    label: chipLabelForField(c.field, catalog),
     field: c.field,
     operator: c.operator,
     value: c.value,

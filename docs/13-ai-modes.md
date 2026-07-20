@@ -13,6 +13,8 @@ Ce document définit les **trois modes d'interaction IA** de la plateforme, leur
 
 > *"L'IA dans Givernance doit réduire la charge administrative sans retirer le contrôle humain sur ce qui compte."*
 
+> **Voir aussi** : l'*AI schema steward* de l'Epic #539 (assistant à la création de champs personnalisés + audit hebdomadaire de la structure) est une application **Mode 2 (IA Assistée)** de ce document — propose-only, Suggestion Card, bandes de confiance, inférence UE uniquement, contexte limité aux métadonnées de schéma (jamais de données de lignes). Il fait partie de la roadmap (Phase 4), hors du socle livré : [35-customization.md § 7](35-customization.md).
+
 ---
 
 ## 1. Vue d'ensemble des trois modes

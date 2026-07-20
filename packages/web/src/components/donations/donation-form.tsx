@@ -11,6 +11,7 @@ if (!FormatRegistry.Has("date-time")) {
   FormatRegistry.Set("date-time", (value: string) => !Number.isNaN(Date.parse(value)));
 }
 
+import type { CustomFieldDefinition, CustomFieldValue } from "@givernance/shared/custom-fields";
 import { DonationCreateSchema } from "@givernance/shared/validators";
 import { typeboxResolver } from "@hookform/resolvers/typebox";
 import { Check, ChevronsUpDown, Plus, Trash2 } from "lucide-react";
@@ -24,8 +25,14 @@ import {
   useFieldArray,
   useForm,
 } from "react-hook-form";
-
 import { AmountInput } from "@/components/shared/amount-input";
+import {
+  buildCustomFieldPatch,
+  CustomFieldsSection,
+  extractCustomFieldErrors,
+  initialCustomValues,
+  missingRequiredCustomKeys,
+} from "@/components/shared/custom-fields";
 import {
   Form,
   FormControl,
@@ -108,7 +115,14 @@ const DEFAULT_VALUES: DefaultValues<DonationFormValues> = {
 type CreateMode = { mode: "create"; donation?: undefined };
 type EditMode = { mode: "edit"; donation: DonationDetail };
 
-export type DonationFormProps = CreateMode | EditMode;
+export type DonationFormProps = (CreateMode | EditMode) & {
+  /**
+   * Active donation-domain custom-field definitions (Epic #539), SSR-fetched
+   * by the page when `donations.custom_fields` is on. Empty (the default) ⇒
+   * the custom-fields section is completely absent.
+   */
+  customFieldDefs?: CustomFieldDefinition[];
+};
 
 async function loadDonationFunds(campaignId: string): Promise<Fund[]> {
   const client = createClientApiClient();
@@ -125,9 +139,56 @@ async function loadDonationFunds(campaignId: string): Promise<Fund[]> {
 }
 
 export function DonationForm(props: DonationFormProps) {
-  const { mode } = props;
+  const { mode, customFieldDefs = [] } = props;
   const router = useRouter();
   const t = useTranslations("donations.form");
+  const tCustom = useTranslations("customFields");
+
+  // Epic #539 — custom values live outside react-hook-form (controlled map;
+  // server registry is the authoritative validator).
+  const [initialCustom] = useState<Record<string, CustomFieldValue>>(() =>
+    initialCustomValues(customFieldDefs, props.donation?.custom),
+  );
+  const [customValues, setCustomValues] = useState<Record<string, CustomFieldValue>>(() => ({
+    ...initialCustom,
+  }));
+  const [customErrors, setCustomErrors] = useState<Record<string, string>>({});
+
+  const handleCustomChange = (key: string, value: CustomFieldValue | null) => {
+    setCustomValues((prev) => {
+      const next = { ...prev };
+      if (value === null) delete next[key];
+      else next[key] = value;
+      return next;
+    });
+    setCustomErrors((prev) => {
+      if (!(key in prev)) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  };
+
+  const prepareCustomPatch = (): { ok: boolean; patch?: Record<string, unknown> } => {
+    if (customFieldDefs.length === 0) return { ok: true };
+    if (mode === "create") {
+      const missing = missingRequiredCustomKeys(customFieldDefs, customValues);
+      if (missing.length > 0) {
+        setCustomErrors(
+          Object.fromEntries(missing.map((key) => [key, tCustom("form.requiredMissing")])),
+        );
+        return { ok: false };
+      }
+    }
+    return {
+      ok: true,
+      patch: buildCustomFieldPatch(
+        mode === "create" ? {} : initialCustom,
+        customValues,
+        customFieldDefs,
+      ),
+    };
+  };
 
   const defaultValues = buildDefaultValues(props);
 
@@ -264,7 +325,10 @@ export function DonationForm(props: DonationFormProps) {
       return;
     }
 
-    const payload = toApiPayload(values);
+    const customPrep = prepareCustomPatch();
+    if (!customPrep.ok) return;
+    const customPatch = customPrep.patch ? { custom: customPrep.patch } : {};
+    const payload = { ...toApiPayload(values), ...customPatch };
 
     try {
       if (mode === "create") {
@@ -275,7 +339,7 @@ export function DonationForm(props: DonationFormProps) {
         const updated = await DonationService.updateDonation(
           createClientApiClient(),
           props.donation.id,
-          toUpdateApiPayload(values),
+          { ...toUpdateApiPayload(values), ...customPatch },
         );
         toast.success(t("success.updated"));
         router.push(`/donations/${updated.id}`);
@@ -289,6 +353,11 @@ export function DonationForm(props: DonationFormProps) {
       // handleApiError below so no need to log it twice.
       if (!(err instanceof ApiProblem)) {
         console.error("DonationForm submit failed (unexpected error):", err);
+      }
+      // Epic #539 — surface per-key registry 422s inline on the custom section.
+      if (err instanceof ApiProblem && (err.status === 422 || err.status === 400)) {
+        const perKey = extractCustomFieldErrors(err.extensions.fieldErrors);
+        if (Object.keys(perKey).length > 0) setCustomErrors(perKey);
       }
       handleApiError(err, form, {
         allocationSumMismatch: t("errors.allocationSumMismatch"),
@@ -586,6 +655,17 @@ export function DonationForm(props: DonationFormProps) {
             </Button>
           </div>
         </FormSection>
+
+        {/* Epic #539 — absent entirely when the flag is off / no defs. */}
+        <CustomFieldsSection
+          definitions={customFieldDefs}
+          values={customValues}
+          onChange={handleCustomChange}
+          errors={customErrors}
+          title={tCustom("form.sectionTitle")}
+          description={tCustom("form.sectionDescription")}
+          disabled={isSubmitting}
+        />
 
         {rootError ? (
           <p role="alert" className="py-3 text-sm font-medium text-error">

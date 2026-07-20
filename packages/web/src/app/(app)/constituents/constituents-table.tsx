@@ -1,6 +1,7 @@
 // @ts-nocheck
 "use client";
 
+import type { CustomFieldDefinition } from "@givernance/shared/custom-fields";
 import type { ColumnDef, SortingState } from "@tanstack/react-table";
 import {
   Check,
@@ -24,11 +25,15 @@ import {
   ConstituentTypeBadges,
 } from "@/components/constituents/constituent-type-badge";
 import {
+  customFieldToFilterField,
   FilterBuilder,
   FilterChip,
+  type FilterField,
   type FilterPattern,
   type FilterQuery,
+  filterFields,
   filterPresets,
+  mergeFilterCatalog,
 } from "@/components/constituents/filters";
 import {
   chipsFromQuery,
@@ -38,6 +43,7 @@ import {
   type FilterCondition as FilterConditionType,
   isFilterCondition,
 } from "@/components/constituents/filters/filter-types";
+import { buildCustomFieldColumns } from "@/components/shared/custom-fields";
 import { EmptyState } from "@/components/shared/empty-state";
 import {
   AlertDialog,
@@ -216,6 +222,12 @@ interface ConstituentsTableProps {
   /** Server-resolved sort/order — see donations-table.tsx for rationale. */
   sort: ConstituentSortField;
   order: ConstituentSortOrder;
+  /**
+   * Epic #539 — active constituent-domain definitions rendered as extra
+   * columns from `row.custom`. Empty (flag off / no defs) ⇒ no custom
+   * columns, table byte-for-byte like today.
+   */
+  customFieldDefs?: CustomFieldDefinition[];
 }
 
 const QUICK_FILTER_TYPES = ["donor", "volunteer", "member", "beneficiary", "partner"] as const;
@@ -231,6 +243,7 @@ export function ConstituentsTable({
   advancedFilterInvalid = false,
   sort,
   order,
+  customFieldDefs = [],
 }: ConstituentsTableProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -239,6 +252,7 @@ export function ConstituentsTable({
   const tType = useTranslations("constituents.types");
   const locale = useLocale();
   const tFilters = useTranslations("constituents.filters");
+  const tCustom = useTranslations("customFields");
   const [deleteTarget, setDeleteTarget] = useState<ConstituentListRow | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const initialSearch = searchParams.get("search") ?? "";
@@ -353,9 +367,22 @@ export function ConstituentsTable({
     [tFiltersRoot],
   );
 
+  // Epic #539 — client-side projection of the org's custom defs into builder
+  // fields: the FilterBuilder's fetch-failure fallback AND the chip strip's
+  // label/option-value resolver.
+  const customFilterFields = useMemo(
+    () => customFieldDefs.map(customFieldToFilterField).filter((f): f is FilterField => f !== null),
+    [customFieldDefs],
+  );
+  const chipCatalog = useMemo(
+    () => mergeFilterCatalog(filterFields, customFilterFields),
+    [customFilterFields],
+  );
+
   const advancedChips = useMemo(
-    () => (activeAdvancedQuery ? chipsFromQuery(activeAdvancedQuery, patternLabelFor) : []),
-    [activeAdvancedQuery, patternLabelFor],
+    () =>
+      activeAdvancedQuery ? chipsFromQuery(activeAdvancedQuery, patternLabelFor, chipCatalog) : [],
+    [activeAdvancedQuery, chipCatalog, patternLabelFor],
   );
 
   /** Resolved display name of the preset that seeded the active query, if any. */
@@ -664,6 +691,13 @@ export function ConstituentsTable({
           </span>
         ),
       },
+      // Epic #539 — custom-field columns (flag-gated by the page: empty defs
+      // spread nothing).
+      ...buildCustomFieldColumns<ConstituentListRow>(customFieldDefs, {
+        locale,
+        getValues: (row) => row.custom,
+        booleanLabels: { yes: tCustom("boolean.yes"), no: tCustom("boolean.no") },
+      }),
       // For viewers (no Edit, no Delete) we drop the column entirely — keeping
       // it would render an `sr-only` "Actions" header above empty cells, a
       // small a11y nuisance and a wasted column on info-dense screens.
@@ -692,10 +726,12 @@ export function ConstituentsTable({
       bulkEmailEnabled,
       canManageAdminActions,
       canWrite,
+      customFieldDefs,
       locale,
       multiTypeEnabled,
       selectedIds,
       t,
+      tCustom,
       togglePageSelection,
     ],
   );
@@ -797,7 +833,12 @@ export function ConstituentsTable({
               : tFilters("strip.label")}
           </span>
           {advancedChips.map((chip) => (
-            <FilterChip key={chip.id} filter={chip} onRemove={removeAdvancedChip} />
+            <FilterChip
+              key={chip.id}
+              filter={chip}
+              fields={chipCatalog}
+              onRemove={removeAdvancedChip}
+            />
           ))}
           <Button type="button" variant="ghost" size="sm" onClick={() => writeAdvancedQuery(null)}>
             {tFilters("strip.clear")}
@@ -868,6 +909,7 @@ export function ConstituentsTable({
           onOpenChange={setBuilderOpen}
           onApply={applyAdvancedQuery}
           initialQuery={builderInitialQuery}
+          customFilterFields={customFilterFields}
         />
       ) : null}
 

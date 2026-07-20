@@ -2,6 +2,8 @@
  * Business logic for advanced constituent filtering
  */
 
+import { createHash } from "node:crypto";
+import { CUSTOM_FIELD_KEY_PATTERN } from "@givernance/shared/custom-fields";
 import {
   campaignConstituents,
   campaigns,
@@ -22,9 +24,11 @@ import {
 } from "drizzle-orm";
 import type { FastifyBaseLogger } from "fastify";
 import { withTenantContext } from "../../../lib/db.js";
+import type { FieldRegistryBundle } from "./field-registry.js";
 import { PatternDetector } from "./pattern-detector.js";
 import { FilterQueryBuilder } from "./query-builder.js";
 import type {
+  FieldMetadata,
   FilterCondition,
   FilterPreviewRequest,
   FilterPreviewResult,
@@ -34,6 +38,8 @@ import type {
   FilterSuggestionsRequest,
 } from "./types.js";
 import { FIELD_REGISTRY } from "./types.js";
+
+const NO_ARCHIVED_FIELDS: ReadonlySet<string> = new Set();
 
 /**
  * The `donation_stats` inline aggregate every advanced-filter query LEFT JOINs.
@@ -65,13 +71,23 @@ export function donationStatsJoin(orgId: string): { source: SQL; on: SQL } {
 
 export class FilterService {
   private orgId: string;
+  private registry: Record<string, FieldMetadata>;
+  private archivedDslNames: ReadonlySet<string>;
   private queryBuilder: FilterQueryBuilder;
   private patternDetector: PatternDetector;
   private logger?: FastifyBaseLogger;
 
-  constructor(orgId: string, logger?: FastifyBaseLogger) {
+  /**
+   * `registryBundle` is the per-request merged field map + archived
+   * custom-field names from `getFieldRegistryBundle(orgId)`. Callers that
+   * omit it (legacy paths, tests) get the static core registry — custom
+   * fields then validate as unknown, exactly as if the flag were off.
+   */
+  constructor(orgId: string, logger?: FastifyBaseLogger, registryBundle?: FieldRegistryBundle) {
     this.orgId = orgId;
-    this.queryBuilder = new FilterQueryBuilder(orgId);
+    this.registry = registryBundle?.registry ?? FIELD_REGISTRY;
+    this.archivedDslNames = registryBundle?.archivedDslNames ?? NO_ARCHIVED_FIELDS;
+    this.queryBuilder = new FilterQueryBuilder(orgId, this.registry);
     this.patternDetector = new PatternDetector(orgId);
     this.logger = logger;
   }
@@ -174,6 +190,18 @@ export class FilterService {
    */
   async getFieldSuggestions(request: FilterSuggestionsRequest): Promise<string[]> {
     const { field, search, limit = 10 } = request;
+
+    // Custom TEXT fields suggest from stored values; picklists answer from
+    // their `options` client-side (no DB hit), every other custom type has
+    // no meaningful suggestion set. Sensitive (Art. 9) fields never
+    // suggest: `SELECT DISTINCT` over their stored values would let any
+    // authenticated user enumerate the full value set without
+    // record-level access (docs/35 §6).
+    const customMeta = this.registry[field];
+    if (customMeta?.source === "custom") {
+      if (customMeta.customType !== "text" || customMeta.sensitive) return [];
+      return this.getCustomFieldSuggestions(customMeta, search, limit);
+    }
 
     // Only support certain fields for suggestions
     const supportedFields = [
@@ -279,6 +307,36 @@ export class FilterService {
   }
 
   /**
+   * `SELECT DISTINCT custom->>'<key>'` for one custom text field. The key is
+   * registry-resolved and regex-checked, never client input; `eq(org_id)`
+   * stays explicit beside RLS (issue #430).
+   */
+  private async getCustomFieldSuggestions(
+    meta: FieldMetadata,
+    search: string | undefined,
+    limit: number,
+  ): Promise<string[]> {
+    const key = meta.jsonKey;
+    if (!key || meta.sensitive || !CUSTOM_FIELD_KEY_PATTERN.test(key)) return [];
+
+    return withTenantContext(this.orgId, async (db) => {
+      const result = await db.execute(sql`
+        SELECT DISTINCT ${constituents.custom} ->> ${key} AS value
+        FROM ${constituents}
+        WHERE org_id = ${this.orgId}
+          AND deleted_at IS NULL
+          AND jsonb_exists(custom, ${key})
+          ${search ? sql`AND ${constituents.custom} ->> ${key} ILIKE ${`%${search}%`}` : sql``}
+        ORDER BY value
+        LIMIT ${limit}
+      `);
+      return result.rows
+        .map((row) => row.value as string | null)
+        .filter((v): v is string => v !== null && v !== "");
+    });
+  }
+
+  /**
    * Add filtered constituents to a campaign
    */
   async addFilteredToCampaign(
@@ -370,7 +428,7 @@ export class FilterService {
 
     const conditionsArray = Array.isArray(query.conditions) ? query.conditions : [];
     conditionsArray.forEach((condition) => {
-      const fieldMeta = FIELD_REGISTRY[condition.field];
+      const fieldMeta = this.registry[condition.field];
       if (fieldMeta?.aggregate) {
         aggregateConditions.push(condition);
       } else {
@@ -433,6 +491,12 @@ export class FilterService {
     const { field, order } = sort;
     const direction = order === "asc" ? asc : desc;
 
+    // Custom fields sort on a validated cast of the JSONB value, NULLS LAST
+    // so empty values always trail regardless of direction. Unknown or
+    // non-sortable fields keep the existing silent fallback below.
+    const customSort = this.buildCustomOrderByClause(field, order);
+    if (customSort) return customSort;
+
     // Map sort fields to actual columns
     switch (field) {
       case "name":
@@ -451,9 +515,54 @@ export class FilterService {
   }
 
   /**
-   * Validate a filter query
+   * `ORDER BY (custom->>'<key>')::<type> <dir> NULLS LAST` for registry-
+   * validated custom fields. The key never comes from the sort input — it is
+   * resolved from the merged registry and regex-checked again before use.
    */
-  validateQuery(query: FilterQuery): { valid: boolean; errors: string[] } {
+  private buildCustomOrderByClause(field: string, order: "asc" | "desc"): SQL | undefined {
+    const meta = this.registry[field];
+    if (meta?.source !== "custom") return undefined;
+    const key = meta.jsonKey;
+    if (!key || !CUSTOM_FIELD_KEY_PATTERN.test(key)) return undefined;
+
+    const text = sql`${constituents.custom} ->> ${key}`;
+    let expr: SQL;
+    switch (meta.customType) {
+      case "number":
+      case "currency":
+        expr = sql`(${text})::numeric`;
+        break;
+      case "date":
+        expr = sql`(${text})::date`;
+        break;
+      case "boolean":
+        expr = sql`(${text})::boolean`;
+        break;
+      case "text":
+      case "long_text":
+      case "picklist":
+        expr = text;
+        break;
+      default:
+        // multi_picklist has no meaningful scalar order — fall back.
+        return undefined;
+    }
+    return order === "asc" ? sql`${expr} ASC NULLS LAST` : sql`${expr} DESC NULLS LAST`;
+  }
+
+  /**
+   * Validate a filter query.
+   *
+   * `archivedFields` names the `custom.<key>` conditions that reference an
+   * ARCHIVED definition — routes surface those as the named 400
+   * `custom_field_archived` (a persisted segment must fail loudly, never be
+   * silently dropped) instead of the generic invalid-query 400.
+   */
+  validateQuery(query: FilterQuery): {
+    valid: boolean;
+    errors: string[];
+    archivedFields: string[];
+  } {
     const errors: string[] = [];
 
     // Validate query complexity
@@ -496,7 +605,34 @@ export class FilterService {
       });
     }
 
-    return { valid: errors.length === 0, errors };
+    // A key can be archived AND later re-created (the unique index is partial
+    // on archived_at IS NULL) — only unresolvable fields count as archived.
+    // Walk nested groups too: a persisted segment referencing an archived
+    // field inside a subCondition must still produce the NAMED
+    // custom_field_archived 400 (never the generic invalid-query problem,
+    // and never a silent drop).
+    const archivedSet = new Set<string>();
+    const collectArchived = (conditions: FilterCondition[]) => {
+      for (const condition of conditions) {
+        if (!this.registry[condition.field] && this.archivedDslNames.has(condition.field)) {
+          archivedSet.add(condition.field);
+        }
+        if (condition.subConditions) {
+          const nested = condition.subConditions.conditions;
+          collectArchived(Array.isArray(nested) ? nested : []);
+        }
+      }
+    };
+    collectArchived(conditionsArray);
+    const archivedFields = [...archivedSet];
+    // Nested archived references get no per-condition error above (the
+    // per-condition validation only walks the top level) — force invalid
+    // so the query can never execute with the reference silently dropped.
+    if (archivedFields.length > 0 && errors.length === 0) {
+      errors.push(`Archived custom field referenced: ${archivedFields.join(", ")}`);
+    }
+
+    return { valid: errors.length === 0, errors, archivedFields };
   }
 
   /**
@@ -517,17 +653,22 @@ export class FilterService {
   }
 
   /**
-   * Log suspicious activity for security monitoring
+   * Log suspicious activity for security monitoring. The raw value never
+   * enters the (long-retention) log line — with custom fields it can be
+   * operator-typed sensitive text that merely happens to contain `--`;
+   * a hash + length keeps the forensic correlation signal.
    */
   private logSuspiciousActivity(condition: FilterCondition, _index: number): void {
     if (this.logger) {
+      const value = String(condition.value);
       this.logger.warn(
         {
           type: "potential_sql_injection",
           orgId: this.orgId,
           field: condition.field,
           operator: condition.operator,
-          value: condition.value,
+          valueHash: createHash("sha256").update(value).digest("hex").slice(0, 16),
+          valueLength: value.length,
           timestamp: new Date().toISOString(),
         },
         "Potential SQL injection attempt detected",
@@ -575,9 +716,13 @@ export class FilterService {
     const errors: string[] = [];
 
     // Check field exists
-    const fieldMeta = FIELD_REGISTRY[condition.field];
+    const fieldMeta = this.registry[condition.field];
     if (!fieldMeta) {
-      errors.push(`Unknown field at condition ${index}: ${condition.field}`);
+      if (this.archivedDslNames.has(condition.field)) {
+        errors.push(`Archived custom field at condition ${index}: ${condition.field}`);
+      } else {
+        errors.push(`Unknown field at condition ${index}: ${condition.field}`);
+      }
       return errors;
     }
 
@@ -619,7 +764,7 @@ export class FilterService {
    */
   private validateNumericValue(
     condition: FilterCondition,
-    fieldMeta: (typeof FIELD_REGISTRY)[string],
+    fieldMeta: FieldMetadata,
     index: number,
   ): string | null {
     if (fieldMeta.type !== "number") return null;

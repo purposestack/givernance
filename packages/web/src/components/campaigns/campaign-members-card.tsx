@@ -1,8 +1,9 @@
 "use client";
 
+import type { CustomFieldDefinition } from "@givernance/shared/custom-fields";
 import type { ColumnDef, SortingState } from "@tanstack/react-table";
 import { Filter, Plus, Trash2, Users } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { ConstituentTypeBadges } from "@/components/constituents/constituent-type-badge";
 import {
@@ -20,6 +21,7 @@ import {
   type FilterCondition,
   isFilterCondition,
 } from "@/components/constituents/filters/filter-types";
+import { buildCustomFieldColumns } from "@/components/shared/custom-fields";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -97,6 +99,12 @@ interface CampaignMembersCardProps {
   campaignId: string;
   initialMembers: CampaignMember[];
   initialTotal: number;
+  /**
+   * Epic #539 §6 — projected (showOnRelated ∧ ¬sensitive) constituent
+   * definitions rendered as extra member columns from `member.donorCustom`.
+   * Empty ⇒ no custom columns.
+   */
+  donorCustomDefs?: CustomFieldDefinition[];
   /** Disable add/remove for door-drop campaigns (no recipient list by definition). */
   doorDrop: boolean;
   /**
@@ -167,10 +175,13 @@ export function CampaignMembersCard({
   campaignId,
   initialMembers,
   initialTotal,
+  donorCustomDefs = [],
   doorDrop,
   onTotalChanged,
 }: CampaignMembersCardProps) {
   const t = useTranslations("campaigns.postal.members");
+  const tCustom = useTranslations("customFields");
+  const locale = useLocale();
   // Dedicated translator for pattern labels — kept on the constituents-side
   // namespace so the label is reusable from any surface that renders pattern
   // chips (the constituents list page renders the same chips via
@@ -467,6 +478,13 @@ export function CampaignMembersCard({
         },
         meta: { className: "hidden lg:table-cell" },
       },
+      // Epic #539 §6 — donor projection columns (empty defs spread nothing).
+      ...buildCustomFieldColumns<CampaignMember>(donorCustomDefs, {
+        locale,
+        getValues: (member) => member.donorCustom,
+        idPrefix: "donorCustom",
+        booleanLabels: { yes: tCustom("boolean.yes"), no: tCustom("boolean.no") },
+      }),
       {
         id: "actions",
         enableSorting: false,
@@ -485,7 +503,7 @@ export function CampaignMembersCard({
         meta: { className: "w-12 text-right" },
       },
     ],
-    [handleRemove, t],
+    [donorCustomDefs, handleRemove, locale, t, tCustom],
   );
 
   const tablePagination = useMemo(

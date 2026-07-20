@@ -1,3 +1,4 @@
+import { sanitizeCustomValues } from "@/components/shared/custom-fields/definitions";
 import type { ApiClient } from "@/lib/api";
 import type {
   Constituent,
@@ -59,6 +60,12 @@ export interface ConstituentCreateInput {
   /** Legacy single-value type. Still accepted by the API for back-compat. */
   type?: string;
   tags?: string[];
+  /**
+   * Custom-field merge-patch (Epic #539): absent keys are untouched
+   * server-side, explicit `null` clears a key. Validated against the org's
+   * definition registry by the API (unknown key / inactive option → 422).
+   */
+  custom?: Record<string, unknown>;
 }
 
 export type ConstituentUpdateInput = Partial<ConstituentCreateInput>;
@@ -237,6 +244,7 @@ function mapConstituent(raw: Constituent): Constituent {
       Array.isArray(raw.types) && raw.types.length > 0 ? raw.types : raw.type ? [raw.type] : [],
     type: raw.type ?? (Array.isArray(raw.types) ? (raw.types[0] ?? "") : ""),
     tags: raw.tags,
+    custom: sanitizeCustomValues(raw.custom),
     deletedAt: raw.deletedAt,
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt,
@@ -292,5 +300,8 @@ function toRequestBody(input: ConstituentUpdateInput): Record<string, unknown> {
   if (input.types !== undefined) body.types = input.types;
   if (input.type !== undefined) body.type = input.type;
   if (input.tags !== undefined) body.tags = input.tags;
+  // Epic #539 — merge-patch semantics: send the object through as-is (nulls
+  // inside it are explicit per-key clears); omit entirely when untouched.
+  if (input.custom !== undefined) body.custom = input.custom;
   return body;
 }

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 
 import { ConstituentForm } from "@/components/constituents/constituent-form";
+import { fetchCustomFieldDefinitionsOrEmpty } from "@/components/shared/custom-fields";
 import { PageHeader } from "@/components/shared/page-header";
 import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
@@ -34,13 +35,22 @@ export default async function EditConstituentPage({ params }: EditConstituentPag
 
   // Issue #465 — flag on → multiselect type control; off → single Select.
   let multiTypeEnabled = false;
+  // Epic #539 — flag off / fetch failure ⇒ no defs ⇒ no custom section.
+  let customFieldsEnabled = false;
+  const client = await createServerApiClient();
   try {
-    const client = await createServerApiClient();
     const flags = await FeatureFlagsService.listPublic(client);
     multiTypeEnabled = isFlagEnabled(flags, FEATURE_FLAG_KEYS.CONSTITUENTS_MULTI_TYPE);
+    customFieldsEnabled = isFlagEnabled(flags, FEATURE_FLAG_KEYS.CONSTITUENTS_CUSTOM_FIELDS);
   } catch {
     multiTypeEnabled = false;
+    customFieldsEnabled = false;
   }
+  const customFieldDefs = await fetchCustomFieldDefinitionsOrEmpty(
+    client,
+    "constituent",
+    customFieldsEnabled,
+  );
 
   const t = await getTranslations("constituentForm");
   const tConstituents = await getTranslations("constituents");
@@ -66,6 +76,7 @@ export default async function EditConstituentPage({ params }: EditConstituentPag
           mode="edit"
           constituent={constituent}
           multiTypeEnabled={multiTypeEnabled}
+          customFieldDefs={customFieldDefs}
         />
       </div>
     </>

@@ -21,6 +21,8 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
+import type { TenantPlan } from "../constants/tenant-plans.js";
+import type { CustomFieldValues } from "../custom-fields/types.js";
 import type { Locale } from "../i18n/locales.js";
 
 // ─── Receipt Enums ──────────────────────────────────────────────────────────
@@ -171,7 +173,13 @@ export const tenants = pgTable(
      * operator fills the org-settings form.
      */
     mission: text("mission"),
-    plan: varchar("plan", { length: 50 }).notNull().default("starter"),
+    /**
+     * Code-side plan identifiers are `starter | pro | enterprise` — see
+     * `TENANT_PLAN_VALUES` (Epic #539 tier-name reconciliation) for the
+     * mapping onto the docs/08 pricing tiers. Untyped varchar in the DB;
+     * `$type` narrows the app-side contract.
+     */
+    plan: varchar("plan", { length: 50 }).notNull().default("starter").$type<TenantPlan>(),
     status: varchar("status", { length: 50 }).notNull().default("active").$type<TenantStatus>(),
     /** How this tenant was provisioned — drives UI affordances, not access. Migration 0021 (ADR-016). */
     createdVia: varchar("created_via", { length: 32 })
@@ -661,6 +669,22 @@ export {
   notifications,
 } from "./notifications";
 
+// ─── Customization engine (Epic #539) ────────────────────────────────────────
+
+export {
+  type CustomFieldDefinitionRow,
+  type CustomFieldMergeUndoRow,
+  type CustomizationQuotaOverrideRow,
+  customFieldDefinitions,
+  customFieldDomainEnum,
+  customFieldMergeUndo,
+  customFieldTypeEnum,
+  customizationQuotaOverrides,
+  type NewCustomFieldDefinitionRow,
+  type NewCustomFieldMergeUndoRow,
+  type NewCustomizationQuotaOverrideRow,
+} from "./customization";
+
 // ─── Swiss QR-bill foundation (Epic #318) ────────────────────────────────────
 //
 // The cross-table FKs `campaigns.bank_account_id`, `donations.swiss_qr_reference_id`,
@@ -810,6 +834,14 @@ export const constituents = pgTable("constituents", {
    */
   types: text("types").array().notNull().default(sql`'{donor}'::text[]`),
   tags: text("tags").array(),
+  /**
+   * Per-org custom-field values (Epic #539): definition key → value,
+   * validated against `custom_field_definitions` at write time. Absent
+   * key ≡ null ≡ "is empty" — the blob never stores nulls. GIN
+   * `jsonb_path_ops` index (partial `WHERE deleted_at IS NULL`) lives
+   * in migration 0088 — the migration is the source of truth.
+   */
+  custom: jsonb("custom").notNull().default({}).$type<CustomFieldValues>(),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -898,6 +930,13 @@ export const donations = pgTable(
     refundedAt: timestamp("refunded_at", { withTimezone: true }),
     paymentMethod: varchar("payment_method", { length: 50 }),
     paymentRef: varchar("payment_ref", { length: 255 }),
+    /**
+     * Per-org custom-field values (Epic #539). Same contract as
+     * `constituents.custom`; GIN `jsonb_path_ops` index in migration
+     * 0088. Definitions flagged `sensitive` are stripped at donor
+     * erasure even under the Swiss CO legal hold (docs/35).
+     */
+    custom: jsonb("custom").notNull().default({}).$type<CustomFieldValues>(),
     donatedAt: timestamp("donated_at", { withTimezone: true }).notNull().defaultNow(),
     fiscalYear: integer("fiscal_year"),
     receiptNumber: varchar("receipt_number", { length: 100 }),
@@ -1152,6 +1191,12 @@ export const campaigns = pgTable(
      * the donor page falls back to today's hardcoded layout.
      */
     publicPageStyle: publicPageStyleEnum("public_page_style"),
+    /**
+     * Per-org custom-field values (Epic #539). Same contract as
+     * `constituents.custom`; GIN `jsonb_path_ops` index in migration
+     * 0088.
+     */
+    custom: jsonb("custom").notNull().default({}).$type<CustomFieldValues>(),
     operationalCostCents: bigint("operational_cost_cents", { mode: "number" }),
     platformFeesCents: bigint("platform_fees_cents", { mode: "number" }).notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

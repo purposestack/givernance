@@ -1,14 +1,16 @@
+import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-import type { CSSProperties } from "react";
 
 import { DonationForm } from "@/components/donations/donation-form";
+import { fetchCustomFieldDefinitionsOrEmpty } from "@/components/shared/custom-fields";
 import { PageHeader } from "@/components/shared/page-header";
 import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
 import { requirePermission } from "@/lib/auth/guards";
 import { type DonationDetail, donationDetailDonorName } from "@/models/donation";
 import { DonationService } from "@/services/DonationService";
+import { FeatureFlagsService, isFlagEnabled } from "@/services/FeatureFlagsService";
 
 interface EditDonationPageProps {
   params: Promise<{ id: string }>;
@@ -33,6 +35,21 @@ export default async function EditDonationPage({ params }: EditDonationPageProps
   const { id } = await params;
   const donation = await fetchDonationOrNotFound(id);
 
+  // Epic #539 — flag off / fetch failure ⇒ no defs ⇒ no custom section.
+  let customFieldsEnabled = false;
+  const client = await createServerApiClient();
+  try {
+    const flags = await FeatureFlagsService.listPublic(client);
+    customFieldsEnabled = isFlagEnabled(flags, FEATURE_FLAG_KEYS.DONATIONS_CUSTOM_FIELDS);
+  } catch {
+    customFieldsEnabled = false;
+  }
+  const customFieldDefs = await fetchCustomFieldDefinitionsOrEmpty(
+    client,
+    "donation",
+    customFieldsEnabled,
+  );
+
   const t = await getTranslations("donations.form");
   const tDonations = await getTranslations("donations");
 
@@ -54,7 +71,7 @@ export default async function EditDonationPage({ params }: EditDonationPageProps
         ]}
       />
       <div className="reveal-item">
-        <DonationForm mode="edit" donation={donation} />
+        <DonationForm mode="edit" donation={donation} customFieldDefs={customFieldDefs} />
       </div>
     </>
   );

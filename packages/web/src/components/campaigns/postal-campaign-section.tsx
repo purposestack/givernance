@@ -13,6 +13,7 @@
  * attached recipients in the same browser session.
  */
 
+import type { CustomFieldDefinition } from "@givernance/shared/custom-fields";
 import { useState } from "react";
 
 import { CampaignMembersCard } from "@/components/campaigns/campaign-members-card";
@@ -45,6 +46,11 @@ interface PostalCampaignSectionProps {
   initialMemberTotal: number;
   initialExports: PostalExport[];
   /**
+   * Epic #539 §6 — projected donor definitions passed straight through to
+   * the members card's column set. Empty ⇒ no custom columns.
+   */
+  donorCustomDefs?: CustomFieldDefinition[];
+  /**
    * Whether `campaign.postal_merged_pdf` is enabled for this tenant
    * (project item #194221573). SSR-resolved in the campaign page server
    * component and passed straight through to the export panel, which hides
@@ -62,6 +68,7 @@ export function PostalCampaignSection({
   initialMembers,
   initialMemberTotal,
   initialExports,
+  donorCustomDefs = [],
   mergedPdfEnabled,
 }: PostalCampaignSectionProps) {
   const [memberCount, setMemberCount] = useState(initialMemberTotal);
@@ -72,6 +79,7 @@ export function PostalCampaignSection({
         campaignId={campaignId}
         initialMembers={initialMembers}
         initialTotal={initialMemberTotal}
+        donorCustomDefs={donorCustomDefs}
         doorDrop={campaignType === "door_drop"}
         onTotalChanged={setMemberCount}
       />

@@ -9,6 +9,7 @@ if (!FormatRegistry.Has("uuid")) {
   );
 }
 
+import type { CustomFieldDefinition, CustomFieldValue } from "@givernance/shared/custom-fields";
 import { CampaignCreateSchema } from "@givernance/shared/validators";
 import { typeboxResolver } from "@hookform/resolvers/typebox";
 import Link from "next/link";
@@ -22,8 +23,14 @@ import {
   type UseFormReturn,
   useForm,
 } from "react-hook-form";
-
 import { AmountInput } from "@/components/shared/amount-input";
+import {
+  buildCustomFieldPatch,
+  CustomFieldsSection,
+  extractCustomFieldErrors,
+  initialCustomValues,
+  missingRequiredCustomKeys,
+} from "@/components/shared/custom-fields";
 import { EmptyState } from "@/components/shared/empty-state";
 import {
   Form,
@@ -96,7 +103,14 @@ interface CampaignFormValues {
 type CreateMode = { mode: "create"; campaign?: undefined };
 type EditMode = { mode: "edit"; campaign: Campaign };
 
-export type CampaignFormProps = CreateMode | EditMode;
+export type CampaignFormProps = (CreateMode | EditMode) & {
+  /**
+   * Active campaign-domain custom-field definitions (Epic #539), SSR-fetched
+   * by the page when `campaigns.custom_fields` is on. Empty (the default) ⇒
+   * the custom-fields section is completely absent.
+   */
+  customFieldDefs?: CustomFieldDefinition[];
+};
 
 const EMPTY_PARENT = "__none__";
 /** Same sentinel pattern as `EMPTY_PARENT`; ‘None’ = unlinked / no Swiss QR-bill. */
@@ -105,11 +119,58 @@ const CAMPAIGN_OPTION_PAGE_SIZE = 100;
 const QR_REFERENCE_MODES: readonly CampaignQrReferenceMode[] = ["auto", "qrr", "scor"];
 
 export function CampaignForm(props: CampaignFormProps) {
-  const { mode } = props;
+  const { mode, customFieldDefs = [] } = props;
   const router = useRouter();
   const t = useTranslations("campaigns.form");
   const tCampaigns = useTranslations("campaigns");
+  const tCustom = useTranslations("customFields");
   const optionsLoadErrorMessage = t("errors.optionsLoad");
+
+  // Epic #539 — custom values live outside react-hook-form (controlled map;
+  // server registry is the authoritative validator).
+  const [initialCustom] = useState<Record<string, CustomFieldValue>>(() =>
+    initialCustomValues(customFieldDefs, props.campaign?.custom),
+  );
+  const [customValues, setCustomValues] = useState<Record<string, CustomFieldValue>>(() => ({
+    ...initialCustom,
+  }));
+  const [customErrors, setCustomErrors] = useState<Record<string, string>>({});
+
+  const handleCustomChange = (key: string, value: CustomFieldValue | null) => {
+    setCustomValues((prev) => {
+      const next = { ...prev };
+      if (value === null) delete next[key];
+      else next[key] = value;
+      return next;
+    });
+    setCustomErrors((prev) => {
+      if (!(key in prev)) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  };
+
+  const prepareCustomPatch = (): { ok: boolean; patch?: Record<string, unknown> } => {
+    if (customFieldDefs.length === 0) return { ok: true };
+    if (mode === "create") {
+      const missing = missingRequiredCustomKeys(customFieldDefs, customValues);
+      if (missing.length > 0) {
+        setCustomErrors(
+          Object.fromEntries(missing.map((key) => [key, tCustom("form.requiredMissing")])),
+        );
+        return { ok: false };
+      }
+    }
+    return {
+      ok: true,
+      patch: buildCustomFieldPatch(
+        mode === "create" ? {} : initialCustom,
+        customValues,
+        customFieldDefs,
+      ),
+    };
+  };
 
   const defaultValues: DefaultValues<CampaignFormValues> = {
     name: props.campaign?.name ?? "",
@@ -191,12 +252,16 @@ export function CampaignForm(props: CampaignFormProps) {
       return;
     }
 
+    const customPrep = prepareCustomPatch();
+    if (!customPrep.ok) return;
+    const customPatch = customPrep.patch ? { custom: customPrep.patch } : {};
+
     try {
       if (mode === "create") {
-        const created = await CampaignService.createCampaign(
-          createClientApiClient(),
-          toApiPayload(values),
-        );
+        const created = await CampaignService.createCampaign(createClientApiClient(), {
+          ...toApiPayload(values),
+          ...customPatch,
+        });
         toast.success(t("success.created"));
         // For nominative postal campaigns, redirect to constituent selection
         if (created.type === "nominative_postal") {
@@ -209,7 +274,7 @@ export function CampaignForm(props: CampaignFormProps) {
         const updated = await CampaignService.updateCampaign(
           createClientApiClient(),
           props.campaign.id,
-          toApiPayload(values),
+          { ...toApiPayload(values), ...customPatch },
         );
         toast.success(t("success.updated"));
         router.push(`/campaigns/${updated.id}`);
@@ -217,6 +282,11 @@ export function CampaignForm(props: CampaignFormProps) {
       }
     } catch (err) {
       console.error("FORM SUBMIT ERROR:", err);
+      // Epic #539 — surface per-key registry 422s inline on the custom section.
+      if (err instanceof ApiProblem && (err.status === 422 || err.status === 400)) {
+        const perKey = extractCustomFieldErrors(err.extensions.fieldErrors);
+        if (Object.keys(perKey).length > 0) setCustomErrors(perKey);
+      }
       handleApiError(err, form, {
         validation: t("errors.validation"),
         generic: t("errors.generic"),
@@ -440,6 +510,17 @@ export function CampaignForm(props: CampaignFormProps) {
             t={t}
           />
         </FormSection>
+
+        {/* Epic #539 — absent entirely when the flag is off / no defs. */}
+        <CustomFieldsSection
+          definitions={customFieldDefs}
+          values={customValues}
+          onChange={handleCustomChange}
+          errors={customErrors}
+          title={tCustom("form.sectionTitle")}
+          description={tCustom("form.sectionDescription")}
+          disabled={isSubmitting}
+        />
 
         <div className="flex flex-col gap-3 py-8 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-h-5 text-sm text-error">{rootError}</div>

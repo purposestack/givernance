@@ -1,3 +1,5 @@
+import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
+import type { CustomFieldDefinition, CustomFieldValues } from "@givernance/shared/custom-fields";
 import { ArrowLeft, Pencil } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -6,6 +8,11 @@ import { getLocale, getTranslations } from "next-intl/server";
 import { DeleteDonationButton } from "@/components/donations/delete-donation-button";
 import { ReceiptPreviewButton } from "@/components/donations/receipt-preview-button";
 import { RefundDonationButton } from "@/components/donations/refund-donation-button";
+import {
+  CustomFieldDetailRows,
+  fetchCustomFieldDefinitionsOrEmpty,
+  projectableDefinitions,
+} from "@/components/shared/custom-fields";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -24,6 +31,7 @@ import { formatCurrency, formatDate } from "@/lib/format";
 import type { DonationAllocation, DonationDetail } from "@/models/donation";
 import { donationDetailDonorName } from "@/models/donation";
 import { DonationService } from "@/services/DonationService";
+import { FeatureFlagsService, isFlagEnabled } from "@/services/FeatureFlagsService";
 
 interface DonationDetailPageProps {
   params: Promise<{ id: string }>;
@@ -48,9 +56,32 @@ export default async function DonationDetailPage({ params }: DonationDetailPageP
   const { id } = await params;
   const donation = await fetchDonationOrNotFound(id);
 
-  const [t, tDonations, locale] = await Promise.all([
+  // Epic #539 — donation-domain fields on this donation + the donor's
+  // projected fields (donorCustom, §6). Flag off / fetch failure ⇒ no defs ⇒
+  // both groups completely absent.
+  let donationCustomEnabled = false;
+  let constituentCustomEnabled = false;
+  const client = await createServerApiClient();
+  try {
+    const flags = await FeatureFlagsService.listPublic(client);
+    donationCustomEnabled = isFlagEnabled(flags, FEATURE_FLAG_KEYS.DONATIONS_CUSTOM_FIELDS);
+    constituentCustomEnabled = isFlagEnabled(flags, FEATURE_FLAG_KEYS.CONSTITUENTS_CUSTOM_FIELDS);
+  } catch {
+    donationCustomEnabled = false;
+    constituentCustomEnabled = false;
+  }
+  const [donationDefs, constituentDefs] = await Promise.all([
+    fetchCustomFieldDefinitionsOrEmpty(client, "donation", donationCustomEnabled),
+    fetchCustomFieldDefinitionsOrEmpty(client, "constituent", constituentCustomEnabled),
+  ]);
+  // Server re-enforces eligibility per request; this filter only picks which
+  // rows the UI renders.
+  const donorDefs = projectableDefinitions(constituentDefs);
+
+  const [t, tDonations, tCustom, locale] = await Promise.all([
     getTranslations("donations.detail"),
     getTranslations("donations"),
+    getTranslations("customFields"),
     getLocale(),
   ]);
 
@@ -123,8 +154,53 @@ export default async function DonationDetailPage({ params }: DonationDetailPageP
           locale={locale}
         />
         <AllocationsCard donation={donation} allocations={donation.allocations} locale={locale} />
+        {/* Epic #539 — donation-domain custom fields; absent when flag off / no defs. */}
+        <CustomFieldsCard
+          title={tCustom("detail.sectionTitle")}
+          definitions={donationDefs}
+          values={donation.custom}
+          locale={locale}
+          booleanLabels={{ yes: tCustom("boolean.yes"), no: tCustom("boolean.no") }}
+        />
+        {/* Epic #539 §6 — the donor's projected (showOnRelated ∧ ¬sensitive)
+            fields. Values come from the API's per-request serializer
+            (donorCustom); an erased donor projects nothing. */}
+        <CustomFieldsCard
+          title={tCustom("detail.donorSectionTitle")}
+          definitions={donorDefs}
+          values={donation.donorCustom}
+          locale={locale}
+          booleanLabels={{ yes: tCustom("boolean.yes"), no: tCustom("boolean.no") }}
+        />
       </div>
     </>
+  );
+}
+
+function CustomFieldsCard({
+  title,
+  definitions,
+  values,
+  locale,
+  booleanLabels,
+}: {
+  title: string;
+  definitions: CustomFieldDefinition[];
+  values: CustomFieldValues | undefined;
+  locale: string;
+  booleanLabels: { yes: string; no: string };
+}) {
+  if (definitions.length === 0) return null;
+  return (
+    <Card className="p-6">
+      <h2 className="mb-4 font-heading text-xl text-on-surface">{title}</h2>
+      <CustomFieldDetailRows
+        definitions={definitions}
+        values={values}
+        locale={locale}
+        booleanLabels={booleanLabels}
+      />
+    </Card>
   );
 }
 

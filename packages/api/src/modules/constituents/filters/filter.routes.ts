@@ -3,11 +3,13 @@
  */
 
 import { Type } from "@sinclair/typebox";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply } from "fastify";
 import { requireFlag } from "../../../lib/flags/flag-guard.js";
 import { requireAuth, requireWrite } from "../../../lib/guards.js";
 import { DataResponse, ErrorResponses, problemDetail } from "../../../lib/schemas.js";
+import { CORE_FIELD_CATEGORIES, getFieldRegistryBundle } from "./field-registry.js";
 import { FilterService } from "./filter.service.js";
+import type { FieldMetadata } from "./types.js";
 
 // Schema definitions
 const FilterOperatorSchema = Type.Union([
@@ -129,6 +131,55 @@ const CampaignAddResultSchema = Type.Object({
   skipped: Type.Integer(),
 });
 
+/**
+ * One `/filter/fields` catalog entry. Core labels are the FE's existing
+ * next-intl keys (`constituents.filters.fields.<dotted-name>`, relative
+ * form); custom labels are the operator-authored text, rendered literally
+ * (`labelKind` carries that contract to the FE).
+ */
+function serializeCatalogField(field: FieldMetadata) {
+  const isCustom = field.source === "custom";
+  return {
+    name: field.name,
+    type: field.type,
+    operators: field.operators,
+    label: isCustom ? (field.label ?? field.name) : `fields.${field.name}`,
+    labelKind: isCustom ? ("literal" as const) : ("i18n" as const),
+    category: isCustom
+      ? ("custom" as const)
+      : (CORE_FIELD_CATEGORIES[field.name] ?? ("identity" as const)),
+    nullable: field.nullable ?? field.operators.includes("isNull"),
+    ...(isCustom && field.customType ? { uiType: field.customType } : {}),
+    ...(field.options ? { options: field.options } : {}),
+    ...(field.valueUnit ? { valueUnit: field.valueUnit } : {}),
+  };
+}
+
+/**
+ * Map a failed `validateQuery` onto its 400. A query referencing an ARCHIVED
+ * custom field gets the named `custom_field_archived` problem — persisted
+ * segments (campaign UI) surface it explicitly instead of a generic
+ * invalid-query error or a silent drop.
+ */
+function sendInvalidQuery(
+  reply: FastifyReply,
+  validation: { errors: string[]; archivedFields: string[] },
+) {
+  if (validation.archivedFields.length > 0) {
+    return reply.status(400).send(
+      problemDetail(400, "custom_field_archived", "The filter references archived custom fields", {
+        errors: validation.errors,
+        archived_fields: validation.archivedFields,
+      }),
+    );
+  }
+  return reply.status(400).send(
+    problemDetail(400, "Invalid filter query", "The filter query contains errors", {
+      errors: validation.errors,
+    }),
+  );
+}
+
 export async function registerFilterRoutes(app: FastifyInstance) {
   // All filter routes are gated by `advanced_filters`. The parent
   // `constituentRoutes` registrar is mounted at `/v1`, so the paths
@@ -166,17 +217,15 @@ export async function registerFilterRoutes(app: FastifyInstance) {
             .send(problemDetail(401, "Authentication Required", "Request requires authentication"));
         }
         const { orgId } = request.auth;
-        const filterService = new FilterService(orgId, request.log);
 
         try {
+          const registryBundle = await getFieldRegistryBundle(orgId);
+          const filterService = new FilterService(orgId, request.log, registryBundle);
+
           // Validate query
           const validation = filterService.validateQuery(request.body.query);
           if (!validation.valid) {
-            return reply.status(400).send(
-              problemDetail(400, "Invalid filter query", "The filter query contains errors", {
-                errors: validation.errors,
-              }),
-            );
+            return sendInvalidQuery(reply, validation);
           }
 
           const result = await filterService.executeFilter(request.body);
@@ -224,17 +273,15 @@ export async function registerFilterRoutes(app: FastifyInstance) {
             .send(problemDetail(401, "Authentication Required", "Request requires authentication"));
         }
         const { orgId } = request.auth;
-        const filterService = new FilterService(orgId, request.log);
 
         try {
+          const registryBundle = await getFieldRegistryBundle(orgId);
+          const filterService = new FilterService(orgId, request.log, registryBundle);
+
           // Validate query
           const validation = filterService.validateQuery(request.body.query);
           if (!validation.valid) {
-            return reply.status(400).send(
-              problemDetail(400, "Invalid filter query", "The filter query contains errors", {
-                errors: validation.errors,
-              }),
-            );
+            return sendInvalidQuery(reply, validation);
           }
 
           const result = await filterService.previewFilter(request.body);
@@ -280,9 +327,10 @@ export async function registerFilterRoutes(app: FastifyInstance) {
             .send(problemDetail(401, "Authentication Required", "Request requires authentication"));
         }
         const { orgId } = request.auth;
-        const filterService = new FilterService(orgId, request.log);
 
         try {
+          const registryBundle = await getFieldRegistryBundle(orgId);
+          const filterService = new FilterService(orgId, request.log, registryBundle);
           const suggestions = await filterService.getFieldSuggestions(request.query);
           return reply.send({ data: suggestions });
         } catch (error) {
@@ -334,17 +382,15 @@ export async function registerFilterRoutes(app: FastifyInstance) {
         }
         const { orgId } = request.auth;
         const { id: campaignId } = request.params;
-        const filterService = new FilterService(orgId, request.log);
 
         try {
+          const registryBundle = await getFieldRegistryBundle(orgId);
+          const filterService = new FilterService(orgId, request.log, registryBundle);
+
           // Validate query
           const validation = filterService.validateQuery(request.body.query);
           if (!validation.valid) {
-            return reply.status(400).send(
-              problemDetail(400, "Invalid filter query", "The filter query contains errors", {
-                errors: validation.errors,
-              }),
-            );
+            return sendInvalidQuery(reply, validation);
           }
 
           const result = await filterService.addFilteredToCampaign(campaignId, request.body.query);
@@ -391,24 +437,68 @@ export async function registerFilterRoutes(app: FastifyInstance) {
             200: DataResponse(
               Type.Object({
                 fields: Type.Array(
-                  Type.Object({
-                    name: Type.String(),
-                    type: Type.Union([
-                      Type.Literal("string"),
-                      Type.Literal("number"),
-                      Type.Literal("date"),
-                      Type.Literal("boolean"),
-                      Type.Literal("array"),
-                    ]),
-                    operators: Type.Array(FilterOperatorSchema),
-                    description: Type.Optional(Type.String()),
-                  }),
+                  Type.Object(
+                    {
+                      name: Type.String(),
+                      type: Type.Union([
+                        Type.Literal("string"),
+                        Type.Literal("number"),
+                        Type.Literal("date"),
+                        Type.Literal("boolean"),
+                        Type.Literal("array"),
+                      ]),
+                      operators: Type.Array(FilterOperatorSchema),
+                      // `labelKind` disambiguates the label contract: "i18n" =
+                      // a translation key the FE resolves through next-intl;
+                      // "literal" = operator-authored tenant data rendered
+                      // verbatim (custom fields bypass i18n by contract).
+                      label: Type.String(),
+                      labelKind: Type.Union([Type.Literal("literal"), Type.Literal("i18n")]),
+                      category: Type.Union([
+                        Type.Literal("identity"),
+                        Type.Literal("demographics"),
+                        Type.Literal("donation_history"),
+                        Type.Literal("custom"),
+                      ]),
+                      nullable: Type.Boolean(),
+                      uiType: Type.Optional(
+                        Type.Union([
+                          Type.Literal("text"),
+                          Type.Literal("long_text"),
+                          Type.Literal("number"),
+                          Type.Literal("date"),
+                          Type.Literal("boolean"),
+                          Type.Literal("picklist"),
+                          Type.Literal("multi_picklist"),
+                          Type.Literal("currency"),
+                        ]),
+                      ),
+                      options: Type.Optional(
+                        Type.Array(
+                          Type.Object(
+                            {
+                              id: Type.String(),
+                              label: Type.String(),
+                              active: Type.Boolean(),
+                            },
+                            { additionalProperties: false },
+                          ),
+                        ),
+                      ),
+                      valueUnit: Type.Optional(Type.Literal("cents")),
+                      description: Type.Optional(Type.String()),
+                    },
+                    { additionalProperties: false },
+                  ),
                 ),
                 patterns: Type.Array(
-                  Type.Object({
-                    name: PatternTypeSchema,
-                    description: Type.String(),
-                  }),
+                  Type.Object(
+                    {
+                      name: PatternTypeSchema,
+                      description: Type.String(),
+                    },
+                    { additionalProperties: false },
+                  ),
                 ),
               }),
             ),
@@ -416,15 +506,18 @@ export async function registerFilterRoutes(app: FastifyInstance) {
           },
         },
       },
-      async (_request, reply) => {
-        // Import FIELD_REGISTRY dynamically to avoid circular dependency
-        const { FIELD_REGISTRY } = await import("./types.js");
+      async (request, reply) => {
+        if (!request.auth) {
+          return reply
+            .status(401)
+            .send(problemDetail(401, "Authentication Required", "Request requires authentication"));
+        }
+        // Per-org merged catalog: static core fields + the org's filterable
+        // custom-field definitions. With no definitions (or the flag off) the
+        // payload is exactly the enriched core set — zero behaviour change.
+        const { registry } = await getFieldRegistryBundle(request.auth.orgId);
 
-        const fields = Object.values(FIELD_REGISTRY).map((field) => ({
-          name: field.name,
-          type: field.type,
-          operators: field.operators,
-        }));
+        const fields = Object.values(registry).map(serializeCatalogField);
 
         const patterns = [
           {

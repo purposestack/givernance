@@ -1,0 +1,78 @@
+sequenceDiagram
+    autonumber
+    actor Admin as Org admin
+    actor Op as Operator
+    participant Web as Next.js (web)
+    participant API as Fastify (api)
+    participant Redis as Redis<br/>(catalog cache, 60 s)
+    participant DB as Postgres (RLS)
+    participant Worker as BullMQ worker<br/>(custom_fields queue)
+
+    Note over Admin,DB: 1. Admin creates a picklist field
+    Admin->>Web: Settings → Custom fields → New field<br/>("Segment donateur", picklist, options)
+    Web->>API: POST /v1/custom-fields (CSRF token)
+    API->>API: requireFlag(constituents.custom_fields) FIRST<br/>→ requireAuth → requireOrgAdmin
+    alt Flag off
+        API-->>Web: 404 (surface does not exist)
+    else Flag on
+        API->>API: key regex + RESERVED_KEYS +<br/>purpose-if-sensitive checks
+        API->>DB: COUNT non-archived defs (org_id = ctx.orgId, domain)<br/>+ SELECT customization_quota_overrides
+        alt Quota reached (e.g. 10/10 on starter)
+            API-->>Web: 422 problem "quota_exceeded" (names the limit)
+        else Within quota
+            API->>DB: INSERT custom_field_definitions<br/>(key immutable, opt_* ids minted server-side)
+            API->>DB: INSERT audit_log (custom_field.created — metadata diff)
+            API->>Redis: UNLINK customfields:{orgId}:{domain} × 3 domains
+            API-->>Web: 201 { definition } — quota meter "8 / 10"
+        end
+    end
+
+    Note over Op,DB: 2. Operator fills the value (merge-patch)
+    Op->>Web: Edit constituent → "Segment donateur" = "Grand donateur"
+    Web->>API: PUT /v1/constituents/:id { …, custom: { segment_donateur: "opt_a1b2c3d4" } }
+    API->>Redis: getActiveDefinitions(orgId, "constituent")<br/>(cache-hit, else DB read + SETEX 60 s)
+    API->>API: validateCustomPatch — merge-patch over existing blob,<br/>ALL errors collected
+    alt Unknown key / inactive option / bad type
+        API-->>Web: 422 problem + [{ key, code, message }]
+    else Valid
+        API->>DB: UPDATE constituents SET custom = merged<br/>WHERE id = :id AND org_id = ctx.orgId
+        API->>DB: audit diff via sanitizeAuditDiff —<br/>{ customKeysChanged: [keys] }, never values
+        API-->>Web: 200 (custom through definition-driven serializer)
+    end
+
+    Note over Op,DB: 3. Cross-domain projection (donation shows donor fields)
+    Op->>Web: Open donation detail
+    Web->>API: GET /v1/donations/:id
+    API->>API: getProjectableDefinitions(orgId) —<br/>show_on_related ∧ ¬sensitive ∧ ¬archived,<br/>recomputed per request, cap 5
+    API->>DB: donor join SELECT + constituents.custom<br/>(eq(orgId) on root AND join, deleted_at IS NULL)
+    API-->>Web: { …, donorCustom: { segment_donateur: "opt_…" } }<br/>only projected keys serialized, never the whole blob
+
+    Note over Admin,Worker: 4. Option merge ("Ami" + "Amis" → "Ami")
+    Admin->>Web: Option manager → Merge "Amis" into "Ami"
+    Web->>API: POST /v1/custom-fields/:id/options/:optId/merge?dryRun=true
+    API->>DB: COUNT rows WHERE custom @> '{"key":"opt_amis"}'<br/>AND org_id = ctx.orgId
+    API-->>Web: { affectedRows: 87 } — confirm dialog
+    Admin->>Web: Confirm merge
+    Web->>API: POST …/merge (real call)
+    API->>DB: SAME TRANSACTION: mark option { active:false, mergedInto:"opt_ami" }<br/>+ audit_log (custom_field.option_merged)<br/>+ outbox_events (custom_field.option_merge_requested)
+    API->>Redis: UNLINK catalog keys
+    API-->>Web: 202 { mergeId, undoExpiresAt }
+    Worker->>Worker: outbox relay → enqueue backfill<br/>(idempotent jobId option-merge-{mergeId})
+    Worker->>Worker: isFlagEnabled(constituents.custom_fields)<br/>(defence-in-depth — drop if off)
+    loop Per chunk (under withWorkerContext(orgId))
+        Worker->>DB: SELECT rows WHERE custom @> '{"key":"opt_amis"}'<br/>AND org_id = … LIMIT chunk
+        Worker->>DB: INSERT custom_field_merge_undo<br/>(merge_id, entity_id, previous_value of touched key ONLY,<br/>expires_at = now() + 30 d) — BEFORE each rewrite
+        Worker->>DB: UPDATE … SET custom = rewritten (ids swapped)
+    end
+    Worker->>DB: INSERT audit_log (custom_field.option_merge_backfilled —<br/>counts + ids only, never values)
+
+    Note over Worker,DB: 5. Undo window & TTL purge
+    alt Admin clicks Undo within 30 days
+        Admin->>Web: Undo merge
+        Web->>API: POST …/merge/:mergeId/undo
+        API->>DB: SAME TRANSACTION: re-activate source option<br/>+ audit_log (custom_field.option_merge_undone)<br/>+ outbox_events (custom_field.option_merge_undo_requested)
+        API-->>Web: 202 { mergeId }
+        Worker->>DB: restore previous_value per entity, chunk by chunk,<br/>DELETE consumed undo rows (retry-safe)<br/>+ audit_log (custom_field.option_merge_undo_backfilled — counts only)
+    else 30 days elapse
+        Worker->>DB: daily cron custom-field-merge-undo-purge:<br/>DELETE WHERE expires_at < now()<br/>(retention enforcement — never flag-gated)
+    end

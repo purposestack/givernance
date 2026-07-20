@@ -33,6 +33,12 @@ export interface CampaignMember {
   addedAt: string;
   /** Sum of cleared donations (in base cents) attributed to this campaign so far. */
   campaignDonationCents: number;
+  /**
+   * RAW constituent custom blob (Epic #539 §6). The route strips it and
+   * re-emits only the projectable (`show_on_related ∧ ¬sensitive`) keys
+   * through a definition-driven serializer — never raw on the wire.
+   */
+  customRaw: unknown;
 }
 
 /** Sortable columns for the campaign members list (mirrors the table headers). */
@@ -120,9 +126,17 @@ export async function listCampaignMembers(
           type: constituents.type,
           addedAt: campaignConstituents.addedAt,
           campaignDonationCents: aggregatedDonations.totalCents,
+          customRaw: constituents.custom,
         })
         .from(campaignConstituents)
-        .innerJoin(constituents, eq(constituents.id, campaignConstituents.constituentId))
+        // Issue #430: the join clause carries the explicit org predicate too.
+        .innerJoin(
+          constituents,
+          and(
+            eq(constituents.id, campaignConstituents.constituentId),
+            eq(constituents.orgId, orgId),
+          ),
+        )
         .leftJoin(aggregatedDonations, eq(aggregatedDonations.constituentId, constituents.id))
         .where(
           and(
@@ -137,7 +151,13 @@ export async function listCampaignMembers(
       tx
         .select({ count: sql<number>`count(*)` })
         .from(campaignConstituents)
-        .innerJoin(constituents, eq(constituents.id, campaignConstituents.constituentId))
+        .innerJoin(
+          constituents,
+          and(
+            eq(constituents.id, campaignConstituents.constituentId),
+            eq(constituents.orgId, orgId),
+          ),
+        )
         .where(
           and(
             eq(campaignConstituents.orgId, orgId),
@@ -157,6 +177,7 @@ export async function listCampaignMembers(
       type: row.type,
       addedAt: row.addedAt instanceof Date ? row.addedAt.toISOString() : String(row.addedAt),
       campaignDonationCents: Number(row.campaignDonationCents ?? 0),
+      customRaw: row.customRaw ?? {},
     }));
 
     return {

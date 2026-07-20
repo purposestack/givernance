@@ -1,3 +1,4 @@
+import type { CustomFieldValues } from "@givernance/shared/custom-fields";
 import type { Pagination } from "@/models/constituent";
 
 export type CampaignType = "nominative_postal" | "door_drop" | "digital";
@@ -31,6 +32,12 @@ export interface Campaign {
    */
   bankAccountId: string | null;
   qrReferenceMode: CampaignQrReferenceMode;
+  /**
+   * Campaign-domain custom-field values (Epic #539), keyed by definition
+   * key. Absent on older API builds or when `campaigns.custom_fields` is
+   * off for the tenant.
+   */
+  custom?: CustomFieldValues;
   createdAt: string;
   updatedAt: string;
 }
@@ -98,6 +105,8 @@ export interface CampaignCreateInput {
    */
   bankAccountId?: string | null;
   qrReferenceMode?: CampaignQrReferenceMode;
+  /** Merge-patch of custom values (Epic #539): absent = untouched, null clears a key. */
+  custom?: Record<string, unknown>;
 }
 
 export type CampaignUpdateInput = Partial<CampaignCreateInput> & {
