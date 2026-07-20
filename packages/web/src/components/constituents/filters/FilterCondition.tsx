@@ -59,6 +59,23 @@ function isMultiValueOperator(op: FilterOperator): boolean {
 }
 
 /**
+ * Seed value for a freshly-selected field's default operator: nullary → null
+ * (no input), multi-value → [], between → ["",""], boolean → false, else "".
+ * Extracted out of `handleFieldChange` to keep that handler under the Biome
+ * cognitive-complexity ceiling.
+ */
+function seedValueForOperator(
+  operator: FilterOperator,
+  fieldType: FilterField["type"],
+): FilterValue {
+  if (isNullaryOperator(operator)) return null;
+  if (isMultiValueOperator(operator)) return [];
+  if (operator === "between") return ["", ""];
+  if (fieldType === "boolean") return false;
+  return "";
+}
+
+/**
  * When the operator switches between single- and multi-value semantics, the
  * stored value must be reshaped so the BE still accepts it: `eq` "donor"
  * becomes `in` ["donor"], and switching back unwraps the first element.
@@ -140,19 +157,9 @@ export function FilterCondition({ condition, onChange, onRemove }: FilterConditi
   const handleFieldChange = (fieldName: string) => {
     const field = filterFields.find((f) => f.name === fieldName);
     if (field) {
-      // Reset operator and seed a value shaped for that operator when the field
-      // changes: nullary → null (no input), multi-value → [], between →
-      // ["",""], boolean → false, else "".
+      // Reset operator and seed a value shaped for that operator when the field changes.
       const defaultOp = field.operators[0] || "eq";
-      const seedValue: FilterValue = isNullaryOperator(defaultOp)
-        ? null
-        : isMultiValueOperator(defaultOp)
-          ? []
-          : defaultOp === "between"
-            ? ["", ""]
-            : field.type === "boolean"
-              ? false
-              : "";
+      const seedValue = seedValueForOperator(defaultOp, field.type);
       onChange({
         ...condition,
         field: fieldName,
@@ -303,8 +310,7 @@ export function FilterCondition({ condition, onChange, onRemove }: FilterConditi
             type="button"
             className={cn(
               "inline-flex h-9 w-full items-center justify-between gap-2 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm",
-              // focus: parity + the standard form-control ring (was a one-off ring-1).
-              "focus:outline-none focus:border-primary focus:shadow-ring",
+              "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
               selectedValues.length === 0 && "text-on-surface-variant",
             )}
             aria-label={t("selectValuesFor", { field: trDynamic(t, selectedField.label) })}

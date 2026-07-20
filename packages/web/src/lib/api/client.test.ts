@@ -65,7 +65,8 @@ describe("ApiClient Content-Type negotiation", () => {
     const { promise, fetchMock } = captureRequestInit("post");
     await promise;
     const init = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
-    expect((init?.headers as Record<string, string>)["Content-Type"]).toBeUndefined();
+    const headers = init?.headers as Record<string, string> | undefined;
+    expect(headers?.["Content-Type"]).toBeUndefined();
     expect(init?.body).toBeUndefined();
   });
 
@@ -73,14 +74,16 @@ describe("ApiClient Content-Type negotiation", () => {
     const { promise, fetchMock } = captureRequestInit("delete");
     await promise;
     const init = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
-    expect((init?.headers as Record<string, string>)["Content-Type"]).toBeUndefined();
+    const headers = init?.headers as Record<string, string> | undefined;
+    expect(headers?.["Content-Type"]).toBeUndefined();
   });
 
   it("sets Content-Type: application/json when a body is present", async () => {
     const { promise, fetchMock } = captureRequestInit("post", { email: "x@y.com" });
     await promise;
     const init = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
-    expect((init?.headers as Record<string, string>)["Content-Type"]).toBe("application/json");
+    const headers = init?.headers as Record<string, string> | undefined;
+    expect(headers?.["Content-Type"]).toBe("application/json");
     expect(init?.body).toBe(JSON.stringify({ email: "x@y.com" }));
   });
 });
