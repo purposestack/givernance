@@ -46,6 +46,7 @@ import {
   type ReceiptStatus,
 } from "@/models/donation";
 import { DonationService } from "@/services/DonationService";
+import { DonationsFiltersButton } from "./donations-filters";
 
 type BadgeVariant = "success" | "warning" | "error" | "info" | "neutral";
 
@@ -60,6 +61,9 @@ interface DonationsTableProps {
   pagination: DataTablePagination;
   canWrite: boolean;
   canDelete: boolean;
+  /** URL-driven date-range filter values (YYYY-MM-DD or empty). */
+  dateFrom: string;
+  dateTo: string;
   /**
    * Server-resolved sort field from `searchParams` (validated against the
    * `DONATION_SORT_FIELDS` whitelist on the page). Mirrors the
@@ -78,6 +82,8 @@ export function DonationsTable({
   canDelete,
   sort,
   order,
+  dateFrom,
+  dateTo,
 }: DonationsTableProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -343,6 +349,7 @@ export function DonationsTable({
             <SelectItem value="failed">{tReceipt("failed")}</SelectItem>
           </SelectContent>
         </Select>
+        <DonationsFiltersButton dateFrom={dateFrom} dateTo={dateTo} />
       </div>
 
       <DataTable

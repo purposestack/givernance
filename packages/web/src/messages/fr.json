@@ -2014,7 +2014,12 @@
       "dateTo": "Au",
       "searchPlaceholder": "Rechercher un donateur…",
       "receiptLabel": "Reçus",
-      "allReceipts": "Tous les reçus"
+      "allReceipts": "Tous les reçus",
+      "moreLabel": "Plus de filtres",
+      "title": "Plus de filtres",
+      "description": "Affinez la liste par période de don.",
+      "apply": "Appliquer",
+      "clear": "Effacer les filtres"
     },
     "actions": {
       "new": "Nouveau don",
@@ -2198,12 +2203,12 @@
       "typesSelectedCount": "{count} types",
       "advancedLabel": "Plus de filtres",
       "advanced": {
-        "title": "Filtres avancés",
-        "description": "Filtrer par date de dernier don ou par cumul des dons.",
+        "title": "Plus de filtres",
+        "description": "Affinez la liste par date de dernier don ou par total cumulé des dons.",
         "lastDonationFrom": "Dernier don depuis",
         "lastDonationTo": "Dernier don jusqu'au",
-        "minLifetime": "Cumul minimum",
-        "minLifetimeHint": "Dans votre devise de référence. Inclut les dons reçus, déduits des remboursements.",
+        "minLifetime": "Total des dons — minimum",
+        "minLifetimeHint": "N'affiche que les contacts dont le cumul des dons atteint ce montant, dans votre devise de référence (net des remboursements). Exemple : 500 pour vos donateurs à partir de 500.",
         "apply": "Appliquer",
         "clear": "Effacer les filtres"
       },

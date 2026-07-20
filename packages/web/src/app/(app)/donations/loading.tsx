@@ -2,8 +2,10 @@
  * Donations list ghost loading state — rendered by Next.js while the
  * page's server data fetch runs on navigation (ADR-035 rule A5:
  * data-shaped ghosts, no shimmer, no spinner). Mirrors the final
- * geometry of ./page.tsx + ./donations-table.tsx — PageHeader, the
- * date-range FilterBar, then the search row and the DataTable frame
+ * geometry of ./page.tsx + ./donations-table.tsx — PageHeader, then the
+ * search row (search input + receipt select + "More filters" button —
+ * the date range lives in a dialog now, not a standalone FilterBar
+ * block) and the DataTable frame
  * with its toolbar, header row, and six comfortable-density rows
  * (text-only cells, `py-4` ≈ 52px) — so real content replaces the
  * ghosts with zero layout shift (rule A6). The header/filter ghosts are
@@ -35,17 +37,12 @@ export default function DonationsLoading() {
         </div>
       </div>
 
-      {/* FilterBar ghost — the two date-range fields (h-8 inputs). */}
-      <div className="flex flex-wrap items-center gap-3 rounded-[var(--radius-md)] border border-border-brand bg-surface-container-lowest px-4 py-3">
-        <div className="ghost h-8 w-52 max-w-full" />
-        <div className="ghost h-8 w-52 max-w-full" />
-      </div>
-
       <div>
-        {/* Search row ghost — search input + receipt-status select. */}
+        {/* Search row ghost — search input + receipt select + filters button. */}
         <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-center">
           <div className="ghost h-[var(--input-height)] flex-1" />
           <div className="ghost h-[var(--input-height)] w-full sm:w-[180px]" />
+          <div className="ghost h-[var(--btn-height-sm)] w-full sm:w-36" />
         </div>
 
         {/* DataTable ghost — toolbar / header row / 6 comfortable rows. */}

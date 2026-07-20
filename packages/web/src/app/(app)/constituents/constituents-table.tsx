@@ -1073,7 +1073,7 @@ function AdvancedFiltersDialog({
               step="1"
               value={minLifetimeEur}
               onChange={(e) => setMinLifetimeEur(e.target.value)}
-              placeholder="0"
+              placeholder="500"
             />
             <p className="mt-1 text-xs text-on-surface-variant">{t("minLifetimeHint")}</p>
           </div>

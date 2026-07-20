@@ -2014,7 +2014,12 @@
       "dateTo": "To",
       "searchPlaceholder": "Search a donor…",
       "receiptLabel": "Receipts",
-      "allReceipts": "All receipts"
+      "allReceipts": "All receipts",
+      "moreLabel": "More filters",
+      "title": "More filters",
+      "description": "Narrow the list by donation period.",
+      "apply": "Apply",
+      "clear": "Clear filters"
     },
     "actions": {
       "new": "New donation",
@@ -2198,12 +2203,12 @@
       "typesSelectedCount": "{count} types",
       "advancedLabel": "More filters",
       "advanced": {
-        "title": "Advanced filters",
-        "description": "Filter by last donation date or cumulative giving.",
+        "title": "More filters",
+        "description": "Narrow the list by last donation date or total cumulative giving.",
         "lastDonationFrom": "Last donation from",
         "lastDonationTo": "Last donation to",
-        "minLifetime": "Minimum cumulative giving",
-        "minLifetimeHint": "In your base currency. Counts cleared donations net of refunds.",
+        "minLifetime": "Total giving — minimum",
+        "minLifetimeHint": "Only shows contacts whose cumulative giving reaches this amount, in your base currency (net of refunds). Example: 500 for donors from 500 upward.",
         "apply": "Apply",
         "clear": "Clear filters"
       },

@@ -11,7 +11,6 @@ import { hasPermission, requireAuth } from "@/lib/auth/guards";
 import type { DonationListResponse, DonationSortField, DonationSortOrder } from "@/models/donation";
 import { DonationService } from "@/services/DonationService";
 
-import { DonationsFilters } from "./donations-filters";
 import { DonationsTable } from "./donations-table";
 
 const DEFAULT_PER_PAGE = 20;
@@ -121,12 +120,20 @@ export default async function DonationsPage({ searchParams }: DonationsPageProps
   }
 
   const hasAny = result.pagination.total > 0;
+  // The date-range filter now lives INSIDE the table's search row (the
+  // constituents grammar). Keep the table mounted whenever any filter is
+  // active, even with zero results — otherwise an over-restrictive filter
+  // would swap in the page-level empty state and take the only way to
+  // clear the filter with it.
+  const filtersActive = Boolean(
+    searchValue || dateFrom || dateTo || receiptStatusValue || campaignId || constituentId,
+  );
 
-  // ADR-035 rule A1 — the page header and both filter bars (date FilterBar
-  // + the search row inside DonationsTable) are static shell: no entrance
-  // animation, instantly interactive. Only content cascades — the table
-  // container (or empty state) is slot 0, rows follow from slot 1 inside
-  // DonationsTable (rules A2/A3).
+  // ADR-035 rule A1 — the page header and the search row inside
+  // DonationsTable (search + receipt select + "More filters" button) are
+  // static shell: no entrance animation, instantly interactive. Only
+  // content cascades — the table container (or empty state) is slot 0,
+  // rows follow from slot 1 inside DonationsTable (rules A2/A3).
   return (
     <>
       <PageHeader
@@ -147,13 +154,11 @@ export default async function DonationsPage({ searchParams }: DonationsPageProps
         }
       />
 
-      <DonationsFilters dateFrom={dateFrom ?? ""} dateTo={dateTo ?? ""} />
-
       {/* Static spacing wrapper (no animation — its search-row child is a
           filter bar, rule A1): the inner `space-y-*` mirrors the app-shell
           content flow so the table's search row keeps its spacing. */}
       <div className="space-y-6 sm:space-y-8">
-        {hasAny ? (
+        {hasAny || filtersActive ? (
           <DonationsTable
             donations={result.data}
             pagination={result.pagination}
@@ -161,6 +166,8 @@ export default async function DonationsPage({ searchParams }: DonationsPageProps
             canDelete={canDelete}
             sort={sort}
             order={order}
+            dateFrom={dateFrom ?? ""}
+            dateTo={dateTo ?? ""}
           />
         ) : (
           <div className="reveal-item rounded-2xl bg-surface-container-lowest border border-border-brand">
