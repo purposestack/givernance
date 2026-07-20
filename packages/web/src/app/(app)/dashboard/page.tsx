@@ -91,7 +91,9 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-6 sm:space-y-8">
-      <div className="reveal-item" style={cascadeStyle(1)}>
+      {/* ADR-035 rule A1 — the page title is static shell, never animated;
+          only the content blocks below participate in the cascade. */}
+      <div>
         <h1 className="font-heading text-4xl font-normal leading-tight text-on-surface sm:text-5xl">
           {t("greeting", { name: auth.firstName ?? "" })}
         </h1>
@@ -123,7 +125,7 @@ export default async function DashboardPage() {
           icon={Banknote}
           color="primary"
           trend={trendRaised}
-          cascadeIndex={2}
+          cascadeIndex={0}
         />
         <StatCard
           label={t("stats.activeCampaigns")}
@@ -132,7 +134,7 @@ export default async function DashboardPage() {
           icon={Megaphone}
           color="secondary"
           trend={trendCampaigns}
-          cascadeIndex={3}
+          cascadeIndex={1}
         />
         <StatCard
           label={t("stats.donors")}
@@ -141,7 +143,7 @@ export default async function DashboardPage() {
           icon={Users}
           color="tertiary"
           trend={trendDonors}
-          cascadeIndex={4}
+          cascadeIndex={2}
         />
         <StatCard
           label={t("stats.grantDeadlines")}
@@ -149,14 +151,14 @@ export default async function DashboardPage() {
           description={t("stats.noGrantDeadlinesHint")}
           icon={Timer}
           color="amber"
-          cascadeIndex={5}
+          cascadeIndex={3}
         />
       </section>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]">
         <section
           className="reveal-item rounded-2xl bg-surface-container-lowest p-5 border border-border-brand sm:p-6"
-          style={cascadeStyle(6)}
+          style={cascadeStyle(4)}
         >
           <SectionHeader
             title={t("recentDonations.title")}
@@ -182,7 +184,7 @@ export default async function DashboardPage() {
         {canWrite ? (
           <section
             className="reveal-item rounded-2xl bg-surface-container-lowest p-5 border border-border-brand sm:p-6"
-            style={cascadeStyle(7)}
+            style={cascadeStyle(5)}
           >
             <SectionHeader
               title={t("quickActions.title")}
@@ -200,7 +202,7 @@ export default async function DashboardPage() {
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]">
         <section
           className="reveal-item rounded-2xl bg-surface-container-lowest p-5 border border-border-brand sm:p-6"
-          style={cascadeStyle(8)}
+          style={cascadeStyle(6)}
         >
           <SectionHeader
             title={t("campaigns.title")}
@@ -223,7 +225,7 @@ export default async function DashboardPage() {
           </div>
         </section>
 
-        <div className="reveal-item space-y-6" style={cascadeStyle(8)}>
+        <div className="reveal-item space-y-6" style={cascadeStyle(6)}>
           <section className="rounded-2xl border border-primary/20 bg-ai-bg p-5 sm:p-6">
             <div className="flex items-center gap-2 text-ai-text">
               <Lightbulb size={18} aria-hidden="true" />
@@ -465,9 +467,14 @@ function CampaignProgressItem({
       {goalCents > 0 ? (
         <>
           <div className="mt-4 h-2 overflow-hidden rounded-md bg-surface-container">
+            {/* ADR-035 rules A7/E18 — the width is static (server-resolved);
+                the entrance draws via the shared .meter-reveal clip-path
+                sweep (delay auto-chains from this card's cascade slot).
+                --meter-radius matches rounded-md (8px) so the sweeping
+                edge keeps its rounded caps. */}
             <div
-              className="meter-fill h-full rounded-md bg-secondary"
-              style={{ width: `${progress}%` }}
+              className="meter-reveal h-full rounded-md bg-secondary"
+              style={{ width: `${progress}%`, "--meter-radius": "8px" } as React.CSSProperties}
             />
           </div>
           <p className="mt-2 text-xs text-on-surface-variant">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { useCountUp } from "@/hooks/use-count-up";
 
 export interface CountUpProps {
@@ -8,7 +8,12 @@ export interface CountUpProps {
   value: number;
   /** BCP 47 locale tag for Intl.NumberFormat (e.g. "fr-CH"). */
   locale: string;
-  /** Passed through to Intl.NumberFormat (currency, maximumFractionDigits…). */
+  /**
+   * Passed through to Intl.NumberFormat (currency, fraction digits…).
+   * Defaults to `maximumFractionDigits: 0` so integer KPIs never show
+   * decimals mid-count; caller options win, so currency call-sites keep
+   * their explicit two-decimal formatting.
+   */
   formatOptions?: Intl.NumberFormatOptions;
   className?: string;
 }
@@ -18,15 +23,22 @@ export interface CountUpProps {
  * docs/adrs/adr-035-loading-motion-choreography.md). Wraps `useCountUp` in a
  * client component so it can be embedded inside async Server Components:
  * SSR (and no-JS clients) render the FINAL formatted value; the count from 0
- * only plays client-side after hydration, once per mount. Collapses to the
- * final value under prefers-reduced-motion (rule E17).
+ * only plays client-side, and only while the surrounding entrance
+ * choreography (`.reveal-item` / `.cascade` slot) still hides the number —
+ * a visible KPI never re-counts from a fake 0. Collapses to the final value
+ * under prefers-reduced-motion (rule E17).
  */
 export function CountUp({ value, locale, formatOptions, className }: CountUpProps) {
-  const current = useCountUp(value);
+  const hostRef = useRef<HTMLSpanElement | null>(null);
+  const current = useCountUp(value, { hostRef });
   const formatter = useMemo(
-    () => new Intl.NumberFormat(locale, formatOptions),
+    () => new Intl.NumberFormat(locale, { maximumFractionDigits: 0, ...formatOptions }),
     [locale, formatOptions],
   );
 
-  return <span className={className}>{formatter.format(current)}</span>;
+  return (
+    <span ref={hostRef} className={className}>
+      {formatter.format(current)}
+    </span>
+  );
 }

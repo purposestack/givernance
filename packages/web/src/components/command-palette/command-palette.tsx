@@ -52,12 +52,10 @@ import {
   CommandItem,
   CommandList,
   CommandSeparator,
-  commandDialogMotion,
 } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { createClientApiClient } from "@/lib/api/client-browser";
 import { useAuth } from "@/lib/auth";
-import { cn } from "@/lib/utils";
 import { type SearchGroups, type SearchHit, SearchService } from "@/services/SearchService";
 
 const DEBOUNCE_MS = 200;
@@ -225,11 +223,11 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
 
   return (
     <Dialog open={open} onOpenChange={(next) => (next ? null : onClose())}>
-      {/* `commandDialogMotion` — ADR-035 rule D15 overlay entrance/exit
-          (the stock `animate-in` classes on DialogContent are inert:
-          no tw-animate plugin is installed). */}
+      {/* ADR-035 rule D15 overlay entrance/exit is carried by
+          DialogContent itself (@starting-style entrance + dedicated
+          `overlay-exit` keyframe on close) — no override needed here. */}
       <DialogContent
-        className={cn("overflow-hidden p-0 shadow-modal max-w-[640px]", commandDialogMotion)}
+        className="overflow-hidden p-0 shadow-modal max-w-[640px]"
         aria-label={t("title")}
       >
         {/* `DialogTitle` is visually hidden but required by Radix for SR

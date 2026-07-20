@@ -473,15 +473,9 @@ export function ConstituentsTable({
 
   return (
     <>
-      {/* ADR-035 rule A2 — the filter bar is step 1 of the page cascade
-          (header is 0, rows start at 2). The class lives on a container
-          that survives every filter/search/sort re-render (only its
-          children swap), so interacting with a filter never replays the
-          entrance (rule B12). */}
-      <div
-        className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-center reveal-item"
-        style={{ "--cascade-i": 1 } as React.CSSProperties}
-      >
+      {/* ADR-035 rule A1 — the filter bar is static shell: no entrance
+          animation, instantly interactive. Only the table below cascades. */}
+      <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-center">
         <div className="relative flex-1">
           <Search
             className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant opacity-50"
@@ -565,12 +559,14 @@ export function ConstituentsTable({
         sorting={sorting}
         onSortingChange={onSortingChange}
         isPending={isPending}
-        // ADR-035 rule A2 — rows cascade in once per mount, after the
-        // header (0) and filter bar (1). The DataTable itself gates the
-        // replay on the mount-time data reference (rule B12), so search
-        // keystrokes / filter chips / sort / pagination stay instant.
+        // ADR-035 rules A2/A3 — the table container is slot 0 of the
+        // content cascade (container before content), rows follow from
+        // slot 1. The DataTable gates the replay on the mount-time data +
+        // sorting references (rule B12), so search keystrokes / filter
+        // chips / sort / pagination stay instant.
+        className="reveal-item"
         animateEntrance
-        entranceCascadeOffset={2}
+        entranceCascadeOffset={1}
         onRowClick={(row) => router.push(`/constituents/${row.original.id}`)}
         emptyState={
           <EmptyState icon={Users} title={t("empty.title")} description={t("empty.description")} />

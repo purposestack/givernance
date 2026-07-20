@@ -1,7 +1,6 @@
 import { Gift, Plus } from "lucide-react";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
-import type { CSSProperties } from "react";
 
 import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
@@ -123,16 +122,14 @@ export default async function DonationsPage({ searchParams }: DonationsPageProps
 
   const hasAny = result.pagination.total > 0;
 
-  // ADR-035 rule A2 — entrance cascade in reading order: header (0) →
-  // filter bar (1) → table container (2). Classes live on server-rendered
-  // markup only; filter/sort/page changes re-render this RSC in place
-  // (React reconciles the same wrappers, DOM nodes persist), so the
-  // cascade runs once per navigation and never replays on a filter
-  // round-trip (rules B9/B12).
+  // ADR-035 rule A1 — the page header and both filter bars (date FilterBar
+  // + the search row inside DonationsTable) are static shell: no entrance
+  // animation, instantly interactive. Only content cascades — the table
+  // container (or empty state) is slot 0, rows follow from slot 1 inside
+  // DonationsTable (rules A2/A3).
   return (
     <>
       <PageHeader
-        className="reveal-item"
         title={t("title")}
         description={
           hasAny ? t("subtitleWithCount", { count: result.pagination.total }) : t("subtitleEmpty")
@@ -152,13 +149,10 @@ export default async function DonationsPage({ searchParams }: DonationsPageProps
 
       <DonationsFilters dateFrom={dateFrom ?? ""} dateTo={dateTo ?? ""} />
 
-      {/* The inner `space-y-*` mirrors the app-shell content flow so the
-          table's search row keeps its pre-wrapper spacing — the wrapper
-          animates opacity/transform only, zero layout shift (rule A6). */}
-      <div
-        className="reveal-item space-y-6 sm:space-y-8"
-        style={{ "--cascade-i": 2 } as CSSProperties}
-      >
+      {/* Static spacing wrapper (no animation — its search-row child is a
+          filter bar, rule A1): the inner `space-y-*` mirrors the app-shell
+          content flow so the table's search row keeps its spacing. */}
+      <div className="space-y-6 sm:space-y-8">
         {hasAny ? (
           <DonationsTable
             donations={result.data}
@@ -169,7 +163,7 @@ export default async function DonationsPage({ searchParams }: DonationsPageProps
             order={order}
           />
         ) : (
-          <div className="rounded-2xl bg-surface-container-lowest border border-border-brand">
+          <div className="reveal-item rounded-2xl bg-surface-container-lowest border border-border-brand">
             <EmptyState icon={Gift} title={t("empty.title")} description={t("empty.seedHint")} />
           </div>
         )}

@@ -25,16 +25,19 @@ export const DialogOverlay = forwardRef<
     className={cn(
       "fixed inset-0 z-[var(--z-modal)] bg-overlay",
       // ADR-035 D15 — scrim fades in with the dialog entrance (300ms
-      // --ease-out via @starting-style) and lifts with the faster exit
-      // fade. Exit plays the shared `cascade-in` keyframe in reverse
-      // against the closed-state opacity so Radix Presence has a real
-      // animation to await before unmounting (pure transitions are not
-      // awaited). The global reduced-motion block collapses both to
-      // instant final state (E17).
+      // --ease-out via @starting-style) and lifts with the faster exit:
+      // the dedicated `overlay-exit` keyframe (globals.css) over
+      // --duration-exit --ease-in. A CSS *animation* (not a transition)
+      // because Radix Presence only awaits animations before unmounting;
+      // the entrance transition is disabled on close so the exit
+      // animation owns the closed state and the two never compound. The
+      // global reduced-motion block collapses both to instant final
+      // state (E17).
       "transition-opacity duration-[var(--duration-slower)] ease-out",
       "starting:opacity-0",
+      "data-[state=closed]:transition-none",
       "data-[state=closed]:opacity-0",
-      "data-[state=closed]:animate-[cascade-in_var(--duration-normal)_var(--ease-in)_reverse_forwards]",
+      "data-[state=closed]:animate-[overlay-exit_var(--duration-exit)_var(--ease-in)_forwards]",
       className,
     )}
     {...props}
@@ -58,15 +61,17 @@ export const DialogContent = forwardRef<
         "shadow-overlay",
         // ADR-035 D15 — enter: opacity 0→1 + scale(0.98)→1 over
         // --duration-slower (300ms) --ease-out via @starting-style, once
-        // per open. Exit: plain fade, faster than entrance, --ease-in
-        // (D15's 200ms has no motion token — --duration-normal is the
-        // nearest faster-than-entrance step). Radix centering rides the
-        // `translate` property, so the opacity/scale motion never touches
-        // it — compositor properties only (E18).
+        // per open. Exit: plain fade, faster than entrance — the
+        // dedicated `overlay-exit` keyframe over --duration-exit (200ms)
+        // --ease-in, with the entrance transition disabled on close so
+        // the exit animation owns the closed state. Radix centering rides
+        // the `translate` property, so the opacity/scale motion never
+        // touches it — compositor properties only (E18).
         "transition-[opacity,scale] duration-[var(--duration-slower)] ease-out",
         "starting:opacity-0 starting:scale-[0.98]",
+        "data-[state=closed]:transition-none",
         "data-[state=closed]:opacity-0",
-        "data-[state=closed]:animate-[cascade-in_var(--duration-normal)_var(--ease-in)_reverse_forwards]",
+        "data-[state=closed]:animate-[overlay-exit_var(--duration-exit)_var(--ease-in)_forwards]",
         "focus:outline-none",
         className,
       )}
