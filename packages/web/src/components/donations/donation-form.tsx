@@ -674,8 +674,10 @@ function ConstituentPicker({ value, selected, onSelect, invalid }: ConstituentPi
             "border border-outline-variant rounded-[var(--radius-input)]",
             "font-body text-base",
             "transition-[border-color,box-shadow] duration-normal ease-out",
-            "focus-visible:outline-none focus-visible:border-primary focus-visible:shadow-ring",
-            "aria-invalid:border-error aria-invalid:focus-visible:shadow-ring-error",
+            // focus: (not focus-visible:) — field-like <button> trigger; pointer
+            // clicks must show the same ring as text inputs (docs/11 SS2.10 rule 7).
+            "focus:outline-none focus:border-primary focus:shadow-ring",
+            "aria-invalid:border-error aria-invalid:focus:shadow-ring-error",
             !selected && "text-text-muted",
           )}
         >

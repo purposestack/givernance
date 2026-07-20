@@ -23,9 +23,15 @@ export const SelectTrigger = forwardRef<
       "border border-outline-variant rounded-[var(--radius-input)]",
       "font-body text-base placeholder:text-text-muted",
       "transition-[border-color,box-shadow] duration-[var(--duration-normal)] ease-out",
-      "focus-visible:outline-none focus-visible:border-primary focus-visible:shadow-ring",
+      // `focus:` (not `focus-visible:`) — the trigger is a <button>, and
+      // browsers only grant :focus-visible to buttons on KEYBOARD focus,
+      // so a pointer click showed no ring while every text input (which
+      // always matches :focus-visible) showed one. Form controls must
+      // present the same focused state regardless of input modality
+      // (docs/11 §2.10 rule 7 — form-control focus parity).
+      "focus:outline-none focus:border-primary focus:shadow-ring",
       "disabled:cursor-not-allowed disabled:opacity-70 disabled:contrast-more:opacity-80",
-      "aria-invalid:border-error aria-invalid:focus-visible:shadow-ring-error",
+      "aria-invalid:border-error aria-invalid:focus:shadow-ring-error",
       "data-[placeholder]:text-text-muted",
       className,
     )}
