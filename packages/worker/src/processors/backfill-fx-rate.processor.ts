@@ -235,6 +235,7 @@ async function processDonation(
       new Date(),
       donation.amountCents,
       1,
+      settlementCurrency,
       log,
     );
     return { kind: "resolved" };
@@ -266,6 +267,7 @@ async function processDonation(
     rateResult.timestamp,
     donation.amountCents,
     minorUnitScale,
+    settlementCurrency,
     log,
   );
   return { kind: "resolved" };
@@ -383,6 +385,7 @@ async function resolveDonation(
   rateTimestamp: Date,
   amountCents: number,
   minorUnitScale: number,
+  settlementCurrency: string,
   log: ReturnType<typeof jobLogger>,
 ): Promise<void> {
   // `amountCents` is in the DONATION currency's minor units; the settled amount is
@@ -398,10 +401,18 @@ async function resolveDonation(
       exchangeRateSource: source,
       exchangeRateTimestamp: rateTimestamp,
       amountInSettlementCurrencyCents,
+      // Without the currency the settled amount is unreadable as soon as a fund is
+      // repointed at an account in another currency (H3).
+      settledCurrency: settlementCurrency,
       fxPending: false,
       updatedAt: new Date(),
     })
-    .where(eq(donations.id, donationId));
+    // Explicit tenant predicate + the fx_pending guard: RLS is bypassed on this
+    // owner-pool processor, and the guard makes a concurrent/duplicate batch a
+    // no-op instead of re-stamping an already-resolved row (H5).
+    .where(
+      and(eq(donations.id, donationId), eq(donations.orgId, orgId), eq(donations.fxPending, true)),
+    );
 
   await db.insert(auditLogs).values({
     orgId,

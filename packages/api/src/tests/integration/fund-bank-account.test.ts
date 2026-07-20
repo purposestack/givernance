@@ -57,7 +57,7 @@ beforeAll(async () => {
   await db.execute(sql`DELETE FROM bank_accounts WHERE org_id IN (${ORG_A}, ${ORG_B})`);
 
   const tokenA = signToken(app, {
-    acr: "urn:givernance:acr:bank-mutation",
+    acr: "2",
     auth_time: Math.floor(Date.now() / 1000) - 60,
   });
 
@@ -78,7 +78,7 @@ beforeAll(async () => {
 
   // Create an active bank account for ORG_B (for cross-org test)
   const tokenB = signTokenB(app, {
-    acr: "urn:givernance:acr:bank-mutation",
+    acr: "2",
     auth_time: Math.floor(Date.now() / 1000) - 60,
   });
   const createB = await app.inject({

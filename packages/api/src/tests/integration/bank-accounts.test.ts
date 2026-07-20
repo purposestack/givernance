@@ -24,7 +24,7 @@ import { db } from "../helpers/db.js";
 
 let app: FastifyInstance;
 // Step-up tokens — POST / PATCH / DELETE on /v1/bank-accounts require
-// acr = "urn:givernance:acr:bank-mutation" + a recent auth_time.
+// acr >= 2 (LoA-2) + a recent auth_time.
 let acrToken: string;
 let acrTokenB: string;
 
@@ -39,7 +39,7 @@ beforeAll(async () => {
   await db.execute(sql`DELETE FROM bank_accounts WHERE org_id IN (${ORG_A}, ${ORG_B})`);
 
   const acrClaims = {
-    acr: "urn:givernance:acr:bank-mutation",
+    acr: "2",
     auth_time: Math.floor(Date.now() / 1000) - 60,
   };
   acrToken = signToken(app, acrClaims);

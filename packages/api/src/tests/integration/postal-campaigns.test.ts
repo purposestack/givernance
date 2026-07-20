@@ -775,7 +775,7 @@ describe("Postal preview", () => {
     const token = signToken(app);
     // Bank-account mutations require a fresh step-up ACR (bankMutationAcr guard).
     const bankToken = signToken(app, {
-      acr: "urn:givernance:acr:bank-mutation",
+      acr: "2",
       auth_time: Math.floor(Date.now() / 1000) - 60,
     });
     // Fresh slate — the partial unique (org_id, iban) WHERE deleted_at IS

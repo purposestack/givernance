@@ -341,13 +341,52 @@ async function fetchBalanceTxnFx(
  * Pulled out of the `withWorkerContext` callback in `handlePaymentIntentSucceeded`
  * to keep that callback below the cognitive-complexity threshold.
  *
- * Queries campaign_funds for rows with is_online_default = true, creates one
- * donation_allocations row per fund, and applies a rounding-remainder correction
- * so the total always sums to amountCents.
+ * Queries EVERY campaign_funds row for the campaign (ordered by sortOrder) and
+ * creates one donation_allocations row per fund, splitting by `splitPct`.
+ *
+ * NOTE: this deliberately does NOT filter on `is_online_default`. `0059` creates a
+ * partial UNIQUE index on `(campaign_id) WHERE is_online_default`, so filtering on
+ * it caps the result at ONE row — the split percentages would never be applied and
+ * the remainder correction below would silently pour the whole donation into that
+ * single fund (a 60/40 campaign would settle 100/0 with no error). `isOnlineDefault`
+ * only designates the fallback fund for the single-fund / checkout-config path.
  *
  * Single-fund case: splitPct is NULL → full amount flows to that fund.
  * No-op when the DONATION_FUND_ROUTING flag is off (defence-in-depth).
  */
+/**
+ * Split `amountCents` across the campaign's routed funds (ADR-032 §3.1). Pure +
+ * exported so the split itself is unit-testable — a test that only asserts
+ * `sum === amountCents` cannot tell a correct 60/40 from a broken 100/0.
+ *
+ * Single fund with a NULL splitPct takes the whole amount. Otherwise each share
+ * is floored and the leftover minor units are handed out by LARGEST REMAINDER,
+ * so rounding drift is spread fairly instead of biasing the first row.
+ */
+export function computeFundSplits(
+  rows: Array<{ fundId: string; splitPct: string | null }>,
+  amountCents: number,
+): Array<{ fundId: string; amountCents: number }> {
+  if (rows.length === 1 && rows[0]?.splitPct === null) {
+    return [{ fundId: rows[0].fundId, amountCents }];
+  }
+
+  const shares = rows.map((row) => {
+    const exact = row.splitPct !== null ? (amountCents * Number(row.splitPct)) / 100 : 0;
+    const floored = Math.floor(exact);
+    return { fundId: row.fundId, amountCents: floored, fraction: exact - floored };
+  });
+
+  let leftover = amountCents - shares.reduce((sum, s) => sum + s.amountCents, 0);
+  for (const share of [...shares].sort((a, b) => b.fraction - a.fraction)) {
+    if (leftover <= 0) break;
+    share.amountCents += 1;
+    leftover -= 1;
+  }
+
+  return shares.map((s) => ({ fundId: s.fundId, amountCents: s.amountCents }));
+}
+
 async function maybeCreateFundAllocations(
   tx: Parameters<Parameters<typeof withWorkerContext>[1]>[0],
   args: {
@@ -363,35 +402,17 @@ async function maybeCreateFundAllocations(
   const fundRows = await tx
     .select({ fundId: campaignFunds.fundId, splitPct: campaignFunds.splitPct })
     .from(campaignFunds)
-    .where(
-      and(
-        eq(campaignFunds.campaignId, campaignId),
-        eq(campaignFunds.orgId, orgId),
-        eq(campaignFunds.isOnlineDefault, true),
-      ),
-    );
+    .where(and(eq(campaignFunds.campaignId, campaignId), eq(campaignFunds.orgId, orgId)))
+    .orderBy(campaignFunds.sortOrder, campaignFunds.fundId);
 
   if (fundRows.length === 0) return;
 
-  const allocationValues = fundRows.map((row) => ({
+  const allocationValues = computeFundSplits(fundRows, amountCents).map((s) => ({
     orgId,
     donationId,
-    fundId: row.fundId,
-    // NULL splitPct means single-fund: full amount flows to the fund.
-    amountCents:
-      row.splitPct !== null ? Math.round(amountCents * (Number(row.splitPct) / 100)) : amountCents,
+    fundId: s.fundId,
+    amountCents: s.amountCents,
   }));
-
-  // Correct for rounding drift: add remainder to the first allocation so the
-  // sum of all allocation rows always equals the donation amount exactly.
-  const allocatedTotal = allocationValues.reduce((sum, a) => sum + a.amountCents, 0);
-  const remainder = amountCents - allocatedTotal;
-  if (remainder !== 0 && allocationValues[0]) {
-    allocationValues[0] = {
-      ...allocationValues[0],
-      amountCents: allocationValues[0].amountCents + remainder,
-    };
-  }
 
   await tx.insert(donationAllocations).values(allocationValues);
 
@@ -501,8 +522,15 @@ async function handlePaymentIntentSucceeded(
         constituentId,
         amountCents,
         currency,
-        // Legacy base-currency conversion (kept for back-compat — ADR-032 §2.3)
-        exchangeRate: (fxExchangeRate ?? convertedAmount.exchangeRate).toFixed(8),
+        // Base-currency conversion (ADR-032 §2.3). `exchange_rate` MUST stay the
+        // presentment→base_currency rate that produced `amount_base_cents`, so the
+        // invariant `amount_cents × exchange_rate ≈ amount_base_cents` holds. The
+        // Stripe presentment→settlement rate is a DIFFERENT quantity and is recorded
+        // separately via exchange_rate_source='stripe_balance_txn' +
+        // settled_* + amount_in_settlement_currency_cents. Letting the Stripe rate
+        // win here made reconciliation diverge from the stored base amount whenever
+        // the Stripe account settles in a currency other than the org's base.
+        exchangeRate: convertedAmount.exchangeRate.toFixed(8),
         amountBaseCents: convertedAmount.amountBaseCents,
         campaignId: campaignId || undefined,
         qrCodeId: resolvedQrCodeId ?? undefined,
@@ -655,7 +683,11 @@ async function handlePaymentIntentSucceeded(
         constituentId,
         currency,
         donationId,
-        exchangeRate: fxExchangeRate ?? convertedAmount.exchangeRate,
+        // Two distinct rates — never conflate them (B2): `exchangeRate` is
+        // presentment→base_currency (pairs with amountBaseCents);
+        // `settlementExchangeRate` is Stripe's presentment→settlement rate.
+        exchangeRate: convertedAmount.exchangeRate,
+        settlementExchangeRate: fxExchangeRate,
         exchangeRateSource,
         amountCents,
         settledAmountCents,

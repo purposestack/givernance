@@ -3,7 +3,7 @@
  *
  * The `requireBankMutationAcr` guard (in lib/guards.ts) fires on
  * POST / PATCH / DELETE /v1/bank-accounts. It requires:
- *   1. acr === "urn:givernance:acr:bank-mutation" in the JWT
+ *   1. acr >= 2 (LoA-2, MFA-backed) in the JWT
  *   2. auth_time within the last 900 seconds (15 minutes)
  *
  * GET /v1/bank-accounts does NOT require the step-up — only requireAuth.
@@ -20,7 +20,7 @@ import { authHeader, ensureTestTenants, ORG_A, signToken } from "../helpers/auth
 
 let app: FastifyInstance;
 
-const ACR_CLAIM = "urn:givernance:acr:bank-mutation";
+const ACR_CLAIM = "2";
 const STEP_UP_WINDOW_SECONDS = 900;
 
 const VALID_CH_IBAN = "CH4808390000012345678";
@@ -77,7 +77,7 @@ describe("Step-up ACR guard on bank account mutations (Task 13)", () => {
 
     expect(res.statusCode).toBe(401);
     // The guard must set the WWW-Authenticate header
-    expect(res.headers["www-authenticate"]).toMatch(/urn:givernance:acr:bank-mutation/);
+    expect(res.headers["www-authenticate"]).toMatch(/acr_values="2"/);
     const body = res.json<{ type: string }>();
     expect(body.type).toBe("urn:givernance:error:step-up-required");
   });
@@ -97,7 +97,7 @@ describe("Step-up ACR guard on bank account mutations (Task 13)", () => {
     });
 
     expect(res.statusCode).toBe(401);
-    expect(res.headers["www-authenticate"]).toMatch(/urn:givernance:acr:bank-mutation/);
+    expect(res.headers["www-authenticate"]).toMatch(/acr_values="2"/);
     const body = res.json<{ type: string }>();
     expect(body.type).toBe("urn:givernance:error:step-up-required");
   });

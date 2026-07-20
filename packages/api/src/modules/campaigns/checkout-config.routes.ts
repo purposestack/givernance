@@ -29,7 +29,7 @@ import {
   funds,
 } from "@givernance/shared/schema";
 import { Type } from "@sinclair/typebox";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { systemDb } from "../../lib/db.js";
 import { requireFlag } from "../../lib/flags/flag-guard.js";
@@ -84,10 +84,13 @@ export async function checkoutConfigRoutes(app: FastifyInstance) {
       const { id } = request.params;
 
       // systemDb: public endpoint — no authenticated tenant context, so RLS would
-      // block all reads via the app pool. Lookups are by PK (campaignId) with no
-      // cross-tenant data exposure (campaign IDs are unguessable UUIDs).
+      // block all reads via the app pool. Because RLS is bypassed here, EVERY hop
+      // below re-asserts the campaign's `orgId` explicitly: `funds.bank_account_id`
+      // is a plain FK (not composite `(org_id, id)`), so a fund in org A pointing at
+      // a bank account in org B would otherwise publish B's settlement currency on
+      // an unauthenticated endpoint and steer A's donors' presentment currency.
       const [campaign] = await systemDb
-        .select({ id: campaigns.id })
+        .select({ id: campaigns.id, orgId: campaigns.orgId })
         .from(campaigns)
         .where(eq(campaigns.id, id))
         .limit(1);
@@ -96,62 +99,62 @@ export async function checkoutConfigRoutes(app: FastifyInstance) {
         return reply.code(404).send(problemDetail(404, "campaign_not_found", "Campaign not found"));
       }
 
-      // 2. Resolve the online-default fund routing entry for this campaign.
-      const [routing] = await systemDb
-        .select({ fundId: campaignFunds.fundId })
-        .from(campaignFunds)
-        .where(and(eq(campaignFunds.campaignId, id), eq(campaignFunds.isOnlineDefault, true)))
-        .limit(1);
+      const orgId = campaign.orgId;
 
-      if (!routing) {
-        return reply
+      // A single opaque detail for every not-ready branch: the caller is anonymous,
+      // so distinct messages would be a configuration oracle for the tenant's setup.
+      const notReady = () =>
+        reply
           .code(422)
           .send(
             problemDetail(
               422,
               "campaign_not_ready_for_online_payment",
-              "Campaign has no online-default fund configured",
+              "This campaign is not ready to accept online payments.",
             ),
           );
-      }
+
+      // 2. Resolve the online-default fund routing entry for this campaign.
+      const [routing] = await systemDb
+        .select({ fundId: campaignFunds.fundId })
+        .from(campaignFunds)
+        .where(
+          and(
+            eq(campaignFunds.campaignId, id),
+            eq(campaignFunds.orgId, orgId),
+            eq(campaignFunds.isOnlineDefault, true),
+          ),
+        )
+        .limit(1);
+
+      if (!routing) return notReady();
 
       // 3. Resolve the bank account linked to the fund (settlement currency source).
       const [fund] = await systemDb
         .select({ bankAccountId: funds.bankAccountId })
         .from(funds)
-        .where(eq(funds.id, routing.fundId))
+        .where(and(eq(funds.id, routing.fundId), eq(funds.orgId, orgId)))
         .limit(1);
 
-      if (!fund?.bankAccountId) {
-        return reply
-          .code(422)
-          .send(
-            problemDetail(
-              422,
-              "campaign_not_ready_for_online_payment",
-              "Fund has no linked bank account",
-            ),
-          );
-      }
+      if (!fund?.bankAccountId) return notReady();
 
-      // 4. Read the settlement currency from the bank account.
+      // 4. Read the settlement currency from the bank account. A soft-deleted or
+      //    deactivated account must NOT resolve — the worker already filters this
+      //    way, and settling to a closed account is worse than refusing checkout.
       const [bankAccount] = await systemDb
         .select({ currency: bankAccounts.currency })
         .from(bankAccounts)
-        .where(eq(bankAccounts.id, fund.bankAccountId))
+        .where(
+          and(
+            eq(bankAccounts.id, fund.bankAccountId),
+            eq(bankAccounts.orgId, orgId),
+            eq(bankAccounts.isActive, true),
+            isNull(bankAccounts.deletedAt),
+          ),
+        )
         .limit(1);
 
-      if (!bankAccount) {
-        return reply
-          .code(422)
-          .send(
-            problemDetail(
-              422,
-              "campaign_not_ready_for_online_payment",
-              "Fund bank account not found",
-            ),
-          );
-      }
+      if (!bankAccount) return notReady();
 
       const settlementCurrency = bankAccount.currency;
       const cacheKey = `stripe:currencies:${settlementCurrency}`;

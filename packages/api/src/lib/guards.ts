@@ -210,14 +210,20 @@ export async function requireAdminSecret(request: FastifyRequest, reply: Fastify
 }
 
 /**
- * Guard: require bank-mutation step-up ACR (ADR-031 §2.7).
+ * Guard: require bank-mutation step-up (ADR-032 §2.7).
  *
- * Bank account mutation endpoints (POST / PATCH / DELETE) require the
- * caller's JWT to carry `acr = "urn:givernance:acr:bank-mutation"` AND
- * an `auth_time` no older than 900 seconds (15 minutes). Both conditions
- * must hold simultaneously — a fresh re-auth that lacks the custom ACR
- * claim is insufficient, and the right ACR on a stale session is equally
- * insufficient.
+ * Bank account mutation endpoints (POST / PATCH / DELETE) require an MFA-backed
+ * re-authentication: `acr >= 2` AND an `auth_time` no older than 900 seconds
+ * (15 minutes). Both must hold — a fresh re-auth at LoA 1 is insufficient, and
+ * LoA 2 on a stale session is equally insufficient.
+ *
+ * The LoA-2 contract is the one the realm actually issues (`acr.loa.map` maps
+ * only {"1","2"}) and the one the web step-up requests (`acr_values=2`). An
+ * earlier revision of this guard demanded a bespoke
+ * `urn:givernance:acr:bank-mutation` value that NO flow, client scope or web
+ * code ever produces — which made every bank mutation a permanent 401 the
+ * moment it shipped. Reusing the proven LoA contract keeps the control real
+ * instead of creating pressure to disable it in production (B4).
  *
  * On failure the response follows RFC 9457 with a `WWW-Authenticate`
  * header so the web client can trigger a Keycloak step-up redirect.
@@ -236,7 +242,7 @@ export function requireBankMutationAcr(_fastify?: unknown) {
     // requireAuth must run before this guard — if auth is null, 401 is
     // already being sent. Defensive check in case the order is wrong.
     if (!auth) {
-      void reply.header("WWW-Authenticate", 'Bearer acr_values="urn:givernance:acr:bank-mutation"');
+      void reply.header("WWW-Authenticate", 'Bearer acr_values="2"');
       return reply.status(401).send({
         type: "urn:givernance:error:step-up-required",
         title: "Step-up authentication required",
@@ -249,9 +255,15 @@ export function requireBankMutationAcr(_fastify?: unknown) {
     const acr = auth.acr;
     const authTime = auth.authTime;
 
-    const hasRequiredAcr = acr === "urn:givernance:acr:bank-mutation";
+    // acr >= 2 — the LoA the realm issues and the web requests. Parsed
+    // numerically so a future LoA 3 also satisfies a LoA-2 requirement.
+    const acrLevel = Number.parseInt(String(acr ?? ""), 10);
+    const hasRequiredAcr = Number.isFinite(acrLevel) && acrLevel >= 2;
     const nowSec = Math.floor(Date.now() / 1000);
-    const isRecent = typeof authTime === "number" && nowSec - authTime < 900;
+    const authTimeAge = typeof authTime === "number" ? nowSec - authTime : null;
+    // Reject a FUTURE auth_time as well as a stale one — a clock-skewed or
+    // forged forward-dated claim must not buy an unbounded step-up window.
+    const isRecent = authTimeAge !== null && authTimeAge >= 0 && authTimeAge < 900;
 
     if (!hasRequiredAcr || !isRecent) {
       request.log.warn(
@@ -267,7 +279,7 @@ export function requireBankMutationAcr(_fastify?: unknown) {
         },
         "Bank account mutation blocked — step-up ACR required",
       );
-      void reply.header("WWW-Authenticate", 'Bearer acr_values="urn:givernance:acr:bank-mutation"');
+      void reply.header("WWW-Authenticate", 'Bearer acr_values="2"');
       return reply.status(401).send({
         type: "urn:givernance:error:step-up-required",
         title: "Step-up authentication required",

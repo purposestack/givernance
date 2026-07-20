@@ -71,7 +71,7 @@ beforeAll(async () => {
   );
 
   const tokenA = signToken(app, {
-    acr: "urn:givernance:acr:bank-mutation",
+    acr: "2",
     auth_time: Math.floor(Date.now() / 1000) - 60,
   });
 

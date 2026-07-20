@@ -69,7 +69,7 @@ beforeAll(async () => {
   // on ORG_B for the cross-tenant test.
   // Bank account mutations require the step-up ACR claim.
   const bankAcrClaims = {
-    acr: "urn:givernance:acr:bank-mutation",
+    acr: "2",
     auth_time: Math.floor(Date.now() / 1000) - 60,
   };
   const tokenA = signToken(app, bankAcrClaims);
@@ -215,7 +215,7 @@ describe("Campaign × bank-account link (Epic #318)", () => {
     // Create a throwaway account, soft-delete it, then try to link.
     // Bank account mutations need the step-up ACR; campaign PATCH does not.
     const bankToken = signToken(app, {
-      acr: "urn:givernance:acr:bank-mutation",
+      acr: "2",
       auth_time: Math.floor(Date.now() / 1000) - 60,
     });
     const token = signToken(app);
