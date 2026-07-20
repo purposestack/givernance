@@ -49,6 +49,11 @@ export const AlertDialogContent = forwardRef<
     <AlertDialogPrimitive.Content
       ref={ref}
       className={cn(
+        // AlertDialog stays vertically CENTERED — it is reserved for
+        // static confirmation surfaces whose height never changes while
+        // open. Height-dynamic content (search, wizards, async loads,
+        // growing lists) must use Dialog, which is top-anchored exactly
+        // because a centered overlay re-centers on every height change.
         "fixed left-1/2 top-1/2 z-[var(--z-modal)] -translate-x-1/2 -translate-y-1/2",
         // Bumped padding from p-6 → p-8 for breathing room around
         // the title / body / footer trio (super-admin feedback,

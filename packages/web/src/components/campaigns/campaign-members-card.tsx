@@ -783,7 +783,7 @@ function AddMembersDialog({ open, onOpenChange, campaignId, onAdded }: AddMember
               runSearch(e.target.value);
             }}
           />
-          <div className="max-h-72 overflow-y-auto rounded-lg border border-outline-variant">
+          <div className="min-h-24 max-h-72 overflow-y-auto rounded-lg border border-outline-variant">
             {isPending && results.length === 0 ? (
               <p className="p-3 text-sm text-on-surface-variant">{t("loading")}</p>
             ) : results.length === 0 ? (

@@ -48,7 +48,7 @@ Adopt the following **choreography rules** for every operator-facing screen that
 
 #### D. Overlays — modals, popovers, panels
 
-15. **Modal entrance**: scrim fades to `--color-overlay` + dialog `opacity 0→1`/`scale(0.98)→1`, `--duration-slower` (300 ms) `--ease-out`. **Exit is faster than entrance**: 200 ms `--ease-in`, a plain fade — no reverse cascade. Closing an overlay never re-runs any choreography on the page behind it.
+15. **Modal entrance**: scrim fades to `--color-overlay` + dialog `opacity 0→1`/`scale(0.98)→1`, `--duration-slower` (300 ms) `--ease-out`. **Exit is faster than entrance**: 200 ms `--ease-in` (`--duration-exit`), a plain fade — no reverse cascade. Closing an overlay never re-runs any choreography on the page behind it. **Anchoring**: working dialogs are **top-anchored** (fixed `top-[15vh]`, capped `max-h-[80vh]` with internal scroll) — a vertically-centered overlay re-centers on every content-height change, so search results, wizard steps, async loads and error banners would make the surface (and its inputs) jump while the operator types. Height changes may only extend the bottom edge. True vertical centering is reserved for `AlertDialog` confirmation surfaces, whose content is static by contract — **a centered overlay may never contain height-dynamic content**.
 16. **Modal content replays its own mini-cascade, once per open — and the body is never blank.** From the dialog's first painted frame, its content is present in ghost form (rule 5); header + title lead, sections ghost-in top→bottom. Then rules A2–A8 apply at half scale: same stagger token, sweeps capped at 400 ms, total budget 600 ms. Re-opening the same modal on unchanged data may skip the replay.
 
 #### E. Guard-rails (all of the above)
