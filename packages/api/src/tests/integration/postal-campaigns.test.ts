@@ -772,8 +772,9 @@ describe("Postal preview", () => {
   };
 
   async function createBankLinkedCampaign(iban: string): Promise<string> {
-    const token = signToken(app);
-    // Bank-account mutations require a fresh step-up ACR (bankMutationAcr guard).
+    // Both requests below mutate settlement (create the bank account, then link it
+    // to the campaign), so both need the step-up token — there is no plain-token
+    // request left in this helper.
     const bankToken = signToken(app, {
       acr: "2",
       auth_time: Math.floor(Date.now() / 1000) - 60,
