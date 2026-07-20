@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { DEFAULT_LOCALE, formatCurrency, formatCurrencyRounded } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -40,6 +41,10 @@ export function CurrencyAmount({
   rounded = false,
   className,
 }: CurrencyAmountProps) {
+  // Every user-visible string (tooltip + SR announcement + the info button's
+  // aria-label) goes through i18n — the only consumer is the FR-capable operator
+  // dashboard, so hardcoded English reached French screen-reader users (B6).
+  const t = useTranslations("currencyAmount");
   const formatAmount = (amount: number, currency: string) =>
     (rounded ? formatCurrencyRounded : formatCurrency)(amount, locale ?? DEFAULT_LOCALE, currency);
   const [tooltipOpen, setTooltipOpen] = useState(false);
@@ -73,7 +78,7 @@ export function CurrencyAmount({
 
   if (!hasConversion) {
     // Simple variant — no tooltip needed
-    const srText = `${formattedAmount}${variant === "aggregate" ? " (approximate total)" : ""}`;
+    const srText = `${formattedAmount}${variant === "aggregate" ? ` ${t("approximateTotal")}` : ""}`;
     return (
       <span className={cn("inline-flex items-center", className)}>
         <span className="sr-only">{srText}</span>
@@ -102,16 +107,22 @@ export function CurrencyAmount({
     : null;
 
   const tooltipContent = [
-    `Converted from ${originalFormatted}`,
+    t("convertedFrom", { amount: originalFormatted }),
     data.exchangeRate
-      ? `Rate: 1 ${data.originalCurrency} = ${data.exchangeRate.toFixed(4)} ${data.displayCurrency}`
+      ? t("rate", {
+          from: data.originalCurrency,
+          rate: data.exchangeRate.toFixed(4),
+          // `hasConversion` already implies a display currency; the ?? keeps the
+          // optional field's type honest without widening the message contract.
+          to: data.displayCurrency ?? "",
+        })
       : null,
-    rateDate ? `As of ${rateDate}` : null,
+    rateDate ? t("asOf", { date: rateDate }) : null,
   ]
     .filter(Boolean)
     .join(" · ");
 
-  const srLabel = `Approximately ${formattedAmount}, converted from ${originalFormatted}`;
+  const srLabel = t("srApproximate", { amount: formattedAmount, original: originalFormatted });
 
   return (
     <span className={cn("relative inline-flex items-center gap-1", className)}>
@@ -122,7 +133,7 @@ export function CurrencyAmount({
       <button
         ref={buttonRef}
         type="button"
-        aria-label="Show conversion details"
+        aria-label={t("showDetails")}
         aria-expanded={tooltipOpen}
         aria-describedby={tooltipId}
         onClick={() => setTooltipOpen((v) => !v)}

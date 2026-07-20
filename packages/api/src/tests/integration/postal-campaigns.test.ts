@@ -804,7 +804,8 @@ describe("Postal preview", () => {
     const linked = await app.inject({
       method: "PATCH",
       url: `/v1/campaigns/${campaign}`,
-      headers: authHeader(token),
+      // Repointing a campaign's settlement account requires the step-up (B5).
+      headers: authHeader(bankToken),
       payload: { bankAccountId },
     });
     expect(linked.statusCode).toBe(200);

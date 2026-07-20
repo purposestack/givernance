@@ -17,7 +17,13 @@ import { Type } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { CustomFieldValidationError, customFieldsProblem } from "../../lib/custom-field-values.js";
 import { flagService as defaultFlagService } from "../../lib/flags/flag-service.js";
-import { requireAuth, requireOrgAdmin, requireWrite } from "../../lib/guards.js";
+import {
+  changesSettlementDestination,
+  requireAuth,
+  requireBankMutationAcr,
+  requireOrgAdmin,
+  requireWrite,
+} from "../../lib/guards.js";
 import {
   DataArrayResponse,
   DataArrayResponseNoPagination,
@@ -384,7 +390,9 @@ export async function campaignRoutes(app: FastifyInstance) {
       // Issue #181: `minRole` mirrors `requireWrite` so the idempotency
       // replay branch enforces the same role check the guard would.
       config: { idempotency: { routeKey: "POST:/v1/campaigns", minRole: "write" } },
-      preHandler: requireWrite,
+      // Step-up only when the body actually sets a settlement destination (B5) —
+      // an ordinary campaign create stays step-up-free.
+      preHandler: [requireWrite, requireBankMutationAcr({ when: changesSettlementDestination })],
       schema: {
         tags: ["Campaigns"],
         body: CampaignCreateBody,
@@ -494,7 +502,9 @@ export async function campaignRoutes(app: FastifyInstance) {
   app.patch(
     "/campaigns/:id",
     {
-      preHandler: requireWrite,
+      // Repointing `bankAccountId` here changes where a live campaign settles —
+      // same blast radius as editing the IBAN row, so same step-up (B5).
+      preHandler: [requireWrite, requireBankMutationAcr({ when: changesSettlementDestination })],
       schema: {
         tags: ["Campaigns"],
         params: IdParams,

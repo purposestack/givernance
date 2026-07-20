@@ -15,7 +15,7 @@ import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
 import { requireFlag } from "../../lib/flags/flag-guard.js";
-import { requireAuth, requireWrite } from "../../lib/guards.js";
+import { requireAuth, requireBankMutationAcr, requireOrgAdmin } from "../../lib/guards.js";
 import {
   DataArrayResponseNoPagination,
   DataResponse,
@@ -133,7 +133,14 @@ export async function campaignFundRoutes(app: FastifyInstance) {
   app.post(
     "/campaigns/:id/funds/routing",
     {
-      preHandler: [requireFlag(FEATURE_FLAG_KEYS.DONATION_FUND_ROUTING), requireWrite],
+      preHandler: [
+        requireFlag(FEATURE_FLAG_KEYS.DONATION_FUND_ROUTING),
+        // These routes exist solely to rebind where a campaign's money settles,
+        // so they carry the same blast radius as a bank-account mutation (B5):
+        // org_admin + a fresh MFA step-up, unconditionally.
+        requireOrgAdmin,
+        requireBankMutationAcr(),
+      ],
       schema: {
         tags: ["Campaigns", "Funds"],
         params: IdParams,
@@ -183,7 +190,14 @@ export async function campaignFundRoutes(app: FastifyInstance) {
   app.patch(
     "/campaigns/:id/funds/routing/:fundId",
     {
-      preHandler: [requireFlag(FEATURE_FLAG_KEYS.DONATION_FUND_ROUTING), requireWrite],
+      preHandler: [
+        requireFlag(FEATURE_FLAG_KEYS.DONATION_FUND_ROUTING),
+        // These routes exist solely to rebind where a campaign's money settles,
+        // so they carry the same blast radius as a bank-account mutation (B5):
+        // org_admin + a fresh MFA step-up, unconditionally.
+        requireOrgAdmin,
+        requireBankMutationAcr(),
+      ],
       schema: {
         tags: ["Campaigns", "Funds"],
         params: CampaignFundParams,
@@ -227,7 +241,14 @@ export async function campaignFundRoutes(app: FastifyInstance) {
   app.delete(
     "/campaigns/:id/funds/routing/:fundId",
     {
-      preHandler: [requireFlag(FEATURE_FLAG_KEYS.DONATION_FUND_ROUTING), requireWrite],
+      preHandler: [
+        requireFlag(FEATURE_FLAG_KEYS.DONATION_FUND_ROUTING),
+        // These routes exist solely to rebind where a campaign's money settles,
+        // so they carry the same blast radius as a bank-account mutation (B5):
+        // org_admin + a fresh MFA step-up, unconditionally.
+        requireOrgAdmin,
+        requireBankMutationAcr(),
+      ],
       schema: {
         tags: ["Campaigns", "Funds"],
         params: CampaignFundParams,

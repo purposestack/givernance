@@ -25,6 +25,13 @@ import {
 } from "../helpers/auth.js";
 import { db } from "../helpers/db.js";
 
+/**
+ * Settlement-changing routes (campaign/fund bank links, campaign-funds routing)
+ * now require the same MFA step-up as a bank-account mutation (B5), so the test
+ * tokens carry acr=2 + a fresh auth_time.
+ */
+const stepUp = () => ({ acr: "2", auth_time: Math.floor(Date.now() / 1000) - 60 });
+
 let app: FastifyInstance;
 
 const VALID_CH_IBAN = "CH5604835012345678009";
@@ -94,7 +101,7 @@ beforeAll(async () => {
   const campaignRes = await app.inject({
     method: "POST",
     url: "/v1/campaigns",
-    headers: authHeader(signToken(app)),
+    headers: authHeader(signToken(app, stepUp())),
     payload: { name: "Routing Test Campaign A", type: "digital", defaultCurrency: "CHF" },
   });
   expect(campaignRes.statusCode).toBe(201);
@@ -104,7 +111,7 @@ beforeAll(async () => {
   const campaignBRes = await app.inject({
     method: "POST",
     url: "/v1/campaigns",
-    headers: authHeader(signTokenB(app)),
+    headers: authHeader(signTokenB(app, stepUp())),
     payload: { name: "Routing Test Campaign B", type: "digital", defaultCurrency: "EUR" },
   });
   expect(campaignBRes.statusCode).toBe(201);
@@ -114,7 +121,7 @@ beforeAll(async () => {
   const fund1Res = await app.inject({
     method: "POST",
     url: "/v1/funds",
-    headers: authHeader(signToken(app)),
+    headers: authHeader(signToken(app, stepUp())),
     payload: { name: "Routing Fund 1", type: "unrestricted", bankAccountId },
   });
   expect(fund1Res.statusCode).toBe(201);
@@ -123,7 +130,7 @@ beforeAll(async () => {
   const fund2Res = await app.inject({
     method: "POST",
     url: "/v1/funds",
-    headers: authHeader(signToken(app)),
+    headers: authHeader(signToken(app, stepUp())),
     payload: { name: "Routing Fund 2", type: "restricted", bankAccountId },
   });
   expect(fund2Res.statusCode).toBe(201);
@@ -147,7 +154,7 @@ describe("Campaign fund routing — flag gate", () => {
     );
     await flagService.invalidate();
 
-    const token = signToken(app);
+    const token = signToken(app, stepUp());
     const res = await app.inject({
       method: "GET",
       url: `/v1/campaigns/${campaignId}/funds/routing`,
@@ -166,7 +173,7 @@ describe("Campaign fund routing — flag gate", () => {
 
 describe("Campaign fund routing — CRUD (flag on)", () => {
   it("GET /v1/campaigns/:id/funds/routing returns empty array initially", async () => {
-    const token = signToken(app);
+    const token = signToken(app, stepUp());
     const res = await app.inject({
       method: "GET",
       url: `/v1/campaigns/${campaignId}/funds/routing`,
@@ -179,7 +186,7 @@ describe("Campaign fund routing — CRUD (flag on)", () => {
   });
 
   it("POST /v1/campaigns/:id/funds/routing adds a fund with isOnlineDefault = true", async () => {
-    const token = signToken(app);
+    const token = signToken(app, stepUp());
     const res = await app.inject({
       method: "POST",
       url: `/v1/campaigns/${campaignId}/funds/routing`,
@@ -197,7 +204,7 @@ describe("Campaign fund routing — CRUD (flag on)", () => {
   });
 
   it("POST second fund without splitPct or correct online-default setup triggers 422 invariant", async () => {
-    const token = signToken(app);
+    const token = signToken(app, stepUp());
     // Adding fund2 without splitPct while fund1 also has no splitPct violates the multi-fund invariant
     const res = await app.inject({
       method: "POST",
@@ -213,7 +220,7 @@ describe("Campaign fund routing — CRUD (flag on)", () => {
   });
 
   it("DELETE /v1/campaigns/:id/funds/routing/:fundId removes the entry", async () => {
-    const token = signToken(app);
+    const token = signToken(app, stepUp());
     // There is one routing entry (fund1) — remove it
     const deleteRes = await app.inject({
       method: "DELETE",
@@ -235,7 +242,7 @@ describe("Campaign fund routing — CRUD (flag on)", () => {
 
   it("GET /v1/campaigns/:id/funds/routing for a cross-org campaign returns 404", async () => {
     // ORG_A token trying to access ORG_B campaign
-    const token = signToken(app);
+    const token = signToken(app, stepUp());
     const res = await app.inject({
       method: "GET",
       url: `/v1/campaigns/${campaignBId}/funds/routing`,
@@ -247,7 +254,7 @@ describe("Campaign fund routing — CRUD (flag on)", () => {
   });
 
   it("POST to cross-org campaign returns 404", async () => {
-    const token = signToken(app);
+    const token = signToken(app, stepUp());
     const res = await app.inject({
       method: "POST",
       url: `/v1/campaigns/${campaignBId}/funds/routing`,

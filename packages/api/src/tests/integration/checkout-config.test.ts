@@ -20,6 +20,13 @@ import { createServer } from "../../server.js";
 import { authHeader, ensureTestTenants, ORG_A, signToken } from "../helpers/auth.js";
 import { db } from "../helpers/db.js";
 
+/**
+ * Settlement-changing routes (campaign/fund bank links, campaign-funds routing)
+ * now require the same MFA step-up as a bank-account mutation (B5), so the test
+ * tokens carry acr=2 + a fresh auth_time.
+ */
+const stepUp = () => ({ acr: "2", auth_time: Math.floor(Date.now() / 1000) - 60 });
+
 let app: FastifyInstance;
 
 const VALID_CH_IBAN = "CH3509000000000000001"; // PostFinance IID 09000 — mod-97 = 1 verified
@@ -79,7 +86,7 @@ beforeAll(async () => {
   const camp1Res = await app.inject({
     method: "POST",
     url: "/v1/campaigns",
-    headers: authHeader(signToken(app)),
+    headers: authHeader(signToken(app, stepUp())),
     payload: { name: "Checkout Config Test No Routing", type: "digital", defaultCurrency: "CHF" },
   });
   expect(camp1Res.statusCode).toBe(201);
@@ -89,7 +96,7 @@ beforeAll(async () => {
   const camp2Res = await app.inject({
     method: "POST",
     url: "/v1/campaigns",
-    headers: authHeader(signToken(app)),
+    headers: authHeader(signToken(app, stepUp())),
     payload: { name: "Checkout Config Test With Routing", type: "digital", defaultCurrency: "CHF" },
   });
   expect(camp2Res.statusCode).toBe(201);
@@ -114,7 +121,7 @@ beforeAll(async () => {
   const fundRes = await app.inject({
     method: "POST",
     url: "/v1/funds",
-    headers: authHeader(signToken(app)),
+    headers: authHeader(signToken(app, stepUp())),
     payload: { name: "Checkout Config General Fund", type: "unrestricted", bankAccountId },
   });
   expect(fundRes.statusCode).toBe(201);
@@ -124,7 +131,7 @@ beforeAll(async () => {
   const routingRes = await app.inject({
     method: "POST",
     url: `/v1/campaigns/${campaignWithRouting}/funds/routing`,
-    headers: authHeader(signToken(app)),
+    headers: authHeader(signToken(app, stepUp())),
     payload: { fundId, isOnlineDefault: true },
   });
   expect(routingRes.statusCode).toBe(201);

@@ -3778,5 +3778,13 @@
         "body": "Votre envoi groupé d'emails a commencé à être distribué aux destinataires."
       }
     }
+  },
+  "currencyAmount": {
+    "approximateTotal": "(total approximatif)",
+    "convertedFrom": "Converti depuis {amount}",
+    "rate": "Taux : 1 {from} = {rate} {to}",
+    "asOf": "Au {date}",
+    "srApproximate": "Environ {amount}, converti depuis {original}",
+    "showDetails": "Afficher le détail de la conversion"
   }
 }

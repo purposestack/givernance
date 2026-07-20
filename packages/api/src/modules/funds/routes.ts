@@ -3,7 +3,12 @@
 import { FUND_TYPE_VALUES } from "@givernance/shared/schema";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
-import { requireAuth, requireOrgAdmin } from "../../lib/guards.js";
+import {
+  changesSettlementDestination,
+  requireAuth,
+  requireBankMutationAcr,
+  requireOrgAdmin,
+} from "../../lib/guards.js";
 import {
   DataArrayResponse,
   DataResponse,
@@ -111,7 +116,7 @@ export async function fundRoutes(app: FastifyInstance) {
   app.post(
     "/funds",
     {
-      preHandler: requireOrgAdmin,
+      preHandler: [requireOrgAdmin, requireBankMutationAcr({ when: changesSettlementDestination })],
       schema: {
         tags: ["Funds"],
         body: FundCreateBody,
@@ -192,7 +197,7 @@ export async function fundRoutes(app: FastifyInstance) {
   app.patch(
     "/funds/:id",
     {
-      preHandler: requireOrgAdmin,
+      preHandler: [requireOrgAdmin, requireBankMutationAcr({ when: changesSettlementDestination })],
       schema: {
         tags: ["Funds"],
         params: IdParams,

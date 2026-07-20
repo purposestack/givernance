@@ -3778,5 +3778,13 @@
         "body": "Your bulk email has started sending to the recipient list."
       }
     }
+  },
+  "currencyAmount": {
+    "approximateTotal": "(approximate total)",
+    "convertedFrom": "Converted from {amount}",
+    "rate": "Rate: 1 {from} = {rate} {to}",
+    "asOf": "As of {date}",
+    "srApproximate": "Approximately {amount}, converted from {original}",
+    "showDetails": "Show conversion details"
   }
 }

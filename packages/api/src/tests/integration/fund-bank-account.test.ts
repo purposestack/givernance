@@ -22,6 +22,13 @@ import {
 } from "../helpers/auth.js";
 import { db } from "../helpers/db.js";
 
+/**
+ * Settlement-changing routes (campaign/fund bank links, campaign-funds routing)
+ * now require the same MFA step-up as a bank-account mutation (B5), so the test
+ * tokens carry acr=2 + a fresh auth_time.
+ */
+const stepUp = () => ({ acr: "2", auth_time: Math.floor(Date.now() / 1000) - 60 });
+
 let app: FastifyInstance;
 
 const VALID_CH_IBAN_A = "CH5604835012345678009";
@@ -123,7 +130,7 @@ beforeAll(async () => {
   const createFund = await app.inject({
     method: "POST",
     url: "/v1/funds",
-    headers: authHeader(signToken(app)),
+    headers: authHeader(signToken(app, stepUp())),
     payload: { name: "General Fund (Task 3 test)", type: "unrestricted" },
   });
   expect(createFund.statusCode).toBe(201);
@@ -144,7 +151,7 @@ afterAll(async () => {
 
 describe("Fund ↔ bank account FK (Epic #416 Task 3)", () => {
   it("PATCH /v1/funds/:id persists bankAccountId link", async () => {
-    const token = signToken(app);
+    const token = signToken(app, stepUp());
     const res = await app.inject({
       method: "PATCH",
       url: `/v1/funds/${fundA}`,
@@ -161,7 +168,7 @@ describe("Fund ↔ bank account FK (Epic #416 Task 3)", () => {
   });
 
   it("PATCH /v1/funds/:id with cross-org bankAccountId returns 404", async () => {
-    const token = signToken(app);
+    const token = signToken(app, stepUp());
     const res = await app.inject({
       method: "PATCH",
       url: `/v1/funds/${fundA}`,
@@ -175,7 +182,7 @@ describe("Fund ↔ bank account FK (Epic #416 Task 3)", () => {
   });
 
   it("PATCH /v1/funds/:id with inactive bankAccountId returns 422", async () => {
-    const token = signToken(app);
+    const token = signToken(app, stepUp());
     const res = await app.inject({
       method: "PATCH",
       url: `/v1/funds/${fundA}`,
@@ -190,7 +197,7 @@ describe("Fund ↔ bank account FK (Epic #416 Task 3)", () => {
 
   it("PATCH /v1/funds/:id with bankAccountId = null clears the FK", async () => {
     // First confirm it's currently linked
-    const tokenA = signToken(app);
+    const tokenA = signToken(app, stepUp());
     const linked = await app.inject({
       method: "GET",
       url: `/v1/funds/${fundA}`,

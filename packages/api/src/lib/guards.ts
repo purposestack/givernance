@@ -231,12 +231,39 @@ export async function requireAdminSecret(request: FastifyRequest, reply: Fastify
  * The factory signature matches the pattern used by `requireFlag` so
  * routes can include it in `preHandler` arrays without an extra import
  * of the Fastify instance.
+ *
+ * Coverage note (B5): the step-up is meaningless if it only guards the IBAN row.
+ * A settlement destination can equally be repointed by rebinding a campaign or a
+ * fund to a different bank account, or by rewriting a campaign's fund splits — so
+ * those routes carry this guard too (conditionally, via `when`, where the route
+ * also serves unrelated edits). `changesSettlementDestination` below is the shared
+ * predicate.
  */
-export function requireBankMutationAcr(_fastify?: unknown) {
+
+/**
+ * True when a request body would repoint where money settles — i.e. it carries a
+ * `bankAccountId`. Used with `requireBankMutationAcr({ when })` on multi-purpose
+ * routes so ordinary edits stay step-up-free.
+ */
+export function changesSettlementDestination(request: FastifyRequest): boolean {
+  const body = request.body as Record<string, unknown> | undefined | null;
+  return !!body && Object.hasOwn(body, "bankAccountId");
+}
+export function requireBankMutationAcr(options?: {
+  /**
+   * Optional predicate — when supplied, the step-up is enforced ONLY if it
+   * returns true for the request. Lets a multi-purpose route (e.g.
+   * `PATCH /v1/campaigns/:id`) demand MFA when the body actually repoints the
+   * settlement destination, without forcing a step-up on an unrelated rename.
+   */
+  when?: (request: FastifyRequest) => boolean;
+}) {
   return async function bankMutationAcrHook(
     request: FastifyRequest,
     reply: FastifyReply,
   ): Promise<void> {
+    if (options?.when && !options.when(request)) return;
+
     const auth = request.auth;
 
     // requireAuth must run before this guard — if auth is null, 401 is

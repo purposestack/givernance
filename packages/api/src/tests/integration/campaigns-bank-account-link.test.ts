@@ -27,6 +27,13 @@ import {
 } from "../helpers/auth.js";
 import { db } from "../helpers/db.js";
 
+/**
+ * Settlement-changing routes (campaign/fund bank links, campaign-funds routing)
+ * now require the same MFA step-up as a bank-account mutation (B5), so the test
+ * tokens carry acr=2 + a fresh auth_time.
+ */
+const stepUp = () => ({ acr: "2", auth_time: Math.floor(Date.now() / 1000) - 60 });
+
 let app: FastifyInstance;
 
 // Same canonical PostFinance test IBAN used in the bank-accounts test
@@ -125,7 +132,7 @@ describe("Campaign × bank-account link (Epic #318)", () => {
   let campaignId: string;
 
   it("POST /v1/campaigns persists `bankAccountId` + defaults `qrReferenceMode` to auto", async () => {
-    const token = signToken(app);
+    const token = signToken(app, stepUp());
     const res = await app.inject({
       method: "POST",
       url: "/v1/campaigns",
@@ -148,7 +155,7 @@ describe("Campaign × bank-account link (Epic #318)", () => {
   });
 
   it("GET /v1/campaigns/:id surfaces the link to the operator UI", async () => {
-    const token = signToken(app);
+    const token = signToken(app, stepUp());
     const res = await app.inject({
       method: "GET",
       url: `/v1/campaigns/${campaignId}`,
@@ -162,7 +169,7 @@ describe("Campaign × bank-account link (Epic #318)", () => {
   });
 
   it("PATCH /v1/campaigns/:id can flip the link to a different (same-tenant) account", async () => {
-    const token = signToken(app);
+    const token = signToken(app, stepUp());
     const res = await app.inject({
       method: "PATCH",
       url: `/v1/campaigns/${campaignId}`,
@@ -178,7 +185,7 @@ describe("Campaign × bank-account link (Epic #318)", () => {
   });
 
   it("PATCH /v1/campaigns/:id can unlink (NULL = back to standard mode)", async () => {
-    const token = signToken(app);
+    const token = signToken(app, stepUp());
     const res = await app.inject({
       method: "PATCH",
       url: `/v1/campaigns/${campaignId}`,
@@ -199,7 +206,7 @@ describe("Campaign × bank-account link (Epic #318)", () => {
   });
 
   it("rejects a cross-tenant `bankAccountId` (ADR-019)", async () => {
-    const token = signToken(app);
+    const token = signToken(app, stepUp());
     const res = await app.inject({
       method: "PATCH",
       url: `/v1/campaigns/${campaignId}`,
@@ -218,7 +225,7 @@ describe("Campaign × bank-account link (Epic #318)", () => {
       acr: "2",
       auth_time: Math.floor(Date.now() / 1000) - 60,
     });
-    const token = signToken(app);
+    const token = signToken(app, stepUp());
     const tempCreate = await app.inject({
       method: "POST",
       url: "/v1/bank-accounts",
