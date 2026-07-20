@@ -60,15 +60,13 @@ export const CommandInput = forwardRef<
     <CommandPrimitive.Input
       ref={ref}
       className={cn(
-        // No focus ring on the palette's search head — the input is
-        // auto-focused the moment the palette opens, so a ring singles
-        // out nothing (and the global :focus-visible ring hugged the
-        // bare <input>, excluding the magnifier and the dialog close
-        // button — it read as a badly-integrated component). The blinking
-        // caret + hairline separator are the affordance, matching the
-        // Raycast/Linear/Spotlight palette idiom. shadow-none suppresses
-        // the global :focus-visible box-shadow.
-        "flex h-11 w-full bg-transparent py-3 text-sm outline-none focus-visible:shadow-none",
+        // No focus ring on the palette's search head — the caret +
+        // hairline separator are the affordance (Raycast/Linear idiom).
+        // The suppression lives in globals.css ("[cmdk-input-wrapper]
+        // input:focus-visible"): the global ring rule is UNLAYERED, so a
+        // Tailwind utility like focus-visible:shadow-none loses the
+        // cascade to it and can NOT do the job from here.
+        "flex h-11 w-full bg-transparent py-3 text-sm outline-none",
         "placeholder:text-text-muted disabled:cursor-not-allowed disabled:opacity-50",
         className,
       )}
