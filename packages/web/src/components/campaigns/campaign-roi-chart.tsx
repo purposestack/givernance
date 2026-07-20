@@ -97,15 +97,13 @@ export function CampaignRoiChart({
         </div>
       </div>
 
-      {/* ADR-035 rule A7 — the plot area draws left→right once per mount
-          via the shared .sweep-in clip-path utility. Server component: it
-          only re-renders through RSC reconciliation (DOM nodes persist),
-          so background refetches never replay the sweep (rule B12). */}
-      <figure
-        className="sweep-in mt-5 space-y-4"
-        aria-describedby={figureCaptionId}
-        aria-details={tableId}
-      >
+      {/* ADR-035 rule A7 — labels + values appear with the card; only the
+          BARS draw left→right once per mount via the shared .sweep-in
+          clip-path utility on each track (delay auto-chains from the
+          card's inherited --cascade-i slot). Server component: it only
+          re-renders through RSC reconciliation (DOM nodes persist), so
+          background refetches never replay the sweep (rule B12). */}
+      <figure className="mt-5 space-y-4" aria-describedby={figureCaptionId} aria-details={tableId}>
         {series.map((item) => {
           const width = Math.max((item.value / chartMax) * 100, item.value > 0 ? 8 : 0);
           return (
@@ -120,7 +118,7 @@ export function CampaignRoiChart({
                 </span>
               </div>
               <div
-                className="mt-3 h-3 overflow-hidden rounded-pill bg-surface-container-highest"
+                className="sweep-in mt-3 h-3 overflow-hidden rounded-pill bg-surface-container-highest"
                 aria-hidden="true"
               >
                 {item.unavailable ? (

@@ -21,8 +21,18 @@ export const AlertDialogOverlay = forwardRef<
     ref={ref}
     className={cn(
       "fixed inset-0 z-[var(--z-modal)] bg-overlay",
-      "data-[state=open]:animate-in data-[state=closed]:animate-out",
-      "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      // ADR-035 D15 — mirrors DialogOverlay: scrim fades in with the
+      // entrance (300ms --ease-out via @starting-style) and lifts with
+      // the faster exit — the dedicated `overlay-exit` keyframe
+      // (globals.css) over --duration-exit --ease-in; the entrance
+      // transition is disabled on close so the exit animation owns the
+      // closed state. (The former `animate-in` / `fade-*` classes were
+      // inert: no tw-animate plugin is installed.)
+      "transition-opacity duration-[var(--duration-slower)] ease-out",
+      "starting:opacity-0",
+      "data-[state=closed]:transition-none",
+      "data-[state=closed]:opacity-0",
+      "data-[state=closed]:animate-[overlay-exit_var(--duration-exit)_var(--ease-in)_forwards]",
       className,
     )}
     {...props}
@@ -47,8 +57,19 @@ export const AlertDialogContent = forwardRef<
         "bg-surface-container-lowest text-on-surface",
         "border border-border-brand rounded-[var(--radius-lg)]",
         "shadow-overlay",
-        "data-[state=open]:animate-in data-[state=closed]:animate-out",
-        "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+        // ADR-035 D15 — mirrors DialogContent: enter opacity 0→1 +
+        // scale(0.98)→1 over --duration-slower --ease-out via
+        // @starting-style; exit is the dedicated `overlay-exit` keyframe
+        // over --duration-exit (200ms) --ease-in, entrance transition
+        // disabled on close. Radix centering rides `translate`, so the
+        // opacity/scale motion never touches it (E18). (The former
+        // `animate-in` / `fade-*` classes were inert: no tw-animate
+        // plugin is installed.)
+        "transition-[opacity,scale] duration-[var(--duration-slower)] ease-out",
+        "starting:opacity-0 starting:scale-[0.98]",
+        "data-[state=closed]:transition-none",
+        "data-[state=closed]:opacity-0",
+        "data-[state=closed]:animate-[overlay-exit_var(--duration-exit)_var(--ease-in)_forwards]",
         "focus:outline-none",
         className,
       )}

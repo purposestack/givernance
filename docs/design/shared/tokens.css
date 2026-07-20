@@ -314,9 +314,11 @@
   --duration-slow:    250ms;
   --duration-slower:  300ms;
 
-  /* Loading choreography (ADR-035): per-block cascade offset + data-draw sweep */
+  /* Loading choreography (ADR-035): per-block cascade offset + data-draw sweep.
+     --duration-exit is the overlay exit fade (rule D15 — exit faster than entrance). */
   --stagger-step:     50ms;
   --duration-sweep:   600ms;
+  --duration-exit:    200ms;
 
   --ease-out:    cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in:     cubic-bezier(0.7, 0, 0.84, 0);

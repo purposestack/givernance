@@ -5,14 +5,7 @@ import { Megaphone, MoreHorizontal, Pencil, Search, XCircle } from "lucide-react
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
-import {
-  type CSSProperties,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  useTransition,
-} from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 
 import { EmptyState } from "@/components/shared/empty-state";
 import {
@@ -375,17 +368,11 @@ export function CampaignsTable({
     [canManageAdminActions, canWrite, t, locale],
   );
 
-  // ADR-035 rule A2 — slots 1 (search/filter row) and 2 (table container)
-  // of the list-page entrance cascade; slot 0 is the PageHeader in
-  // page.tsx. Typing in the search box / paging only re-renders this
-  // mounted client component (no remount, classes never re-key on data),
-  // so the entrance never replays on interaction (rule B12).
+  // ADR-035 rule A1 — the search/filter row is static shell: no entrance
+  // animation, instantly interactive. Only the table below cascades.
   return (
     <>
-      <div
-        className="reveal-item mb-4 flex flex-col gap-4 sm:flex-row sm:items-center"
-        style={{ "--cascade-i": 1 } as CSSProperties}
-      >
+      <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-center">
         <div className="relative flex-1">
           <Search
             className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant opacity-50"
@@ -412,27 +399,31 @@ export function CampaignsTable({
         </Select>
       </div>
 
-      {/* The wrapper animates opacity/transform only — the table keeps its
-          final geometry from the first frame, zero layout shift (rule A6). */}
-      <div className="reveal-item" style={{ "--cascade-i": 2 } as CSSProperties}>
-        <DataTable
-          columns={columns}
-          data={campaigns}
-          pagination={pagination}
-          onPageChange={navigateToPage}
-          sorting={sorting}
-          onSortingChange={onSortingChange}
-          isPending={isPending}
-          onRowClick={(row) => router.push(`/campaigns/${row.original.campaign.id}`)}
-          emptyState={
-            <EmptyState
-              icon={Megaphone}
-              title={t("empty.title")}
-              description={t("empty.description")}
-            />
-          }
-        />
-      </div>
+      <DataTable
+        columns={columns}
+        data={campaigns}
+        pagination={pagination}
+        onPageChange={navigateToPage}
+        sorting={sorting}
+        onSortingChange={onSortingChange}
+        isPending={isPending}
+        // ADR-035 rules A2/A3 — the table container is slot 0 of the
+        // content cascade (container before content), rows follow from
+        // slot 1. The DataTable gates the replay on the mount-time data +
+        // sorting references (rule B12), so search keystrokes / filter /
+        // sort / pagination stay instant.
+        className="reveal-item"
+        animateEntrance
+        entranceCascadeOffset={1}
+        onRowClick={(row) => router.push(`/campaigns/${row.original.campaign.id}`)}
+        emptyState={
+          <EmptyState
+            icon={Megaphone}
+            title={t("empty.title")}
+            description={t("empty.description")}
+          />
+        }
+      />
 
       <AlertDialog
         open={closeTarget !== null}

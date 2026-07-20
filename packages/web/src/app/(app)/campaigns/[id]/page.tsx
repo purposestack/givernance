@@ -2,7 +2,7 @@ import { ArrowLeft, Gift, Globe, Pencil, Trophy } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 import { CampaignRoiChart } from "@/components/campaigns/campaign-roi-chart";
 import { CampaignStatusActions } from "@/components/campaigns/campaign-status-actions";
@@ -272,16 +272,16 @@ export default async function CampaignDetailPage({
   const roiDisplayValue =
     roiMetrics.roiPct !== null ? formatPercent(roiMetrics.roiPct, locale, 1) : t("roi.unavailable");
 
-  // ADR-035 rule A2 — entrance cascade in reading order: header (slot 0),
-  // then each column staggers its own cards via `.cascade` (nth-child ×
-  // --stagger-step). Client cards inside (members, exports, donations)
-  // re-render in place on interaction and Radix dialogs portal out of the
-  // container, so nth-child indices never shift post-mount and the
-  // entrance never replays on refetch (rule B12).
+  // ADR-035 rules A1/A2 — the PageHeader (title, badges, CTAs) is static
+  // shell and never animates; content enters via each column's `.cascade`
+  // container (nth-child × --stagger-step, cards from slot 1). Client
+  // cards inside (members, exports, donations) re-render in place on
+  // interaction and Radix dialogs portal out of the container, so
+  // nth-child indices never shift post-mount and the entrance never
+  // replays on refetch (rule B12).
   return (
     <>
       <PageHeader
-        className="reveal-item"
         title={campaign.name}
         description={
           <span className="flex flex-wrap items-center gap-2">
@@ -490,7 +490,7 @@ function GoalProgressRow({
       </div>
       <dd className="mt-1 font-mono text-2xl font-semibold tabular-nums text-on-surface">
         {/* ADR-035 rule A7 — the KPI counts up over the same 600 ms window
-            as the meter-fill below so both land together. The Intl options
+            as the meter-reveal below so both land together. The Intl options
             mirror formatCurrency's defaults (EUR, two decimals). */}
         <CountUp
           value={raisedCents / 100}
@@ -512,11 +512,13 @@ function GoalProgressRow({
         aria-label={labels.aria(raisedFormatted, goalFormatted)}
       >
         {/* ADR-035 rules A7/E18 — the width is static (server-resolved);
-            the entrance fills via the shared .meter-fill scaleX sweep,
-            never a width animation. */}
+            the entrance draws via the shared .meter-reveal clip-path sweep
+            (delay auto-chains from the card's cascade slot), never a width
+            animation. --meter-radius matches rounded-md (8px) so the
+            sweeping edge keeps its rounded caps. */}
         <div
-          className={`meter-fill h-full rounded-md ${reached ? "bg-success" : "bg-secondary"}`}
-          style={{ width: `${cappedProgress}%` }}
+          className={`meter-reveal h-full rounded-md ${reached ? "bg-success" : "bg-secondary"}`}
+          style={{ width: `${cappedProgress}%`, "--meter-radius": "8px" } as CSSProperties}
         />
       </div>
       <p className="mt-2 flex items-center justify-between gap-2 text-xs text-on-surface-variant">

@@ -22,8 +22,20 @@ export const TooltipContent = forwardRef<
         "px-2.5 py-1.5 text-xs",
         "bg-inverse-surface text-inverse-on-surface",
         "rounded-[var(--radius-sm)] shadow-overlay",
-        "data-[state=delayed-open]:animate-in data-[state=closed]:animate-out",
-        "data-[state=closed]:fade-out-0 data-[state=delayed-open]:fade-in-0",
+        // ADR-035 C13/D15 — tooltips are inspection surfaces: fast fade
+        // only, no scale. Enter: opacity 0→1 over --duration-fast
+        // --ease-out via @starting-style; exit: the dedicated
+        // `overlay-exit` keyframe (globals.css) over --duration-fast
+        // --ease-in, entrance transition disabled on close so the exit
+        // animation owns the closed state. (The former `animate-in` /
+        // `fade-*` classes were inert: no tw-animate plugin is
+        // installed.) The global reduced-motion block collapses both to
+        // instant final state (E17).
+        "transition-opacity duration-[var(--duration-fast)] ease-out",
+        "starting:opacity-0",
+        "data-[state=closed]:transition-none",
+        "data-[state=closed]:opacity-0",
+        "data-[state=closed]:animate-[overlay-exit_var(--duration-fast)_var(--ease-in)_forwards]",
         className,
       )}
       {...props}

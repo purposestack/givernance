@@ -5,18 +5,22 @@
  *
  * - `animateEntrance` is opt-in — without it, rows carry no animation
  *   classes (every existing consumer is byte-identical).
- * - With it, the first ENTRANCE_ROW_CAP (10) rows cascade via
- *   `.reveal-item` with `--cascade-i = entranceCascadeOffset + index`;
- *   rows past the cap share the last step (1 s budget, rule A4).
- * - The gate is the mount-time `data` reference: any new array (filter/
- *   sort/pagination/refetch round-trip) renders animation-free —
- *   entrances never replay on data swaps (rule B12).
+ * - With it, the first ENTRANCE_ROW_CAP (6) rows cascade via the
+ *   fade-only `.row-reveal` utility (opacity only — no translateY on
+ *   `<tr>`, WebKit collapsed-border quirk) with
+ *   `--cascade-i = entranceCascadeOffset + index` and a local
+ *   `--stagger-step: 25ms`; rows past the cap share the last step
+ *   (1 s budget, rule A4).
+ * - The gate is the mount-time `data` reference AND the mount-time
+ *   sorting state: any new array (filter/pagination/refetch round-trip)
+ *   or any sort change (uncontrolled header click included) renders
+ *   animation-free — entrances never replay on data swaps (rule B12).
  */
 
 import type { ColumnDef } from "@tanstack/react-table";
 import { describe, expect, it } from "vitest";
 
-import { render } from "@/tests/test-utils";
+import { fireEvent, render } from "@/tests/test-utils";
 
 import { DataTable } from "./data-table";
 
@@ -39,31 +43,34 @@ describe("DataTable — entrance choreography (ADR-035)", () => {
   it("renders no animation classes by default (opt-in contract)", () => {
     const { container } = render(<DataTable columns={columns} data={makeRows(3)} />);
     for (const row of bodyRows(container)) {
-      expect(row.classList.contains("reveal-item")).toBe(false);
+      expect(row.classList.contains("row-reveal")).toBe(false);
       expect(row.style.getPropertyValue("--cascade-i")).toBe("");
     }
   });
 
-  it("cascades rows with --cascade-i = offset + index when animateEntrance is set", () => {
+  it("cascades rows with --cascade-i = offset + index and a 25ms local stagger", () => {
     const { container } = render(
       <DataTable columns={columns} data={makeRows(3)} animateEntrance entranceCascadeOffset={2} />,
     );
     const rows = bodyRows(container);
     expect(rows).toHaveLength(3);
     rows.forEach((row, index) => {
-      expect(row.classList.contains("reveal-item")).toBe(true);
+      expect(row.classList.contains("row-reveal")).toBe(true);
       expect(row.style.getPropertyValue("--cascade-i")).toBe(String(2 + index));
+      // Local rhythm — rows tick at half the page-level stagger so the
+      // invisible-but-clickable window stays short (rule A4).
+      expect(row.style.getPropertyValue("--stagger-step")).toBe("25ms");
     });
   });
 
-  it("caps the cascade at 10 steps — rows past the cap share the last delay (rule A4)", () => {
+  it("caps the cascade at 6 steps — rows past the cap share the last delay (rule A4)", () => {
     const { container } = render(
-      <DataTable columns={columns} data={makeRows(12)} animateEntrance />,
+      <DataTable columns={columns} data={makeRows(8)} animateEntrance />,
     );
     const rows = bodyRows(container);
-    expect(rows[9]?.style.getPropertyValue("--cascade-i")).toBe("9");
-    expect(rows[10]?.style.getPropertyValue("--cascade-i")).toBe("9");
-    expect(rows[11]?.style.getPropertyValue("--cascade-i")).toBe("9");
+    expect(rows[5]?.style.getPropertyValue("--cascade-i")).toBe("5");
+    expect(rows[6]?.style.getPropertyValue("--cascade-i")).toBe("5");
+    expect(rows[7]?.style.getPropertyValue("--cascade-i")).toBe("5");
   });
 
   it("never replays the entrance when a data swap delivers a new array (rule B12)", () => {
@@ -71,13 +78,13 @@ describe("DataTable — entrance choreography (ADR-035)", () => {
     const { container, rerender } = render(
       <DataTable columns={columns} data={initial} animateEntrance />,
     );
-    expect(bodyRows(container)[0]?.classList.contains("reveal-item")).toBe(true);
+    expect(bodyRows(container)[0]?.classList.contains("row-reveal")).toBe(true);
 
     // Filter/sort/pagination/refetch round-trips always produce a new
     // array reference — the entrance classes must drop.
     rerender(<DataTable columns={columns} data={makeRows(3)} animateEntrance />);
     for (const row of bodyRows(container)) {
-      expect(row.classList.contains("reveal-item")).toBe(false);
+      expect(row.classList.contains("row-reveal")).toBe(false);
     }
   });
 
@@ -87,11 +94,29 @@ describe("DataTable — entrance choreography (ADR-035)", () => {
       <DataTable columns={columns} data={initial} animateEntrance />,
     );
     // Client-only re-render (e.g. parent state) with an unchanged data
-    // reference keeps the same DOM nodes + classes (forwards fill means
+    // reference keeps the same DOM nodes + classes (backwards fill means
     // the finished animation does not restart).
     rerender(<DataTable columns={columns} data={initial} animateEntrance />);
     for (const row of bodyRows(container)) {
-      expect(row.classList.contains("reveal-item")).toBe(true);
+      expect(row.classList.contains("row-reveal")).toBe(true);
+    }
+  });
+
+  it("drops the entrance classes when a sortable header is clicked (sort gate, rule B12)", () => {
+    // Uncontrolled sorting reorders rows locally WITHOUT changing the
+    // `data` reference — without the sorting gate the entrance would
+    // replay on the re-keyed row order.
+    const { container } = render(
+      <DataTable columns={columns} data={makeRows(3)} animateEntrance />,
+    );
+    expect(bodyRows(container)[0]?.classList.contains("row-reveal")).toBe(true);
+
+    const sortButton = container.querySelector<HTMLButtonElement>("thead th button");
+    expect(sortButton).not.toBeNull();
+    if (sortButton) fireEvent.click(sortButton);
+
+    for (const row of bodyRows(container)) {
+      expect(row.classList.contains("row-reveal")).toBe(false);
     }
   });
 });

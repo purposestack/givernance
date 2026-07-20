@@ -24,19 +24,21 @@ const itemBase =
 /*
  * ADR-035 D15 — overlay enter/exit for menu content. Enter: fade + slight
  * scale from the trigger-side origin over --duration-normal --ease-out via
- * @starting-style, once per open. Exit: faster plain fade (--duration-fast
- * --ease-in) — the shared `cascade-in` keyframe played in reverse against
- * the closed-state opacity gives Radix Presence a real animation to await
- * before unmounting (pure transitions are not awaited). Compositor
- * properties only (E18); the global reduced-motion block collapses both to
- * instant final state (E17).
+ * @starting-style, once per open. Exit: faster plain fade — the dedicated
+ * `overlay-exit` keyframe (globals.css) over --duration-fast --ease-in. A
+ * CSS *animation* (not a transition) because Radix Presence only awaits
+ * animations before unmounting; the entrance transition is disabled on
+ * close so the exit animation owns the closed state and the two never
+ * compound. Compositor properties only (E18); the global reduced-motion
+ * block collapses both to instant final state (E17).
  */
 const contentMotion = [
   "origin-[var(--radix-dropdown-menu-content-transform-origin)]",
   "transition-[opacity,scale] duration-[var(--duration-normal)] ease-out",
   "starting:opacity-0 starting:scale-[0.98]",
+  "data-[state=closed]:transition-none",
   "data-[state=closed]:opacity-0",
-  "data-[state=closed]:animate-[cascade-in_var(--duration-fast)_var(--ease-in)_reverse_forwards]",
+  "data-[state=closed]:animate-[overlay-exit_var(--duration-fast)_var(--ease-in)_forwards]",
 ];
 
 export const DropdownMenuSubTrigger = forwardRef<

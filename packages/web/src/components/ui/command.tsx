@@ -12,35 +12,15 @@ import {
 import { cn } from "@/lib/utils";
 import { Dialog, DialogContent } from "./dialog";
 
-/**
- * ADR-035 rule D15 — overlay motion for the command palette, bound to
- * the shared motion tokens. No tw-animate plugin is installed, so the
- * `animate-in` / `fade-*` data-state classes DialogContent carries are
- * inert; these utilities are the working implementation:
- *   - Entrance: opacity 0→1 + scale 0.98→1 over --duration-slower
- *     --ease-out, driven by a transition out of `@starting-style`
- *     (Tailwind `starting:` variant) on first mount. The centring
- *     translate is untouched — transition-property is opacity/scale
- *     only, and Tailwind v4 scale/translate are independent properties.
- *   - Exit (faster, plain fade): the existing `revealIn` keyframes
- *     played in reverse over the closed-state `opacity-0` base — 200 ms,
- *     effective --ease-in per the ADR. A CSS *animation* (not a
- *     transition) because Radix only delays unmount for animations; the
- *     transition is disabled on close so the two never compound.
- *     NB: `animation-direction: reverse` also reverses the timing
- *     function, and --ease-out (0.16,1,0.3,1) is the exact bezier
- *     reverse of --ease-in (0.7,0,0.84,0) — so declaring --ease-out
- *     here yields the ADR's --ease-in curve once reversed.
- * Both collapse to instant final state under the global reduced-motion
- * block in globals.css (rule E17). Compositor properties only (E18).
+/*
+ * ADR-035 rule D15 — the command palette needs no motion overrides:
+ * `DialogContent` carries the full overlay choreography (entrance via
+ * @starting-style, exit via the dedicated `overlay-exit` keyframe in
+ * globals.css over --duration-exit --ease-in, entrance transition
+ * disabled on close). The former `commandDialogMotion` override existed
+ * only while DialogContent's exit played a reversed entrance keyframe;
+ * it was removed when the dedicated exit landed.
  */
-export const commandDialogMotion = cn(
-  "scale-100 transition-[opacity,scale]",
-  "duration-[var(--duration-slower)] ease-[var(--ease-out)]",
-  "starting:opacity-0 starting:scale-[0.98]",
-  "data-[state=closed]:transition-none data-[state=closed]:opacity-0",
-  "data-[state=closed]:animate-[revealIn_200ms_var(--ease-out)_reverse]",
-);
 
 export const Command = forwardRef<
   ElementRef<typeof CommandPrimitive>,
@@ -62,7 +42,7 @@ Command.displayName = CommandPrimitive.displayName;
 export function CommandDialog({ children, ...props }: ComponentPropsWithoutRef<typeof Dialog>) {
   return (
     <Dialog {...props}>
-      <DialogContent className={cn("overflow-hidden p-0 shadow-overlay", commandDialogMotion)}>
+      <DialogContent className="overflow-hidden p-0 shadow-overlay">
         <Command className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-on-surface-variant [&_[cmdk-input]]:h-12">
           {children}
         </Command>

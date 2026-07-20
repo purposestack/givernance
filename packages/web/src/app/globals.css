@@ -342,9 +342,11 @@
   --duration-normal: 150ms;
   --duration-slow: 250ms;
   --duration-slower: 300ms;
-  /* Loading choreography (ADR-035): per-block cascade offset + data-draw sweep */
+  /* Loading choreography (ADR-035): per-block cascade offset + data-draw sweep.
+     --duration-exit is the overlay exit fade (rule D15 — exit faster than entrance). */
   --stagger-step: 50ms;
   --duration-sweep: 600ms;
+  --duration-exit: 200ms;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
   --ease-in-out: cubic-bezier(0.45, 0, 0.55, 1);
@@ -772,27 +774,6 @@ h4 {
   100% { transform: translate(-75px, -50px) scale(0.3); opacity: 0; }
 }
 
-/* ─── Reveal entrance animation (admin finance dashboard + sibling
- *     surfaces that need staggered card entrance). Defined globally
- *     so component-level call-sites (e.g. KPITile) can opt in via
- *     className="reveal" without re-declaring the keyframes.
- *     Source: docs/design/admin/dashboard.html `.reveal`.
- *     Delays + duration migrated onto the ADR-035 motion tokens
- *     (--stagger-step / --duration-slow) per the ADR consequence note. */
-.reveal {
-  opacity: 0;
-  transform: translateY(12px);
-  animation: revealIn var(--duration-slow) var(--ease-out) forwards;
-}
-.reveal:nth-child(1) { animation-delay: calc(1 * var(--stagger-step)); }
-.reveal:nth-child(2) { animation-delay: calc(2 * var(--stagger-step)); }
-.reveal:nth-child(3) { animation-delay: calc(3 * var(--stagger-step)); }
-.reveal:nth-child(4) { animation-delay: calc(4 * var(--stagger-step)); }
-
-@keyframes revealIn {
-  to { opacity: 1; transform: translateY(0); }
-}
-
 /*
  * ══════════════════════════════════════════════
  * ADR-035 — Loading & motion choreography
@@ -801,49 +782,97 @@ h4 {
  * (docs/adrs/adr-035-loading-motion-choreography.md). Pure CSS so they
  * compose onto server-rendered markup; compositor properties only —
  * opacity / transform / clip-path, never width/height/inset (rule E18).
- * Each animation runs ONCE per mount via `forwards` fill: background
- * refetches / re-renders must never re-key these classes (rule B12).
- * Reduced motion collapses everything to instant final state (rule E17)
- * in the media block at the end of this section.
+ *
+ * AUTHORING MODEL (the motion contract):
+ *   1. Base styles are the FINAL state. The hidden state lives only in
+ *      the explicit `from` keyframes, and every entrance uses
+ *      `animation-fill-mode: backwards` — the from-state covers the
+ *      delay window, and once the animation ends the computed styles
+ *      return to base. No permanent transform/clip-path residue, so
+ *      position: sticky/fixed descendants, z-index stacking, and
+ *      getBoundingClientRect all behave as if no animation ever ran.
+ *   2. `--cascade-i` is the single source of truth for entrance order.
+ *      `.cascade` assigns it to direct children by nth-child (1..12,
+ *      default 12 beyond); `.reveal-item` defaults it to 0 and takes
+ *      inline overrides (style={{ "--cascade-i": n }}).
+ *      Entrance delay = --cascade-i × --stagger-step.
+ *   3. Data-draw utilities (.sweep-in / .meter-reveal) CHAIN to their
+ *      container: --cascade-i inherits from the ancestor cascade slot,
+ *      so the draw is delayed (--cascade-i + 1) × --stagger-step and
+ *      starts as its container finishes fading in.
+ *   Each animation runs ONCE per mount: background refetches /
+ *   re-renders must never re-key these classes (rule B12). Reduced
+ *   motion collapses everything to instant final state (rule E17) in
+ *   the media block at the end of this section.
  */
 
 /* Cascade container — direct children stagger in reading order (rule A2):
-   opacity 0→1 + translateY(4px)→0, delay = nth-child index × --stagger-step.
-   Covers 12 children; children beyond 12 appear with the max delay. */
+   opacity 0→1 + translateY(4px)→0. nth-child feeds --cascade-i for the
+   first 12 children; children beyond 12 share the max slot. */
 .cascade > *,
 .reveal-item {
-  opacity: 0;
-  transform: translateY(4px);
-  animation: cascade-in var(--duration-slow) var(--ease-out) forwards;
+  animation: cascade-in var(--duration-slow) var(--ease-out) backwards;
+  animation-delay: calc(var(--cascade-i, 0) * var(--stagger-step));
 }
-.cascade > * { animation-delay: calc(12 * var(--stagger-step)); }
-.cascade > *:nth-child(1) { animation-delay: calc(1 * var(--stagger-step)); }
-.cascade > *:nth-child(2) { animation-delay: calc(2 * var(--stagger-step)); }
-.cascade > *:nth-child(3) { animation-delay: calc(3 * var(--stagger-step)); }
-.cascade > *:nth-child(4) { animation-delay: calc(4 * var(--stagger-step)); }
-.cascade > *:nth-child(5) { animation-delay: calc(5 * var(--stagger-step)); }
-.cascade > *:nth-child(6) { animation-delay: calc(6 * var(--stagger-step)); }
-.cascade > *:nth-child(7) { animation-delay: calc(7 * var(--stagger-step)); }
-.cascade > *:nth-child(8) { animation-delay: calc(8 * var(--stagger-step)); }
-.cascade > *:nth-child(9) { animation-delay: calc(9 * var(--stagger-step)); }
-.cascade > *:nth-child(10) { animation-delay: calc(10 * var(--stagger-step)); }
-.cascade > *:nth-child(11) { animation-delay: calc(11 * var(--stagger-step)); }
-.cascade > *:nth-child(12) { animation-delay: calc(12 * var(--stagger-step)); }
+.cascade > * { --cascade-i: 12; }
+.cascade > *:nth-child(1) { --cascade-i: 1; }
+.cascade > *:nth-child(2) { --cascade-i: 2; }
+.cascade > *:nth-child(3) { --cascade-i: 3; }
+.cascade > *:nth-child(4) { --cascade-i: 4; }
+.cascade > *:nth-child(5) { --cascade-i: 5; }
+.cascade > *:nth-child(6) { --cascade-i: 6; }
+.cascade > *:nth-child(7) { --cascade-i: 7; }
+.cascade > *:nth-child(8) { --cascade-i: 8; }
+.cascade > *:nth-child(9) { --cascade-i: 9; }
+.cascade > *:nth-child(10) { --cascade-i: 10; }
+.cascade > *:nth-child(11) { --cascade-i: 11; }
+.cascade > *:nth-child(12) { --cascade-i: 12; }
 
-/* Standalone cascade participant — override order per element with
+/* Standalone cascade participant — slot 0 unless overridden inline with
    style={{ "--cascade-i": n }} (matches the .cascade nth-child scheme). */
-.reveal-item { animation-delay: calc(var(--cascade-i, 0) * var(--stagger-step)); }
+.reveal-item { --cascade-i: 0; }
 
+/* Legacy staggered card entrance (admin finance dashboard, KPITile).
+   Migrated onto the shared cascade-in keyframe + --cascade-i slots per
+   the ADR consequence note; prefer .cascade / .reveal-item for new
+   surfaces. Source: docs/design/admin/dashboard.html `.reveal`. */
+.reveal {
+  animation: cascade-in var(--duration-slow) var(--ease-out) backwards;
+  animation-delay: calc(var(--cascade-i, 0) * var(--stagger-step));
+}
+.reveal:nth-child(1) { --cascade-i: 1; }
+.reveal:nth-child(2) { --cascade-i: 2; }
+.reveal:nth-child(3) { --cascade-i: 3; }
+.reveal:nth-child(4) { --cascade-i: 4; }
+
+/* The single entrance keyframe. Explicit from/to; base = final state. */
 @keyframes cascade-in {
+  from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* Focus snap — motion must never gate input (rule A4). If keyboard focus
+   lands inside a not-yet-revealed block, cancel its entrance: with
+   base = final, `animation: none` makes it instantly visible. */
+.reveal-item:focus-visible,
+.reveal-item:focus-within,
+.cascade > *:focus-within {
+  animation: none;
+}
+
+/* ── Data-draw chaining cap (rule A4 — 1 s total budget) ──
+   Chained data-draw delay is (--cascade-i + 1) × --stagger-step, capped
+   at 400ms: an uncapped slot-8 container would start its 600ms sweep at
+   450ms and settle at 1 050ms, blowing the 1 000ms budget. min(…, 400ms)
+   pins the worst case to exactly 400 + 600 = 1 000ms. */
+
 /* Directional data-draw — charts / timeline bars sweep left→right over
    --duration-sweep (rule A7). clip-path so the element keeps its final
-   geometry from the first frame (zero layout shift, rule A6). */
+   geometry from the first frame (zero layout shift, rule A6). Chains to
+   the ancestor cascade slot via inherited --cascade-i (contract pt. 3). */
 .sweep-in {
-  clip-path: inset(0 100% 0 0);
-  animation: sweep-in var(--duration-sweep) var(--ease-out) forwards;
+  animation: sweep-in var(--duration-sweep) var(--ease-out) backwards;
+  animation-delay: min(calc((var(--cascade-i, 0) + 1) * var(--stagger-step)), 400ms);
 }
 
 @keyframes sweep-in {
@@ -851,17 +880,32 @@ h4 {
   to { clip-path: inset(0 0 0 0); }
 }
 
-/* Progress/meter fill — scaleX from the left edge, never a width
-   animation (rule E18). Apply to the value bar inside a static track. */
-.meter-fill {
-  transform: scaleX(0);
-  transform-origin: left;
-  animation: meter-fill var(--duration-sweep) var(--ease-out) forwards;
+/* Progress/meter fill — clip-path reveal left→right, never a width
+   ANIMATION (rule E18). Apply to the value bar inside a static track;
+   set --meter-radius to the bar's border-radius so the sweeping edge
+   keeps its rounded caps. Chains to the ancestor cascade slot like
+   .sweep-in. The `width` TRANSITION in base is the sanctioned exception
+   for post-entrance value changes (live refetch deltas tween instead of
+   popping, rule B12) — it never fights the one-shot entrance animation
+   because the entrance animates clip-path, not width. */
+.meter-reveal {
+  transition: width var(--duration-slow) var(--ease-out);
+  animation: meter-reveal var(--duration-sweep) var(--ease-out) backwards;
+  animation-delay: min(calc((var(--cascade-i, 0) + 1) * var(--stagger-step)), 400ms);
 }
 
-@keyframes meter-fill {
-  from { transform: scaleX(0); }
-  to { transform: scaleX(1); }
+@keyframes meter-reveal {
+  from { clip-path: inset(0 100% 0 0 round var(--meter-radius, 6px)); }
+  to { clip-path: inset(0 0 0 0 round var(--meter-radius, 6px)); }
+}
+
+/* Overlay exit (rule D15) — a DEDICATED fade-out keyframe, never
+   `animation-direction: reverse` on an entrance keyframe (reverse replays
+   the entrance's from-state hold and breaks fill-mode semantics). Usage:
+   animate-[overlay-exit_var(--duration-exit)_var(--ease-in)_forwards]. */
+@keyframes overlay-exit {
+  from { opacity: 1; }
+  to { opacity: 0; }
 }
 
 /* Data-shaped ghost placeholder — static muted surface, NO shimmer, NO
@@ -873,20 +917,18 @@ h4 {
 }
 
 /* ADR-035 rule E17 — prefers-reduced-motion resolves the whole
-   choreography instantly to final state. The global reduced-motion block
-   near the top of this file shortens durations but leaves animation-delay
-   intact, which would hold cascaded content invisible for up to 600 ms —
-   so these utilities collapse entirely instead. */
+   choreography instantly to final state. With base = final,
+   `animation: none` is sufficient: no from-state ever paints, and the
+   delay window (which would hold cascaded content invisible for up to
+   600 ms under the global duration-shortening block near the top of this
+   file) never applies. */
 @media (prefers-reduced-motion: reduce) {
-  .reveal,
   .cascade > *,
   .reveal-item,
+  .reveal,
   .sweep-in,
-  .meter-fill {
-    opacity: 1;
-    transform: none;
-    clip-path: none;
-    animation: none;
+  .meter-reveal {
+    animation: none !important;
   }
 }
 
@@ -907,3 +949,27 @@ h4 {
 .survey-prompt-csat__option:hover span { background: var(--color-surface-container-high); }
 .survey-prompt-csat__option input:focus-visible + span { outline: 2px solid var(--color-primary); outline-offset: 2px; }
 .survey-prompt-csat__option span.active { background: var(--color-primary); color: var(--color-on-primary); border-color: var(--color-primary); }
+
+/* data-table row entrance (fade-only: WebKit collapsed-border quirk) —
+   animating `translateY` on a <tr> inside a `border-collapse` table
+   de-collapses the borders in WebKit while the transform plays, so table
+   rows animate OPACITY ONLY. Same authoring model as the ADR-035 motion
+   core above (base = final, hidden state in the `from` keyframe,
+   fill-mode backwards, delay = --cascade-i × --stagger-step); the
+   DataTable sets a local --stagger-step (25ms) inline on each row for a
+   faster rhythm than the page-level 50ms. */
+@keyframes row-fade-in {
+  from { opacity: 0; }
+}
+.row-reveal {
+  animation: row-fade-in var(--duration-slow) var(--ease-out) backwards;
+  animation-delay: calc(var(--cascade-i, 0) * var(--stagger-step, 50ms));
+}
+.row-reveal:focus-within {
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .row-reveal {
+    animation: none !important;
+  }
+}

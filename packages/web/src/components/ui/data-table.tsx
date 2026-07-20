@@ -27,11 +27,14 @@ import { cn } from "@/lib/utils";
 export type Density = "comfortable" | "compact";
 
 /**
- * ADR-035 rule A2 — the entrance cascade covers the first ~10 rows; rows
+ * ADR-035 rule A2 — the entrance cascade covers the first 6 rows; rows
  * past the cap enter together on the last step so a 100-row page never
- * stretches the choreography past the 1 s budget (rule A4).
+ * stretches the choreography past the 1 s budget (rule A4). Animated
+ * rows also set a local `--stagger-step: 25ms` (half the page-level
+ * rhythm): rows are interactive targets, and the invisible-but-clickable
+ * window must stay short — the worst-case row settles well under 500 ms.
  */
-const ENTRANCE_ROW_CAP = 10;
+const ENTRANCE_ROW_CAP = 6;
 
 export interface DataTablePagination {
   page: number;
@@ -69,18 +72,21 @@ export interface DataTableProps<TData> {
   isPending?: boolean;
   /**
    * Opt-in entrance choreography (ADR-035 rule A2): the first
-   * ~10 rows cascade in via the shared `.reveal-item` utility, once
-   * per mount only. Gated on the mount-time `data` reference — every
-   * filter/sort/pagination/refetch round-trip swaps in a NEW array,
-   * which disables the animation classes, so data swaps never replay
-   * the entrance (rule B12).
+   * ENTRANCE_ROW_CAP (6) rows cascade in via the fade-only
+   * `.row-reveal` utility (opacity only — `translateY` on a `<tr>`
+   * de-collapses the table borders in WebKit), once per mount only.
+   * Gated on the mount-time `data` reference AND the mount-time sorting
+   * state — every filter/pagination/refetch round-trip swaps in a NEW
+   * array, and any sort (uncontrolled header click included) swaps the
+   * sorting state, which disables the animation classes, so data swaps
+   * and re-sorts never replay the entrance (rule B12).
    */
   animateEntrance?: boolean;
   /**
    * Reading-order offset for the entrance cascade — set to the number
-   * of `.reveal-item` blocks above the table (page header, filter
-   * bar…) so rows enter after them (ADR-035 rule A2). Ignored unless
-   * `animateEntrance` is set.
+   * of cascade slots above the rows (e.g. `1` when the table container
+   * itself is a `.reveal-item` at slot 0) so rows enter after them
+   * (ADR-035 rule A2). Ignored unless `animateEntrance` is set.
    */
   entranceCascadeOffset?: number;
   emptyState?: React.ReactNode;
@@ -159,14 +165,23 @@ export function DataTable<TData>({
   const [internalSorting, setInternalSorting] = useState<SortingState>([]);
 
   // ADR-035 rule B12 — the entrance runs once per mount, never on data
-  // swaps. Filter/sort/pagination/refetch round-trips always deliver a
-  // new array reference, so reference equality against the mount-time
-  // array is the gate: the first dataset animates, every later swap
-  // renders animation-free. Client-only re-renders (density toggle, row
+  // swaps. Filter/pagination/refetch round-trips always deliver a new
+  // array reference, so reference equality against the mount-time array
+  // is the gate: the first dataset animates, every later swap renders
+  // animation-free. Client-only re-renders (density toggle, row
   // selection) keep the same reference AND the same row DOM nodes, so
-  // the CSS animation (`forwards` fill) never restarts either.
+  // the one-shot CSS animation never restarts either.
   const initialData = useRef(data);
-  const animateRows = animateEntrance && data === initialData.current;
+  // Sort gate: an UNCONTROLLED header click sorts locally without
+  // changing the `data` reference, but it reorders the row DOM — which
+  // would replay the entrance on the sorted order. Any sorting change
+  // (controlled or internal) produces a new state reference and drops
+  // the animation classes too.
+  const initialSorting = useRef(controlledSorting ?? internalSorting);
+  const animateRows =
+    animateEntrance &&
+    data === initialData.current &&
+    (controlledSorting ?? internalSorting) === initialSorting.current;
 
   const sorting = controlledSorting ?? internalSorting;
   const setSorting = onSortingChange ?? setInternalSorting;
@@ -211,7 +226,7 @@ export function DataTable<TData>({
       // `aria-busy` on the table together cover sighted and SR users.
       data-pending={isPending || undefined}
       className={cn(
-        "overflow-hidden rounded-2xl border border-border-brand bg-surface-container-lowest transition-opacity duration-normal",
+        "overflow-hidden rounded-2xl border border-border-brand bg-surface-container-lowest transition-opacity duration-[var(--duration-normal)]",
         "data-[pending=true]:pointer-events-none data-[pending=true]:opacity-60",
         className,
       )}
@@ -245,7 +260,7 @@ export function DataTable<TData>({
             type="button"
             onClick={() => setDensity("comfortable")}
             className={cn(
-              "flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)] transition-colors duration-normal ease-out",
+              "flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)] transition-colors duration-[var(--duration-normal)] ease-out",
               "focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
               density === "comfortable"
                 ? "bg-surface-container text-on-surface"
@@ -261,7 +276,7 @@ export function DataTable<TData>({
             type="button"
             onClick={() => setDensity("compact")}
             className={cn(
-              "flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)] transition-colors duration-normal ease-out",
+              "flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)] transition-colors duration-[var(--duration-normal)] ease-out",
               "focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
               density === "compact"
                 ? "bg-surface-container text-on-surface"
@@ -294,15 +309,19 @@ export function DataTable<TData>({
                   key={row.id}
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
                   className={cn(
-                    "border-t border-border-brand transition-colors duration-normal ease-out hover:bg-surface-container-low",
+                    "border-t border-border-brand transition-colors duration-[var(--duration-normal)] ease-out hover:bg-surface-container-low",
                     onRowClick && "cursor-pointer",
-                    animateRows && "reveal-item",
+                    animateRows && "row-reveal",
                   )}
                   style={
                     animateRows
                       ? ({
                           "--cascade-i":
                             entranceCascadeOffset + Math.min(index, ENTRANCE_ROW_CAP - 1),
+                          // Local rhythm — rows tick at half the page-level
+                          // stagger so the last animated row settles fast
+                          // (interactive surface, rule A4).
+                          "--stagger-step": "25ms",
                         } as React.CSSProperties)
                       : undefined
                   }

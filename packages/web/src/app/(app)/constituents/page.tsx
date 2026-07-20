@@ -144,12 +144,11 @@ export default async function ConstituentsPage({ searchParams }: ConstituentsPag
 
   return (
     <>
-      {/* ADR-035 rule A2 — reading-order cascade: header (0) → filter bar
-          (1, inside ConstituentsTable) → table rows (2+). Pure CSS on
-          server-rendered markup; searchParams round-trips reconcile these
-          elements in place, so filters never replay the entrance (B12). */}
+      {/* ADR-035 rule A1 — the page header and filter bar are static shell
+          (no entrance animation). Only content cascades: the table
+          container (or empty state) is slot 0, rows follow — both live
+          inside ConstituentsTable. */}
       <PageHeader
-        className="reveal-item"
         title={t("title")}
         description={
           hasAny ? t("subtitleWithCount", { count: result.pagination.total }) : t("subtitleEmpty")
@@ -182,10 +181,7 @@ export default async function ConstituentsPage({ searchParams }: ConstituentsPag
           order={order}
         />
       ) : (
-        <div
-          className="rounded-2xl bg-surface-container-lowest border border-border-brand reveal-item"
-          style={{ "--cascade-i": 1 } as React.CSSProperties}
-        >
+        <div className="rounded-2xl bg-surface-container-lowest border border-border-brand reveal-item">
           <EmptyState icon={Users} title={t("empty.title")} description={t("empty.seedHint")} />
         </div>
       )}
