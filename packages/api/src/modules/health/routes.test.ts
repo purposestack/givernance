@@ -20,12 +20,19 @@ const mockTenant = {
   updatedAt: new Date().toISOString(),
 };
 
-// Mock Redis module — health routes probe fx:rates:EUR key.
-// `rateLimit` must be truthy so the @fastify/rate-limit RedisStore constructor
-// skips its `defineCommand` call (which would throw on a plain mock object).
+// Mock Redis module — health routes probe the fx:rates:EUR key.
+//
+// @fastify/rate-limit's RedisStore registers a Lua script with
+// `redis.defineCommand("rateLimit", …)` and then calls the resulting
+// `redis.rateLimit(…)`. Older versions skip the registration when a `rateLimit`
+// method already exists; newer ones call `defineCommand` unconditionally, which
+// blew up this mock in CI (`this.redis.defineCommand is not a function` → the
+// server never booted → every test here failed, including `app.close()`).
+// Providing BOTH keeps the mock working across rate-limit majors.
 vi.mock("../../lib/redis.js", () => ({
   redis: {
     get: vi.fn().mockResolvedValue(null),
+    defineCommand: vi.fn(),
     rateLimit: vi.fn(),
   },
 }));
@@ -69,6 +76,12 @@ vi.mock("../../lib/db.js", () => {
         };
         return fn(tx);
       }),
+    },
+    // `/readyz` counts fx_pending donations cross-tenant on the owner pool, so
+    // the route imports `systemDb` too — without it the named import resolves to
+    // undefined and the fx probe throws instead of reporting a count.
+    systemDb: {
+      select: vi.fn(() => selectChain),
     },
   };
 });
