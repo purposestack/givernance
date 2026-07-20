@@ -241,7 +241,7 @@ export function FilterBuilder({ open, onOpenChange, onApply, initialQuery }: Fil
 
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
-          className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col"
+          className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col"
           aria-label={t("title")}
         >
           <DialogHeader>

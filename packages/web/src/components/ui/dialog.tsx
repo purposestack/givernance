@@ -54,8 +54,17 @@ export const DialogContent = forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed left-1/2 top-1/2 z-[var(--z-modal)] -translate-x-1/2 -translate-y-1/2",
+        // TOP-ANCHORED, not vertically centered: a centered overlay
+        // re-centers on every content-height change, so any dialog whose
+        // body grows/shrinks while open (search results, wizard steps,
+        // async loads, error banners) makes the whole surface jump.
+        // Anchored at a fixed 15vh, height changes only extend the
+        // bottom edge and inputs never move. Static confirmation
+        // surfaces that want true centering use AlertDialog — a
+        // centered overlay may never contain height-dynamic content.
+        "fixed left-1/2 top-[15vh] z-[var(--z-modal)] -translate-x-1/2 translate-y-0",
         "w-full max-w-lg p-6",
+        "max-h-[80vh] overflow-y-auto",
         "bg-surface-container-lowest text-on-surface",
         "border border-border-brand rounded-[var(--radius-lg)]",
         "shadow-overlay",

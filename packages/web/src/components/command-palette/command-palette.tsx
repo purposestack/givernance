@@ -227,6 +227,11 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
           DialogContent itself (@starting-style entrance + dedicated
           `overlay-exit` keyframe on close) — no override needed here. */}
       <DialogContent
+        // Inherits DialogContent's fixed top anchor (top-[15vh]): the
+        // input never moves while the results list grows/shrinks under
+        // it — the Raycast/Spotlight palette convention. overflow-hidden
+        // overrides the default overflow-y-auto (CommandList scrolls
+        // internally).
         className="overflow-hidden p-0 shadow-modal max-w-[640px]"
         aria-label={t("title")}
       >
