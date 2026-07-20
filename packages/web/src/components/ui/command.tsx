@@ -55,25 +55,19 @@ export const CommandInput = forwardRef<
   ElementRef<typeof CommandPrimitive.Input>,
   ComponentPropsWithoutRef<typeof CommandPrimitive.Input>
 >(({ className, ...props }, ref) => (
-  <div
-    className={cn(
-      "flex items-center gap-2 border-b border-border-brand px-3",
-      // Integrated focus treatment: the search head reads as ONE piece
-      // (magnifier + input + the dialog's close button), so focus paints
-      // a full-width primary underline on the row via focus-within
-      // instead of the global :focus-visible ring hugging the bare
-      // <input> — which excluded the icon and left a gap on the right.
-      // Kept instant (no transition) per docs/11 §2.10 rule 7.
-      "focus-within:border-primary focus-within:[box-shadow:inset_0_-1px_0_var(--color-primary)]",
-    )}
-    cmdk-input-wrapper=""
-  >
+  <div className="flex items-center gap-2 border-b border-border-brand px-3" cmdk-input-wrapper="">
     <Search size={16} className="shrink-0 text-on-surface-variant opacity-60" aria-hidden="true" />
     <CommandPrimitive.Input
       ref={ref}
       className={cn(
-        // shadow-none suppresses the global :focus-visible ring — the
-        // wrapper's focus-within underline is the visible indicator.
+        // No focus ring on the palette's search head — the input is
+        // auto-focused the moment the palette opens, so a ring singles
+        // out nothing (and the global :focus-visible ring hugged the
+        // bare <input>, excluding the magnifier and the dialog close
+        // button — it read as a badly-integrated component). The blinking
+        // caret + hairline separator are the affordance, matching the
+        // Raycast/Linear/Spotlight palette idiom. shadow-none suppresses
+        // the global :focus-visible box-shadow.
         "flex h-11 w-full bg-transparent py-3 text-sm outline-none focus-visible:shadow-none",
         "placeholder:text-text-muted disabled:cursor-not-allowed disabled:opacity-50",
         className,
