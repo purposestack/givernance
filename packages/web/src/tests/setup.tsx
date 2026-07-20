@@ -28,6 +28,32 @@ function interpolate(message: string, values?: Record<string, unknown>) {
   return message.replace(/\{(\w+)\}/g, (_, key: string) => String(values[key] ?? `{${key}}`));
 }
 
+/**
+ * Splice one `<tag>chunks</tag>` formatter's output into `remaining`,
+ * returning the matched fragments and what's left unmatched. Extracted out
+ * of the `next-intl` mock's `t.rich` implementation to keep it under
+ * Biome's cognitive-complexity ceiling.
+ */
+function applyRichFormatter(
+  remaining: string,
+  tagName: string,
+  formatter: (chunks: string) => React.ReactNode,
+): { fragments: React.ReactNode[]; remaining: string } {
+  const tagRegex = new RegExp(`<${tagName}>(.*?)</${tagName}>`, "g");
+  const matches = [...remaining.matchAll(tagRegex)];
+  if (matches.length === 0) return { fragments: [], remaining };
+
+  const fragments: React.ReactNode[] = [];
+  let lastIndex = 0;
+  for (const match of matches) {
+    if (match.index === undefined) continue;
+    if (match.index > lastIndex) fragments.push(remaining.slice(lastIndex, match.index));
+    fragments.push(formatter(match[1] ?? ""));
+    lastIndex = match.index + match[0].length;
+  }
+  return { fragments, remaining: remaining.slice(lastIndex) };
+}
+
 vi.mock("next/navigation", () => ({
   useRouter: () => mockRouter,
   usePathname: () => "/settings/funds",
@@ -79,18 +105,9 @@ vi.mock("next-intl", () => ({
       let remaining = raw;
       for (const [k, v] of Object.entries(values)) {
         if (typeof v !== "function") continue;
-        const tagRegex = new RegExp(`<${k}>(.*?)</${k}>`, "g");
-        const matches = [...remaining.matchAll(tagRegex)];
-        if (matches.length === 0) continue;
-        let lastIndex = 0;
-        const formatter = v as (chunks: string) => React.ReactNode;
-        for (const match of matches) {
-          if (match.index === undefined) continue;
-          if (match.index > lastIndex) fragments.push(remaining.slice(lastIndex, match.index));
-          fragments.push(formatter(match[1] ?? ""));
-          lastIndex = match.index + match[0].length;
-        }
-        remaining = remaining.slice(lastIndex);
+        const applied = applyRichFormatter(remaining, k, v as (chunks: string) => React.ReactNode);
+        fragments.push(...applied.fragments);
+        remaining = applied.remaining;
       }
       if (remaining) fragments.push(remaining);
       return fragments.length > 0 ? fragments : raw;
