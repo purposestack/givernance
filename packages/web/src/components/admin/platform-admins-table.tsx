@@ -133,6 +133,13 @@ export function PlatformAdminsTable({ admins, total, sort, order }: Props) {
       sorting={sorting}
       onSortingChange={onSortingChange}
       isPending={isPending}
+      // ADR-035 rules A2/A3 — the table container is slot 0 of the
+      // content cascade (container before content), rows follow from
+      // slot 1. Entrance runs once per mount; search/sort round-trips
+      // never replay it (rule B12) — same grammar as donations-table.
+      className="reveal-item"
+      animateEntrance
+      entranceCascadeOffset={1}
       onRowClick={(row) => router.push(`/admin/platform-admins/${row.original.id}`)}
       emptyState={<EmptyState icon={ShieldCheck} title={t("empty")} />}
     />

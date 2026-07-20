@@ -75,7 +75,11 @@ export function BankAccountsTable({ bankAccounts, canManage }: BankAccountsTable
 
   return (
     <>
-      <div className="overflow-hidden rounded-2xl bg-surface-container-lowest border border-border-brand">
+      {/* ADR-035 rules A2 + E18 — hand-rolled table: only the CONTAINER
+          enters (cascade slot 0). Never animate <tr> elements directly —
+          transforms de-collapse borders in WebKit (the shared DataTable's
+          internal .row-reveal is the sanctioned exception). */}
+      <div className="reveal-item overflow-hidden rounded-2xl bg-surface-container-lowest border border-border-brand">
         <table className="w-full text-sm">
           <thead className="border-b border-outline-variant bg-surface-container">
             <tr>

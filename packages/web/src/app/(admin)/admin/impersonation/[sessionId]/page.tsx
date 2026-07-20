@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
+import type { CSSProperties } from "react";
 
 import { EndImpersonationSessionButton } from "@/components/admin/end-impersonation-session-button";
 import { createServerApiClient } from "@/lib/api/client-server";
@@ -69,7 +70,10 @@ export default async function ImpersonationSessionDetailPage({
         </div>
       </header>
 
-      <section className="grid gap-4 rounded-lg border border-border bg-surface p-4 sm:grid-cols-2">
+      {/* ADR-035 rules A1/A2 — the header (incl. its End-Session CTA) is
+          static shell; the metadata card (slot 0) and audit timeline
+          (slot 1) cascade in reading order, container-level only. */}
+      <section className="reveal-item grid gap-4 rounded-lg border border-border bg-surface p-4 sm:grid-cols-2">
         <Field label={t("fieldId")}>
           <code className="text-xs">{sessionData.id}</code>
         </Field>
@@ -117,7 +121,7 @@ export default async function ImpersonationSessionDetailPage({
         </Field>
       </section>
 
-      <section className="space-y-3">
+      <section className="reveal-item space-y-3" style={{ "--cascade-i": 1 } as CSSProperties}>
         <header className="flex items-center justify-between gap-4">
           <h2 className="text-base font-semibold">{t("auditTitle")}</h2>
           <span className="text-xs text-muted-foreground">

@@ -1,5 +1,6 @@
 import { UserPlus, Users } from "lucide-react";
 import { getTranslations } from "next-intl/server";
+import type { CSSProperties } from "react";
 import { SettingsNavigation } from "@/components/settings/settings-navigation";
 import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
@@ -77,6 +78,13 @@ export default async function MembersPage({ searchParams }: MembersPageProps) {
   const memberCount = members?.pagination.total ?? 0;
   const bothEmpty = invitationCount === 0 && memberCount === 0;
 
+  // ADR-035 rules A1 + A2 — header (incl. the InviteAction CTA) and the
+  // settings sub-nav are static shell; the Members and Invitations
+  // sections are the content blocks, cascading in reading order. For
+  // non-admins only the Invitations section renders, so it takes slot 0.
+  const membersSectionVisible = canManageMembers && members !== null;
+  const invitationsSlot = membersSectionVisible ? 1 : 0;
+
   return (
     <>
       <PageHeader
@@ -104,7 +112,7 @@ export default async function MembersPage({ searchParams }: MembersPageProps) {
         // Review D8 — single combined empty state for a fresh tenant
         // ("one screen, one CTA"). Once either list is non-empty the
         // page falls through to the two-section layout below.
-        <div className="rounded-2xl bg-surface-container-lowest border border-border-brand">
+        <div className="reveal-item rounded-2xl bg-surface-container-lowest border border-border-brand">
           <EmptyState
             icon={UserPlus}
             title={t("combinedEmpty.title")}
@@ -113,8 +121,8 @@ export default async function MembersPage({ searchParams }: MembersPageProps) {
         </div>
       ) : (
         <>
-          {canManageMembers && members ? (
-            <section aria-labelledby="members-section-heading" className="space-y-3">
+          {membersSectionVisible && members ? (
+            <section aria-labelledby="members-section-heading" className="reveal-item space-y-3">
               <header>
                 <h2 id="members-section-heading" className="text-lg font-semibold text-on-surface">
                   {t("membersSection.title")}
@@ -140,7 +148,11 @@ export default async function MembersPage({ searchParams }: MembersPageProps) {
             </section>
           ) : null}
 
-          <section aria-labelledby="invitations-section-heading" className="space-y-3">
+          <section
+            aria-labelledby="invitations-section-heading"
+            className="reveal-item space-y-3"
+            style={{ "--cascade-i": invitationsSlot } as CSSProperties}
+          >
             <header>
               <h2
                 id="invitations-section-heading"
@@ -162,6 +174,7 @@ export default async function MembersPage({ searchParams }: MembersPageProps) {
                 invitations={invitationsResult.data}
                 pagination={invitationsResult.pagination}
                 canManageMembers={canManageMembers}
+                entranceCascadeOffset={invitationsSlot + 1}
               />
             ) : (
               <div className="rounded-2xl bg-surface-container-lowest border border-border-brand">

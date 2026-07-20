@@ -24,6 +24,10 @@ export default async function ProfilePage() {
   const api = await createServerApiClient();
   const me = await UserService.getMe(api);
 
+  // ADR-035 rules A1 + A2 — the page header (title, breadcrumbs) is static
+  // shell; only content cascades. The language card is the sole content
+  // block today, so it takes slot 0. Future preference cards (timezone,
+  // notifications summary, …) join the cascade at slots 1, 2, ….
   return (
     <div className="space-y-8">
       <PageHeader
@@ -31,7 +35,9 @@ export default async function ProfilePage() {
         description={t("subtitle")}
         breadcrumbs={[{ label: t("breadcrumbRoot"), href: "/dashboard" }, { label: t("title") }]}
       />
-      <ProfileLanguageForm initial={me} />
+      <div className="reveal-item">
+        <ProfileLanguageForm initial={me} />
+      </div>
     </div>
   );
 }

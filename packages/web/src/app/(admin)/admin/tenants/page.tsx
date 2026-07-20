@@ -69,6 +69,9 @@ export default async function TenantListPage({
         </Button>
       </header>
 
+      {/* ADR-035 rule A1 — the header above is static shell; the table is
+          slot 0 of the content cascade (rows follow from slot 1 inside
+          TenantsTable). */}
       <TenantsTable tenants={tenants} sort={sort} order={order} />
     </div>
   );

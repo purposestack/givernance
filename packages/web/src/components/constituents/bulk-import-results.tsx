@@ -66,31 +66,39 @@ function BulkImportResultsBody({ jobId }: BulkImportResultsProps) {
         <TabsTrigger value="duplicate">{tTabs("duplicates")}</TabsTrigger>
         <TabsTrigger value="failed">{tTabs("failed")}</TabsTrigger>
       </TabsList>
-      <TabsContent value={tab}>
-        {filtered.length === 0 ? (
-          <p className="py-6 text-center text-sm text-on-surface-variant">{t("empty")}</p>
-        ) : (
-          <div className="rounded-2xl bg-surface-container-lowest border border-border-brand">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-16">{t("columns.row")}</TableHead>
-                  <TableHead className="w-28">{t("columns.status")}</TableHead>
-                  <TableHead>{t("columns.firstName")}</TableHead>
-                  <TableHead>{t("columns.lastName")}</TableHead>
-                  <TableHead>{t("columns.email")}</TableHead>
-                  <TableHead>{t("columns.error")}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map((row) => (
-                  <ResultRow key={row.id} row={row} statusLabel={statusLabel(row, tStatus)} />
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-      </TabsContent>
+      {/* ADR-035 — the TabsList above is a filter bar: static shell, never
+          animated (rule A1). This wrapper is the results block's single
+          entrance (slot 0); it mounts once with the Tabs root, so switching
+          tabs swaps rows inside an already-revealed, persistent frame — no
+          replay, no blank flash (rules B9/B12). Hand-rolled table →
+          container-level treatment only. */}
+      <div className="reveal-item">
+        <TabsContent value={tab}>
+          {filtered.length === 0 ? (
+            <p className="py-6 text-center text-sm text-on-surface-variant">{t("empty")}</p>
+          ) : (
+            <div className="rounded-2xl bg-surface-container-lowest border border-border-brand">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-16">{t("columns.row")}</TableHead>
+                    <TableHead className="w-28">{t("columns.status")}</TableHead>
+                    <TableHead>{t("columns.firstName")}</TableHead>
+                    <TableHead>{t("columns.lastName")}</TableHead>
+                    <TableHead>{t("columns.email")}</TableHead>
+                    <TableHead>{t("columns.error")}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filtered.map((row) => (
+                    <ResultRow key={row.id} row={row} statusLabel={statusLabel(row, tStatus)} />
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </TabsContent>
+      </div>
     </Tabs>
   );
 }

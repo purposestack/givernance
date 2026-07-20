@@ -60,6 +60,13 @@ export default async function SelectOrganizationPage() {
       id="main-content"
       className="flex min-h-screen flex-col items-center justify-center gap-8 bg-background p-6"
     >
+      {/* ADR-035 (pre-auth surface) — AuthCard itself carries the single
+          `.reveal-item` entrance at slot 0 (see auth-card.tsx): the whole
+          picker fades/rises once as one block, marketing-hero continuity
+          intact. Per the AuthCard contract nothing inside the card gets
+          its own choreography — no `.cascade` on the org list (E19-style
+          single-container treatment), and the surrounding shell stays
+          static (rule A1). */}
       <AuthCard className="max-w-3xl">
         <AuthLogo />
         <h1 className="mb-2 text-center font-heading text-xl text-text">{t("title")}</h1>

@@ -41,7 +41,6 @@ export default async function EditDonationPage({ params }: EditDonationPageProps
   return (
     <>
       <PageHeader
-        className="reveal-item"
         title={t("editTitle")}
         description={t("editSubtitle")}
         breadcrumbs={[
@@ -54,7 +53,7 @@ export default async function EditDonationPage({ params }: EditDonationPageProps
           { label: t("breadcrumbEdit") },
         ]}
       />
-      <div className="reveal-item" style={{ "--cascade-i": 1 } as CSSProperties}>
+      <div className="reveal-item">
         <DonationForm mode="edit" donation={donation} />
       </div>
     </>

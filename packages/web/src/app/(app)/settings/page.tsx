@@ -1,4 +1,5 @@
 import { getTranslations } from "next-intl/server";
+import type { CSSProperties } from "react";
 import { SettingsNavigation } from "@/components/settings/settings-navigation";
 import { SettingsSnapshotPanel } from "@/components/settings/settings-snapshot-panel";
 import { StripeConnectPanel } from "@/components/settings/stripe-connect-panel";
@@ -52,14 +53,24 @@ export default async function SettingsPage() {
         breadcrumbs={[{ label: t("breadcrumbRoot"), href: "/dashboard" }, { label: t("title") }]}
       />
       <SettingsNavigation />
-      <TenantSettingsForm
-        orgId={auth.orgId}
-        canManageTenant={auth.roles.includes("org_admin")}
-        orgName={orgName}
-        canManageBranding={canManageBranding}
-      />
-      <StripeConnectPanel canManageTenant={auth.roles.includes("org_admin")} />
-      <SettingsSnapshotPanel orgId={auth.orgId} canExport={auth.roles.includes("org_admin")} />
+      {/* ADR-035 rules A1 + A2 — header and settings sub-nav are static
+          shell; the three settings panels cascade in reading order. The
+          Organisation card is a form container and enters as ONE block
+          (rule E19 — no per-field choreography). */}
+      <div className="reveal-item">
+        <TenantSettingsForm
+          orgId={auth.orgId}
+          canManageTenant={auth.roles.includes("org_admin")}
+          orgName={orgName}
+          canManageBranding={canManageBranding}
+        />
+      </div>
+      <div className="reveal-item" style={{ "--cascade-i": 1 } as CSSProperties}>
+        <StripeConnectPanel canManageTenant={auth.roles.includes("org_admin")} />
+      </div>
+      <div className="reveal-item" style={{ "--cascade-i": 2 } as CSSProperties}>
+        <SettingsSnapshotPanel orgId={auth.orgId} canExport={auth.roles.includes("org_admin")} />
+      </div>
     </div>
   );
 }

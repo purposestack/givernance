@@ -245,6 +245,12 @@ export function MembersTable({
         data={members}
         pagination={pagination}
         onPageChange={navigateToPage}
+        // ADR-035 rules A2/A3 — the Members <section> on the page is
+        // cascade slot 0, so rows follow from slot 1. The DataTable gates
+        // the replay on the mount-time data reference (rule B12), so
+        // pagination / refreshes stay instant.
+        animateEntrance
+        entranceCascadeOffset={1}
         emptyState={
           <EmptyState
             icon={Users}

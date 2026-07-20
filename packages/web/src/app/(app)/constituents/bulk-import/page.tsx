@@ -37,7 +37,15 @@ export default async function BulkImportHistoryPage() {
           { label: tHistory("breadcrumb") },
         ]}
       />
-      <BulkImportHistory />
+      {/* ADR-035 rules A1 + A2 — header static; the history table is the
+          only content block, so it takes slot 0. The wrapper mounts once
+          with the page and covers every body state (ghost rows → table /
+          error / empty), so the loading→data swap inside never replays
+          the entrance (rule B12). Hand-rolled table → container-level
+          treatment only, no per-row cascade. */}
+      <div className="reveal-item">
+        <BulkImportHistory />
+      </div>
     </>
   );
 }

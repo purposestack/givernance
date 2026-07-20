@@ -71,8 +71,12 @@ export function KPITile({
     "--kpi-icon-color": iconColor,
   } as React.CSSProperties;
 
+  // ADR-035 rule A2 — `.reveal-item` is the standard entrance grammar
+  // (replaces the legacy `.reveal` utility). Standalone the tile enters
+  // at slot 0; inside a `.cascade` grid the container's nth-child slots
+  // take over, so a KPI row staggers left→right automatically.
   return (
-    <article className={cn(styles.kpi, "reveal", className)} style={cssVars}>
+    <article className={cn(styles.kpi, "reveal-item", className)} style={cssVars}>
       <div className={styles.head}>
         <div className={styles.label}>
           {label}

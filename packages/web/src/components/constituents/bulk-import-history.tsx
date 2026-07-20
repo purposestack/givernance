@@ -6,7 +6,6 @@ import { useLocale, useTranslations } from "next-intl";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
   TableBody,
@@ -24,6 +23,8 @@ import {
 } from "@/hooks/use-bulk-import";
 import { formatDate } from "@/lib/format";
 
+const HISTORY_ROW_GHOSTS = ["row-1", "row-2", "row-3"] as const;
+
 export function BulkImportHistory() {
   return (
     <BulkImportQueryScope>
@@ -40,11 +41,28 @@ function BulkImportHistoryBody() {
   const query = useBulkImportHistory();
 
   if (query.isLoading) {
+    // ADR-035 rule A5 — data-shaped ghost mirroring the final table frame
+    // (bordered container, header band, fixed-height rows), not generic
+    // shimmer and never a spinner. Static `.ghost` blocks only; the
+    // page-level `.reveal-item` wrapper owns the entrance, so real rows
+    // replace these in place with zero layout shift (rules A6/B12).
     return (
-      <div className="space-y-2">
-        <Skeleton className="h-12 w-full" />
-        <Skeleton className="h-12 w-full" />
-        <Skeleton className="h-12 w-full" />
+      <div
+        role="status"
+        aria-busy="true"
+        className="rounded-2xl bg-surface-container-lowest border border-border-brand"
+      >
+        <span className="sr-only">{t("title")}</span>
+        <div className="px-5 py-3">
+          <div className="ghost h-4 w-full max-w-3xl" />
+        </div>
+        {HISTORY_ROW_GHOSTS.map((key) => (
+          <div key={key} className="flex items-center gap-6 border-t border-border-brand px-5 py-4">
+            <div className="ghost h-5 w-28 shrink-0" />
+            <div className="ghost h-5 w-40 max-w-[30%]" />
+            <div className="ghost ml-auto h-5 w-24 shrink-0" />
+          </div>
+        ))}
       </div>
     );
   }

@@ -40,6 +40,10 @@ export default async function BulkImportResultsPage({ params }: PageProps) {
           { label: id.slice(0, 8) },
         ]}
       />
+      {/* ADR-035 — header static (rule A1). The entrance lives inside
+          BulkImportResults: its tab bar stays static and the results
+          region carries the single `.reveal-item` (slot 0), persistent
+          across tab switches (rules B9/B12). */}
       <BulkImportResults jobId={id} />
     </>
   );

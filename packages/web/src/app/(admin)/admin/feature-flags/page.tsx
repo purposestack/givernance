@@ -34,22 +34,27 @@ export default async function FeatureFlagsPage() {
 
   return (
     <div className="space-y-8">
+      {/* ADR-035 rule A1 — the page header is static shell; the content
+          below (banner or flag list) enters as one block at slot 0
+          (container-level reveal, no per-row choreography). */}
       <header>
         <h1 className="font-heading text-2xl text-on-surface">{t("title")}</h1>
         <p className="mt-1 text-sm text-on-surface-variant">{t("subtitle")}</p>
       </header>
 
-      {fetchFailed ? (
-        <div
-          role="alert"
-          className="flex items-start gap-3 rounded-2xl border border-error bg-error-container p-4 text-on-error-container"
-        >
-          <AlertTriangle aria-hidden="true" className="mt-0.5 shrink-0" size={20} />
-          <p className="text-sm">{t("fetchFailed")}</p>
-        </div>
-      ) : (
-        <FeatureFlagsTable rows={rows} />
-      )}
+      <div className="reveal-item">
+        {fetchFailed ? (
+          <div
+            role="alert"
+            className="flex items-start gap-3 rounded-2xl border border-error bg-error-container p-4 text-on-error-container"
+          >
+            <AlertTriangle aria-hidden="true" className="mt-0.5 shrink-0" size={20} />
+            <p className="text-sm">{t("fetchFailed")}</p>
+          </div>
+        ) : (
+          <FeatureFlagsTable rows={rows} />
+        )}
+      </div>
     </div>
   );
 }

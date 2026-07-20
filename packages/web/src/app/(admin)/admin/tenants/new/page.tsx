@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
+import type { CSSProperties } from "react";
 
 import { NewTenantForm } from "@/components/admin/new-tenant-form";
 
@@ -24,9 +25,17 @@ export default async function NewTenantPage() {
         <p className="mt-1 text-sm text-on-surface-variant">{t("subtitle")}</p>
       </header>
 
-      <NewTenantForm />
+      {/* ADR-035 rules A1 + E19 — header stays static; the form enters as
+          ONE block (no per-field choreography), the next-steps card
+          follows at slot 1. */}
+      <div className="reveal-item">
+        <NewTenantForm />
+      </div>
 
-      <section className="rounded-2xl border border-outline-variant bg-primary-50 p-6">
+      <section
+        className="reveal-item rounded-2xl border border-outline-variant bg-primary-50 p-6"
+        style={{ "--cascade-i": 1 } as CSSProperties}
+      >
         <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-primary">
           {t("nextSteps.title")}
         </h2>

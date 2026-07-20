@@ -106,7 +106,11 @@ export function OrgFeatureFlagsList({ initialRows }: OrgFeatureFlagsListProps) {
   };
 
   return (
-    <ul className="space-y-3">
+    // ADR-035 rules A2/A3 — the list container is cascade slot 0 and the
+    // flag cards stagger in reading order via `.cascade` (nth-child slots
+    // 1..12). Entrances run once per mount (rule B12): optimistic toggle
+    // re-renders keep stable `row.key` keys, so nothing replays.
+    <ul className="reveal-item cascade space-y-3">
       {rows.map((row) => {
         const hasOverride = row.override !== null;
         const busy = busyKey === row.key;

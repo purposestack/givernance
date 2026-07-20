@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
+import type { CSSProperties } from "react";
 import { createServerApiClient } from "@/lib/api/client-server";
 import type { DomainDisputeRow } from "@/services/DisputesService";
 
@@ -49,14 +50,19 @@ export default async function DomainDisputeDetailPage({
         </p>
       </header>
 
-      <section className="rounded-lg border border-outline-variant bg-surface-container-lowest p-4">
+      {/* ADR-035 rules A1/A2 — the header above is static shell; the
+          content sections cascade in reading order (slots 0-2). */}
+      <section className="reveal-item rounded-lg border border-outline-variant bg-surface-container-lowest p-4">
         <h2 className="text-sm font-semibold text-on-surface-variant">{t("reasonLabel")}</h2>
         <p className="mt-2 whitespace-pre-wrap text-sm text-on-surface">
           {row.reason ?? t("noReason")}
         </p>
       </section>
 
-      <section className="rounded-lg border border-outline-variant bg-surface-container-lowest p-4">
+      <section
+        className="reveal-item rounded-lg border border-outline-variant bg-surface-container-lowest p-4"
+        style={{ "--cascade-i": 1 } as CSSProperties}
+      >
         <h2 className="text-sm font-semibold text-on-surface-variant">{t("partiesLabel")}</h2>
         <dl className="mt-2 grid gap-2 text-sm text-on-surface">
           <div className="flex justify-between">
@@ -71,7 +77,10 @@ export default async function DomainDisputeDetailPage({
       </section>
 
       {row.state !== "open" ? (
-        <section className="rounded-lg border border-outline-variant bg-surface-container-lowest p-4">
+        <section
+          className="reveal-item rounded-lg border border-outline-variant bg-surface-container-lowest p-4"
+          style={{ "--cascade-i": 2 } as CSSProperties}
+        >
           <h2 className="text-sm font-semibold text-on-surface-variant">{t("resolvedLabel")}</h2>
           <p className="mt-2 text-sm text-on-surface">
             {resolutionLabel(row.state)} —{" "}
@@ -79,7 +88,10 @@ export default async function DomainDisputeDetailPage({
           </p>
         </section>
       ) : (
-        <p className="text-sm text-on-surface-variant">
+        <p
+          className="reveal-item text-sm text-on-surface-variant"
+          style={{ "--cascade-i": 2 } as CSSProperties}
+        >
           Resolution options via UI not yet implemented. Use API to resolve.
         </p>
       )}
