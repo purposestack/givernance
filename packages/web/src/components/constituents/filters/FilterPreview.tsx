@@ -81,6 +81,18 @@ function hasIncompleteCondition(query: FilterQuery): boolean {
 }
 
 /**
+ * Query is "empty" — no conditions AND no patterns (a pattern-only preset is
+ * valid on the BE and MUST trigger a preview, so we can't gate on
+ * `conditions.length` alone). Extracted alongside `hasIncompleteCondition` to
+ * keep the `fetchPreview` effect under Biome's cognitive-complexity ceiling.
+ */
+function isEmptyQuery(query: FilterQuery): boolean {
+  const hasConditions = query.conditions.length > 0;
+  const hasPatterns = (query.patterns?.length ?? 0) > 0;
+  return !hasConditions && !hasPatterns;
+}
+
+/**
  * Real-time preview of constituent count for current filter configuration.
  */
 export function FilterPreview({ query, onPreview }: FilterPreviewProps) {
@@ -91,15 +103,11 @@ export function FilterPreview({ query, onPreview }: FilterPreviewProps) {
   useEffect(() => {
     const controller = new AbortController();
 
+    // Skip when the query carries nothing meaningful, or an in-progress
+    // condition still has a half-typed value — the preview shouldn't fire
+    // mid-edit.
     const fetchPreview = async () => {
-      // Skip when the query carries nothing meaningful — i.e. no conditions
-      // AND no patterns (a pattern-only preset is now valid on the BE and
-      // MUST trigger a preview, so we can't gate on `conditions.length` alone).
-      // We also skip incomplete conditions so the preview doesn't fire mid-edit
-      // with a half-typed value.
-      const hasConditions = query.conditions.length > 0;
-      const hasPatterns = (query.patterns?.length ?? 0) > 0;
-      if ((!hasConditions && !hasPatterns) || hasIncompleteCondition(query)) {
+      if (isEmptyQuery(query) || hasIncompleteCondition(query)) {
         setPreview(null);
         return;
       }
