@@ -26,6 +26,8 @@ import {
   sql,
 } from "drizzle-orm";
 import { withTenantContext } from "../../lib/db.js";
+import { donationStatsJoin, FilterService } from "./filters/filter.service.js";
+import type { FilterQuery } from "./filters/types.js";
 
 /**
  * Single source of truth for the constituents sort whitelist (issue
@@ -75,6 +77,15 @@ export interface ListConstituentsQuery {
   minLifetimeAmountCents?: number;
   /** Inclusive upper bound on lifetime cleared-minus-refunded base cents. */
   maxLifetimeAmountCents?: number;
+  /**
+   * Advanced-filter DSL (Epic #418 / ADR-033) — the same `FilterQuery` shape
+   * the FilterBuilder posts to `/v1/constituents/filter`. Compiled via
+   * `FilterService.buildCompleteWhereClause` and AND-ed with every other
+   * list predicate, so quick search / type chips / advanced filter compose.
+   * The route MUST validate it (`FilterService.validateQuery`) and gate it on
+   * the `advanced_filters` flag before it reaches this service.
+   */
+  advancedFilter?: FilterQuery;
 }
 
 /**
@@ -369,6 +380,17 @@ export async function listConstituents(orgId: string, query: ListConstituentsQue
       .groupBy(donations.constituentId)
       .as("donation_agg");
 
+    // Advanced-filter DSL (Epic #418): compile the validated FilterQuery to a
+    // where-clause and AND it with the regular list predicates. Aggregate
+    // conditions (donations.totalAmount, donations.count, …) reference the
+    // `donation_stats` alias, so the matching join is added — only when a DSL
+    // filter is actually present, to keep the default list plan untouched.
+    // `donation_agg` and `donation_stats` project disjoint column names, so
+    // the two subquery joins coexist without ambiguity.
+    const advancedWhere = query.advancedFilter
+      ? new FilterService(orgId).buildCompleteWhereClause(query.advancedFilter)
+      : undefined;
+
     const where = and(
       ...buildListConstituentsWhere(
         tx,
@@ -377,27 +399,38 @@ export async function listConstituents(orgId: string, query: ListConstituentsQue
         donationAggregate.lastDonationAt,
         donationAggregate.lifetimeAmountCents,
       ),
+      advancedWhere,
     );
     const sort = normalizeConstituentSort(query.sort);
     const order = normalizeConstituentOrder(query.order);
 
+    let dataQuery = tx
+      .select({
+        ...getTableColumns(constituents),
+        lastDonationAt: donationAggregate.lastDonationAt,
+      })
+      .from(constituents)
+      .leftJoin(donationAggregate, eq(donationAggregate.constituentId, constituents.id))
+      .$dynamic();
+    let countQuery = tx
+      .select({ count: sql<number>`count(*)` })
+      .from(constituents)
+      .leftJoin(donationAggregate, eq(donationAggregate.constituentId, constituents.id))
+      .$dynamic();
+    if (query.advancedFilter) {
+      const dataJoin = donationStatsJoin(orgId);
+      const countJoin = donationStatsJoin(orgId);
+      dataQuery = dataQuery.leftJoin(dataJoin.source, dataJoin.on);
+      countQuery = countQuery.leftJoin(countJoin.source, countJoin.on);
+    }
+
     const [data, countResult] = await Promise.all([
-      tx
-        .select({
-          ...getTableColumns(constituents),
-          lastDonationAt: donationAggregate.lastDonationAt,
-        })
-        .from(constituents)
-        .leftJoin(donationAggregate, eq(donationAggregate.constituentId, constituents.id))
+      dataQuery
         .where(where)
         .orderBy(...buildConstituentOrderBy(sort, order, donationAggregate.lastDonationAt))
         .limit(perPage)
         .offset(offset),
-      tx
-        .select({ count: sql<number>`count(*)` })
-        .from(constituents)
-        .leftJoin(donationAggregate, eq(donationAggregate.constituentId, constituents.id))
-        .where(where),
+      countQuery.where(where),
     ]);
 
     const total = Number(countResult[0]?.count ?? 0);

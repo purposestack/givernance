@@ -2379,7 +2379,14 @@
         "majorDonor": "Major donors"
       },
       "noOptions": "No options available",
-      "removeFilter": "Remove {label} filter"
+      "removeFilter": "Remove {label} filter",
+      "builderLabel": "Advanced filters",
+      "strip": {
+        "label": "Active filter",
+        "preset": "Template: {name}",
+        "clear": "Clear filter",
+        "invalid": "The filter in this link is invalid and was ignored — the full list is shown."
+      }
     },
     "actions": {
       "new": "New constituent",

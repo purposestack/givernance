@@ -1,6 +1,6 @@
-# 30 — Advanced Constituent Filters for Campaigns
+# 30 — Advanced Constituent Filters
 
-> **Status**: Implemented — Epic #418 (PR #421), reconciled by the advanced-filters audit (this PR)
+> **Status**: Implemented — Epic #418 (PR #421), reconciled by the advanced-filters audit; extended to the constituents LIST page (this PR)
 > **Owner**: MVP Engineer
 > **Related**: [`docs/23-postal-campaigns.md`](23-postal-campaigns.md) §2.3 Campaign Members · [`docs/28-bulk-import.md`](28-bulk-import.md) Bulk operations · [`docs/29-global-search.md`](29-global-search.md) GLO-001 search · [`docs/34-constituents.md`](34-constituents.md) multi-valued `types`
 > **Companion ADR**: [`docs/adrs/adr-033-advanced-filter-architecture.md`](adrs/adr-033-advanced-filter-architecture.md)
@@ -17,6 +17,14 @@ Advanced filters let a campaign manager, from the campaign **Add constituents �
 4. **Add the matched set** to the campaign in one action.
 
 **What this PR fixed (the audit).** The builder previously advertised ~22 fields of which only ~6 actually worked; the rest returned HTTP 400 because the frontend field names / operators had drifted from the backend registry. There was no usable "is empty / not set" operator (the only two nullable-ish operators were broken end-to-end), donation-metric filters silently matched constituents who had never donated, amount thresholds were compared in cents against a EUR-labelled input, and soft-deleted constituents leaked back into results. The catalog is now trimmed to exactly what the backend can execute, plus a real nullable operator. See §7 for what remains out of scope.
+
+**Second entry point — the constituents list page.** The same FilterBuilder is now reachable from **Constituents → Advanced filters**, so operators can browse and segment the full constituent base with the DSL without needing a campaign as a pretext:
+
+- The applied query lives in the **shareable URL** (`/constituents?filters=<JSON>` + optional `?filterPreset=<id>`) — bookmark it, paste it to a colleague, refresh without losing the segment.
+- The list shows an **active-filter chip strip** (pattern chips + one chip per condition, each removable) and composes with the quick search / type filters (AND semantics).
+- Server-side, the DSL is compiled into the regular `GET /v1/constituents` query — the response keeps the exact list-row shape, sorting and pagination.
+- With the `advanced_filters` flag **off**, the button falls back to the legacy basic dialog (last-donation range + minimum total giving) and a `?filters=` URL 404s — the surface is completely absent.
+- With the flag **on**, the FilterBuilder **replaces** the basic dialog (its catalog is a superset); bookmarked basic-dialog URLs keep working, and opening the builder on one pre-seeds the equivalent DSL conditions.
 
 ## 1. User flow
 
@@ -46,6 +54,37 @@ sequenceDiagram
     Add->>DB: SELECT ids (same predicate) → INSERT campaign_constituents (skip existing)
     Add-->>UI: { added: 234, skipped: 0 }
     UI-->>Op: toast + redirect to campaign
+```
+
+### 1.1 List-page flow (browse / segment — this PR)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Op as Operator
+    participant Page as /constituents (SSR)
+    participant UI as FilterBuilder + chip strip
+    participant List as GET /v1/constituents?filters=
+    participant DB as Postgres (RLS)
+
+    Op->>UI: "Advanced filters" → build query (presets + rules, live count)
+    UI->>UI: Apply → write ?filters=<JSON> (+ ?filterPreset=) to the URL
+    UI->>Page: router.replace (URL = single source of truth)
+    Page->>List: forward filters param (flag on only)
+    List->>List: flag check → JSON.parse → FilterService.validateQuery
+    alt flag off
+        List-->>Page: 404 (param does not exist — requireFlag posture)
+    else invalid DSL (hand-edited / stale link)
+        List-->>Page: 400 { errors }
+        Page->>List: retry WITHOUT filters
+        Page-->>Op: unfiltered list + "filter in this link is invalid" notice
+    else valid
+        List->>DB: list query AND compiled DSL (orgId + deleted_at IS NULL + donation_stats join)
+        DB-->>List: rows + total
+        List-->>Page: ConstituentListRow page (same shape as unfiltered)
+        Page-->>Op: filtered table + removable chip strip
+    end
+    Op->>UI: Remove a chip / clear → URL rewritten, list refetches
 ```
 
 ## 2. Filter catalog (what actually ships)
@@ -151,7 +190,29 @@ No new tables. Donation metrics come from an inline `donation_stats` subquery
   guards), `pattern-detector.ts` (result-badge enrichment).
 - **Frontend** (`packages/web/src/components/constituents/filters/`):
   `FilterBuilder`, `FilterCondition`, `FilterChip`, `FilterPreview`,
-  `FilterPresets`, and the pure-data `filter-presets.ts` / `filter-types.ts`.
+  `FilterPresets`, the pure-data `filter-presets.ts` / `filter-types.ts`, and
+  `filter-chip-helpers.ts` (chip-strip mapping shared by the campaign card and
+  the constituents list page).
+- **List-page integration** (this PR):
+  - `GET /v1/constituents` accepts an optional `filters` query param — a
+    JSON-serialised `FilterQuery` (8 KiB cap). The route gates it on the
+    `advanced_filters` flag (404 when off, same posture as `requireFlag` —
+    never a silently-unfiltered 200), rejects unparseable/non-object JSON and
+    registry violations with 400 + error list, then hands the parsed query to
+    `listConstituents`.
+  - `listConstituents` compiles the DSL via the now-public
+    `FilterService.buildCompleteWhereClause` and ANDs it with every other list
+    predicate (search, type chips, campaign scoping, soft-delete, explicit
+    `eq(orgId)`), adding the `donation_stats` join (exported
+    `donationStatsJoin(orgId)` helper) **only when a DSL filter is present** so
+    the default list plan is untouched. `donation_agg` (list aggregates) and
+    `donation_stats` (filter aggregates) project disjoint column names and
+    coexist.
+  - The web page (`(app)/constituents/page.tsx`) SSR-forwards `?filters=` only
+    when the flag is on, falls back to the unfiltered list with an inline
+    notice when the API rejects a hand-edited value, and keeps the table shell
+    mounted for zero-result filtered views so the operator can always clear
+    the filter.
 - **Correctness invariants enforced in this PR**:
   - **Tenant + soft-delete**: every filter query filters `eq(orgId)` **and**
     `isNull(deleted_at)` explicitly (issue #430), in addition to RLS.
@@ -173,9 +234,12 @@ No new tables. Donation metrics come from an inline `donation_stats` subquery
 | `GET /v1/constituents/filter/suggestions` | `requireFlag` → `requireAuth` | — |
 | `GET /v1/constituents/filter/fields` | `requireFlag` → `requireAuth` | — |
 | `POST /v1/campaigns/:id/members/filter` | `requireFlag` → `requireAuth` → `requireWrite` | 5/min |
+| `GET /v1/constituents?filters=` | `requireAuth` → inline `advanced_filters` gate on the param (404 when off; without the param the route is the plain list, unchanged) | list default |
 
-With the `advanced_filters` flag **off**, every route returns 404 and the
-campaign "Build a filter" surface is hidden.
+With the `advanced_filters` flag **off**, every route returns 404, the
+campaign "Build a filter" surface is hidden, and the constituents list page
+shows only the legacy basic dialog (no builder button, no chip strip, no
+`?filters=` passthrough).
 
 ## 5. Privacy / GDPR posture
 - **Soft-delete**: `deleted_at IS NOT NULL` constituents are excluded from every
@@ -193,6 +257,12 @@ campaign "Build a filter" surface is hidden.
   `address.countryCode` resolves, `isNull`/`isNotNull` on email, OR across the
   regular/aggregate boundary, soft-delete exclusion, removed-operator 400. Runs
   under both the owner and `givernance_app` (RLS) roles per issue #455.
+- **List endpoint** (same file, "GET /v1/constituents?filters="): regular
+  condition filtering, aggregate EUR→cents through the `donation_stats` join,
+  pattern-only (LYBUNT) queries, composition with quick search, soft-delete
+  exclusion, cross-tenant isolation under the app role, 400 on unparseable /
+  non-object / unknown-field DSL, flag-off 404 for the param with the plain
+  list untouched, and list-row response-shape stability.
 - **Frontend**: `FilterCondition` renders no value input for `isNull`/`isNotNull`;
   the existing builder/preview/chip suites cover the reconciled catalog.
 
@@ -217,7 +287,11 @@ a broad-but-broken surface:
   builder only renders a flat list; this is why `local-geneva` can't scope its
   postal band to Switzerland (the "12xx" band also matches DE/FR codes).
 - **Saved / shared filters**, **natural-language / AI query**, and **exporting a
-  filtered list** — future phases.
+  filtered list** — future phases. (URL-shareability of the applied list-page
+  filter shipped in this PR; *named, persisted* segments have not.)
+- **Bulk actions on a filtered list** — the bulk-email selection still operates
+  on hand-checked rows; "email everyone matching this filter" is a natural
+  follow-up but needs its own recipient-count guardrails.
 - **Richer 400 surfacing** — the preview maps all validation 400s to one generic
   message; now that catalog drift is fixed these are rare edge cases.
 

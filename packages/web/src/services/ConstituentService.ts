@@ -91,6 +91,9 @@ export const ConstituentService = {
       lastDonationTo: query.lastDonationTo,
       minLifetimeAmountCents: query.minLifetimeAmountCents,
       maxLifetimeAmountCents: query.maxLifetimeAmountCents,
+      // Epic #418 — advanced-filter DSL, passed through as the raw JSON
+      // string (the URL param IS the wire format; no re-serialisation).
+      filters: query.filters || undefined,
     };
 
     const response = await client.get<ConstituentListResponse>("/v1/constituents", { params });

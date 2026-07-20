@@ -102,6 +102,13 @@ export interface ConstituentListQuery {
   minLifetimeAmountCents?: number;
   /** Lifetime cleared base cents (upper bound). */
   maxLifetimeAmountCents?: number;
+  /**
+   * Advanced-filter DSL (Epic #418 / ADR-033): a JSON-serialised `FilterQuery`
+   * passed through verbatim from the `?filters=` URL param. Only sent when the
+   * `advanced_filters` flag is on — the API 404s the param when the flag is
+   * off, mirroring the gated /constituents/filter routes.
+   */
+  filters?: string;
 }
 
 export function fullName(constituent: Constituent): string {

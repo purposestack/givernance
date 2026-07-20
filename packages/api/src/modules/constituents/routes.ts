@@ -28,6 +28,8 @@ import {
 } from "./bulk-email-service.js";
 import { registerBulkImportRoutes } from "./bulk-import/routes.js";
 import { registerFilterEndpoints } from "./filters/filter.routes.js";
+import { FilterService } from "./filters/filter.service.js";
+import type { FilterQuery } from "./filters/types.js";
 import {
   CONSTITUENT_SORT_FIELDS,
   createConstituent,
@@ -162,6 +164,17 @@ const ListQuery = Type.Intersect([
     minLifetimeAmountCents: Type.Optional(Type.Integer({ minimum: 0 })),
     /** Lifetime cleared-minus-refunded base cents (upper bound). */
     maxLifetimeAmountCents: Type.Optional(Type.Integer({ minimum: 0 })),
+    /**
+     * Advanced-filter DSL (Epic #418 / ADR-033): a JSON-serialised
+     * `FilterQuery` — the same shape `POST /v1/constituents/filter` accepts
+     * in its body. Lets the list page apply builder queries while keeping
+     * the URL shareable (`?filters=<encoded JSON>`). Gated on the
+     * `advanced_filters` flag (404 when off, mirroring `requireFlag`) and
+     * validated through `FilterService.validateQuery` (400 with error list).
+     * 8 KiB cap: the DSL is bounded at 10 conditions, so anything larger is
+     * garbage or an attack, not a real filter.
+     */
+    filters: Type.Optional(Type.String({ maxLength: 8192 })),
   }),
 ]);
 
@@ -338,7 +351,68 @@ export async function constituentRoutes(app: FastifyInstance) {
         lastDonationTo?: string;
         minLifetimeAmountCents?: number;
         maxLifetimeAmountCents?: number;
+        filters?: string;
       };
+
+      // Advanced-filter DSL param (Epic #418 / ADR-033). Same flag gate as
+      // the /constituents/filter routes: with `advanced_filters` off the
+      // param does not exist, so a request carrying it 404s exactly like the
+      // gated routes do (`requireFlag` posture — never silently return an
+      // UNFILTERED list an operator believes is filtered, and never disclose
+      // the feature to a scanner via a 400/403).
+      let advancedFilter: FilterQuery | undefined;
+      if (query.filters !== undefined) {
+        const flags = request.flagService ?? defaultFlagService;
+        const enabled = await flags.isEnabled(FEATURE_FLAG_KEYS.ADVANCED_FILTERS, { orgId });
+        if (!enabled) {
+          request.log.info(
+            {
+              event: "flag.route_gated",
+              flagKey: FEATURE_FLAG_KEYS.ADVANCED_FILTERS,
+              path: request.routeOptions.url ?? request.url,
+              method: request.method,
+            },
+            "List filters param gated off — feature flag disabled",
+          );
+          return reply.status(404).send(problemDetail(404, "Not Found", "Route not found"));
+        }
+
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(query.filters);
+        } catch {
+          return reply
+            .status(400)
+            .send(
+              problemDetail(400, "Invalid filter query", "The filters parameter is not valid JSON"),
+            );
+        }
+
+        // `validateQuery` expects an object — reject scalars/null/arrays here
+        // so a hand-edited URL can't crash it with a property access on null.
+        if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+          return reply
+            .status(400)
+            .send(
+              problemDetail(
+                400,
+                "Invalid filter query",
+                "The filters parameter must be a JSON object",
+              ),
+            );
+        }
+
+        const filterService = new FilterService(orgId, request.log);
+        const validation = filterService.validateQuery(parsed as FilterQuery);
+        if (!validation.valid) {
+          return reply.status(400).send(
+            problemDetail(400, "Invalid filter query", "The filter query contains errors", {
+              errors: validation.errors,
+            }),
+          );
+        }
+        advancedFilter = parsed as FilterQuery;
+      }
 
       const tags = query.tags ? (Array.isArray(query.tags) ? query.tags : [query.tags]) : undefined;
       // `?types=donor&types=volunteer` arrives as an array; `?types=donor` as
@@ -365,6 +439,7 @@ export async function constituentRoutes(app: FastifyInstance) {
         lastDonationTo: query.lastDonationTo,
         minLifetimeAmountCents: query.minLifetimeAmountCents,
         maxLifetimeAmountCents: query.maxLifetimeAmountCents,
+        advancedFilter,
       });
 
       return { data: result.data, pagination: result.pagination };

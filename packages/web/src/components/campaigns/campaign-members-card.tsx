@@ -11,8 +11,11 @@ import {
   type FilterChipData,
   type FilterPattern,
   type FilterQuery,
-  filterFields,
 } from "@/components/constituents/filters";
+import {
+  chipsFromQuery,
+  patternI18nKey,
+} from "@/components/constituents/filters/filter-chip-helpers";
 import {
   type FilterCondition,
   isFilterCondition,
@@ -124,79 +127,6 @@ function filterStorageKey(campaignId: string): string {
   return `${FILTER_STORAGE_PREFIX}${campaignId}`;
 }
 
-/**
- * i18n key for a BE pattern label under `constituents.filters.patterns.*`.
- * Patterns previously had no operator-facing surface — now each one shows up
- * as a removable "active selection" chip with a clear, localised label so
- * picking "Recurring donors" actually surfaces something users can see.
- */
-function patternI18nKey(pattern: FilterPattern): string {
-  switch (pattern) {
-    case "LYBUNT":
-      return "lybunt";
-    case "SYBUNT":
-      return "sybunt";
-    case "RECURRING":
-      return "recurring";
-    case "LAPSED":
-      return "lapsed";
-    case "MAJOR_DONOR":
-      return "majorDonor";
-  }
-}
-
-/**
- * Build the chip strip from a (possibly persisted) FilterQuery. Two sources:
- *  - Top-level conditions become condition chips (nested groups stay inside
- *    the FilterBuilder dialog — they remain invisible in the strip because
- *    a deeply nested predicate doesn't translate to a single chip).
- *  - Each `patterns[i]` flag becomes its own pattern chip with a localised
- *    label so operators can see *what* a preset actually selected.
- *
- * `chipLabelForField` looks up the i18n key (e.g. `fields.donations.lastDate`)
- * in `filterFields` and returns it verbatim — the chip is rendered by
- * `FilterChip`, which carries its own `useTranslations` hook and resolves
- * the key to the active locale. For unknown fields (e.g. a future BE field
- * the FE hasn't catalogued yet) we fall back to the rightmost segment so
- * the chip still reads as something rather than collapsing to empty.
- */
-function chipLabelForField(field: string): string {
-  const known = filterFields.find((f) => f.name === field);
-  if (known) return known.label;
-  return field.split(".").pop() || field;
-}
-
-function chipsFromQuery(
-  query: FilterQuery,
-  patternLabelFor: (pattern: FilterPattern) => string,
-): FilterChipData[] {
-  const conditionChips: FilterChipData[] = query.conditions.filter(isFilterCondition).map((c) => ({
-    id: c.id,
-    kind: "condition" as const,
-    label: chipLabelForField(c.field),
-    field: c.field,
-    operator: c.operator,
-    value: c.value,
-  }));
-
-  const patternChips: FilterChipData[] = (query.patterns ?? []).map((pattern) => ({
-    // Prefix the chip id so condition ids (numeric strings) can never collide
-    // with pattern ids. The strip's remove handler keys on this prefix to
-    // decide whether to drop a condition or splice a pattern.
-    id: `pattern:${pattern}`,
-    kind: "pattern" as const,
-    label: patternLabelFor(pattern),
-    // Synthetic field/operator/value — pattern chips never need them, but the
-    // type insists on the fields existing.
-    field: pattern,
-    operator: "eq",
-    value: pattern,
-    pattern,
-  }));
-
-  return [...patternChips, ...conditionChips];
-}
-
 /** Stable content key for a condition (or nested group) so the union below dedupes re-applied filters. */
 function conditionKey(c: FilterCondition | FilterQuery): string {
   return isFilterCondition(c)
@@ -243,7 +173,8 @@ export function CampaignMembersCard({
   const t = useTranslations("campaigns.postal.members");
   // Dedicated translator for pattern labels — kept on the constituents-side
   // namespace so the label is reusable from any surface that renders pattern
-  // chips (Phase 2 may show the same chips on the constituents list page).
+  // chips (the constituents list page renders the same chips via
+  // filter-chip-helpers.ts).
   const tFilters = useTranslations("constituents.filters");
   const patternLabelFor = useCallback(
     (pattern: FilterPattern) =>

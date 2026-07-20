@@ -35,6 +35,34 @@ import type {
 } from "./types.js";
 import { FIELD_REGISTRY } from "./types.js";
 
+/**
+ * The `donation_stats` inline aggregate every advanced-filter query LEFT JOINs.
+ * `buildAggregateCondition` (query-builder.ts) emits UNQUALIFIED column
+ * references (`donation_count`, `total_amount_cents`, `last_donation_date`,
+ * `first_donation_date`) that only resolve when a join with EXACTLY this alias
+ * and projection is present — so every query that embeds a compiled filter
+ * where-clause must join through this helper. Exported for `listConstituents`
+ * (GET /v1/constituents?filters=), which composes the DSL with its own
+ * `donation_agg` join (disjoint column names, no collision).
+ */
+export function donationStatsJoin(orgId: string): { source: SQL; on: SQL } {
+  return {
+    source: sql`(
+      SELECT
+        constituent_id,
+        COUNT(*) as donation_count,
+        SUM(amount_base_cents) as total_amount_cents,
+        MAX(donated_at) as last_donation_date,
+        MIN(donated_at) as first_donation_date
+      FROM ${donations}
+      WHERE org_id = ${orgId}
+        AND status = 'cleared'
+      GROUP BY constituent_id
+    ) as donation_stats`,
+    on: sql`donation_stats.constituent_id = ${constituents.id}`,
+  };
+}
+
 export class FilterService {
   private orgId: string;
   private queryBuilder: FilterQueryBuilder;
@@ -66,21 +94,7 @@ export class FilterService {
       const countResult = await db
         .select({ count: sql<number>`count(*)` })
         .from(constituents)
-        .leftJoin(
-          sql`(
-            SELECT 
-              constituent_id,
-              COUNT(*) as donation_count,
-              SUM(amount_base_cents) as total_amount_cents,
-              MAX(donated_at) as last_donation_date,
-              MIN(donated_at) as first_donation_date
-            FROM ${donations}
-            WHERE org_id = ${this.orgId}
-              AND status = 'cleared'
-            GROUP BY constituent_id
-          ) as donation_stats`,
-          sql`donation_stats.constituent_id = ${constituents.id}`,
-        )
+        .leftJoin(donationStatsJoin(this.orgId).source, donationStatsJoin(this.orgId).on)
         .where(and(eq(constituents.orgId, this.orgId), isNull(constituents.deletedAt), whereClause))
         .execute();
 
@@ -95,21 +109,7 @@ export class FilterService {
           lastDonationDate: sql<Date | null>`donation_stats.last_donation_date`,
         })
         .from(constituents)
-        .leftJoin(
-          sql`(
-            SELECT 
-              constituent_id,
-              COUNT(*) as donation_count,
-              SUM(amount_base_cents) as total_amount_cents,
-              MAX(donated_at) as last_donation_date,
-              MIN(donated_at) as first_donation_date
-            FROM ${donations}
-            WHERE org_id = ${this.orgId}
-              AND status = 'cleared'
-            GROUP BY constituent_id
-          ) as donation_stats`,
-          sql`donation_stats.constituent_id = ${constituents.id}`,
-        )
+        .leftJoin(donationStatsJoin(this.orgId).source, donationStatsJoin(this.orgId).on)
         .where(and(eq(constituents.orgId, this.orgId), isNull(constituents.deletedAt), whereClause))
         .orderBy(orderByClause)
         .limit(perPage)
@@ -156,21 +156,7 @@ export class FilterService {
       const countResult = await db
         .select({ count: sql<number>`count(*)` })
         .from(constituents)
-        .leftJoin(
-          sql`(
-            SELECT 
-              constituent_id,
-              COUNT(*) as donation_count,
-              SUM(amount_base_cents) as total_amount_cents,
-              MAX(donated_at) as last_donation_date,
-              MIN(donated_at) as first_donation_date
-            FROM ${donations}
-            WHERE org_id = ${this.orgId}
-              AND status = 'cleared'
-            GROUP BY constituent_id
-          ) as donation_stats`,
-          sql`donation_stats.constituent_id = ${constituents.id}`,
-        )
+        .leftJoin(donationStatsJoin(this.orgId).source, donationStatsJoin(this.orgId).on)
         .where(and(eq(constituents.orgId, this.orgId), isNull(constituents.deletedAt), whereClause))
         .execute();
 
@@ -321,21 +307,7 @@ export class FilterService {
       const matchingConstituents = await db
         .select({ id: constituents.id })
         .from(constituents)
-        .leftJoin(
-          sql`(
-            SELECT 
-              constituent_id,
-              COUNT(*) as donation_count,
-              SUM(amount_base_cents) as total_amount_cents,
-              MAX(donated_at) as last_donation_date,
-              MIN(donated_at) as first_donation_date
-            FROM ${donations}
-            WHERE org_id = ${this.orgId}
-              AND status = 'cleared'
-            GROUP BY constituent_id
-          ) as donation_stats`,
-          sql`donation_stats.constituent_id = ${constituents.id}`,
-        )
+        .leftJoin(donationStatsJoin(this.orgId).source, donationStatsJoin(this.orgId).on)
         .where(and(eq(constituents.orgId, this.orgId), isNull(constituents.deletedAt), whereClause))
         .execute();
 
@@ -384,9 +356,14 @@ export class FilterService {
   }
 
   /**
-   * Build the complete WHERE clause including aggregations
+   * Build the complete WHERE clause including aggregations.
+   *
+   * Public: `listConstituents` (GET /v1/constituents?filters=) compiles the
+   * DSL through this method to AND the result into its own predicate set.
+   * Callers MUST validate the query first (`validateQuery`) and MUST join
+   * `donationStatsJoin(orgId)` — aggregate conditions reference that alias.
    */
-  private buildCompleteWhereClause(query: FilterQuery): SQL | undefined {
+  buildCompleteWhereClause(query: FilterQuery): SQL | undefined {
     // Separate regular conditions from aggregate conditions
     const regularConditions: FilterCondition[] = [];
     const aggregateConditions: FilterCondition[] = [];

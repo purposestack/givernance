@@ -23,6 +23,21 @@ import {
   ConstituentTypeBadge,
   ConstituentTypeBadges,
 } from "@/components/constituents/constituent-type-badge";
+import {
+  FilterBuilder,
+  FilterChip,
+  type FilterPattern,
+  type FilterQuery,
+  filterPresets,
+} from "@/components/constituents/filters";
+import {
+  chipsFromQuery,
+  patternI18nKey,
+} from "@/components/constituents/filters/filter-chip-helpers";
+import {
+  type FilterCondition as FilterConditionType,
+  isFilterCondition,
+} from "@/components/constituents/filters/filter-types";
 import { EmptyState } from "@/components/shared/empty-state";
 import {
   AlertDialog,
@@ -76,6 +91,83 @@ import { type BulkEmailJobView, ConstituentService } from "@/services/Constituen
 
 type BadgeVariant = "success" | "warning" | "error" | "info" | "neutral";
 
+/**
+ * next-intl statically validates message keys at compile-time; pattern / preset
+ * labels are dynamic keys (built from BE enum values) that can't be narrowed to
+ * the strict `NamespacedMessageKeys` union. Cast once at the call site — same
+ * papercut as `campaign-members-card.tsx`.
+ */
+type StrictTranslator = ReturnType<typeof useTranslations>;
+function trDynamic(t: StrictTranslator, key: string, values?: Record<string, string | number>) {
+  return (t as unknown as (k: string, v?: Record<string, string | number>) => string)(key, values);
+}
+
+/**
+ * Parse the shareable `?filters=` URL param into a FilterQuery, or null when
+ * absent/unparseable/malformed. The server component runs the same JSON.parse
+ * guard before forwarding the param to the API, so both sides agree on what
+ * counts as "no filter".
+ */
+function parseFiltersParam(raw: string | null): FilterQuery | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as FilterQuery;
+    if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.conditions)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Translate the legacy basic-dialog URL params (Epic #274) into DSL
+ * conditions so an operator upgrading from a bookmarked basic-filter URL
+ * opens the builder pre-seeded with the equivalent query instead of an empty
+ * one. Amounts convert cents → EUR (the builder's input unit); the DSL
+ * boundary multiplies back by 100.
+ */
+function legacyParamsToConditions(
+  lastDonationFrom: string,
+  lastDonationTo: string,
+  minLifetimeAmountCents: string,
+): FilterConditionType[] {
+  const conditions: FilterConditionType[] = [];
+  const from = lastDonationFrom ? lastDonationFrom.slice(0, 10) : "";
+  const to = lastDonationTo ? lastDonationTo.slice(0, 10) : "";
+  if (from && to) {
+    conditions.push({
+      id: "legacy-last-donation",
+      field: "donations.lastDate",
+      operator: "between",
+      value: [from, to],
+    });
+  } else if (from) {
+    conditions.push({
+      id: "legacy-last-donation",
+      field: "donations.lastDate",
+      operator: "gte",
+      value: from,
+    });
+  } else if (to) {
+    conditions.push({
+      id: "legacy-last-donation",
+      field: "donations.lastDate",
+      operator: "lte",
+      value: to,
+    });
+  }
+  const cents = Number.parseInt(minLifetimeAmountCents, 10);
+  if (Number.isFinite(cents) && cents > 0) {
+    conditions.push({
+      id: "legacy-min-lifetime",
+      field: "donations.totalAmount",
+      operator: "gte",
+      value: cents / 100,
+    });
+  }
+  return conditions;
+}
+
 interface ConstituentsTableProps {
   constituents: ConstituentListRow[];
   pagination: { page: number; perPage: number; total: number; totalPages: number };
@@ -106,6 +198,21 @@ interface ConstituentsTableProps {
    * repeatable `?types=`.
    */
   multiTypeEnabled: boolean;
+  /**
+   * `true` when the `advanced_filters` flag is on (Epic #418). On → the
+   * "More filters" button opens the full FilterBuilder (query DSL, presets,
+   * live count preview) and the applied query lives in the shareable
+   * `?filters=` URL param, rendered as a chip strip. Off → the legacy basic
+   * dialog (last-donation range + minimum total giving) renders unchanged
+   * and no advanced surface exists.
+   */
+  advancedFiltersEnabled: boolean;
+  /**
+   * `true` when the server rejected the URL's `?filters=` value (hand-edited
+   * or stale shared link). The list below is UNFILTERED — an inline notice
+   * says so instead of silently pretending the filter applied.
+   */
+  advancedFilterInvalid?: boolean;
   /** Server-resolved sort/order — see donations-table.tsx for rationale. */
   sort: ConstituentSortField;
   order: ConstituentSortOrder;
@@ -120,6 +227,8 @@ export function ConstituentsTable({
   canWrite,
   bulkEmailEnabled,
   multiTypeEnabled,
+  advancedFiltersEnabled,
+  advancedFilterInvalid = false,
   sort,
   order,
 }: ConstituentsTableProps) {
@@ -148,13 +257,27 @@ export function ConstituentsTable({
   // UX could not tell a "0 of N delivered, worker died" story.
   const [trackedJobId, setTrackedJobId] = useState<string | null>(null);
   const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false);
+  const [builderOpen, setBuilderOpen] = useState(false);
 
   const initialLastDonationFrom = searchParams.get("lastDonationFrom") ?? "";
   const initialLastDonationTo = searchParams.get("lastDonationTo") ?? "";
   const initialMinLifetime = searchParams.get("minLifetimeAmountCents") ?? "";
 
+  // Epic #418 — the applied advanced-filter DSL, deserialised from the
+  // shareable `?filters=` URL param. Null when absent or unparseable (the
+  // server ignored it in that case too, so strip and data always agree).
+  const filtersParam = searchParams.get("filters");
+  const presetIdParam = searchParams.get("filterPreset");
+  const activeAdvancedQuery = useMemo<FilterQuery | null>(
+    () => (advancedFiltersEnabled ? parseFiltersParam(filtersParam) : null),
+    [advancedFiltersEnabled, filtersParam],
+  );
+
   const hasActiveAdvancedFilters =
-    initialLastDonationFrom !== "" || initialLastDonationTo !== "" || initialMinLifetime !== "";
+    initialLastDonationFrom !== "" ||
+    initialLastDonationTo !== "" ||
+    initialMinLifetime !== "" ||
+    activeAdvancedQuery !== null;
   // Issue #216: see donations-table.tsx for the pattern.
   const [isPending, startTransition] = useTransition();
 
@@ -222,6 +345,112 @@ export function ConstituentsTable({
     },
     [pathname, router, searchParams],
   );
+
+  // ── Epic #418: advanced-filter DSL on the list page ──────────────────
+  const tFiltersRoot = useTranslations("constituents.filters");
+  const patternLabelFor = useCallback(
+    (pattern: FilterPattern) => trDynamic(tFiltersRoot, `patterns.${patternI18nKey(pattern)}`),
+    [tFiltersRoot],
+  );
+
+  const advancedChips = useMemo(
+    () => (activeAdvancedQuery ? chipsFromQuery(activeAdvancedQuery, patternLabelFor) : []),
+    [activeAdvancedQuery, patternLabelFor],
+  );
+
+  /** Resolved display name of the preset that seeded the active query, if any. */
+  const activePresetName = useMemo(() => {
+    if (!presetIdParam || !activeAdvancedQuery) return null;
+    const preset = filterPresets.find((p) => p.id === presetIdParam);
+    return preset ? trDynamic(tFiltersRoot, preset.name) : null;
+  }, [presetIdParam, activeAdvancedQuery, tFiltersRoot]);
+
+  /**
+   * Write (or clear, with `null`) the applied DSL to the URL — the single
+   * source of truth, so the filtered view is shareable/bookmarkable. Applying
+   * a DSL query clears the legacy basic-dialog params: the DSL subsumes them
+   * and the two systems must never AND together invisibly.
+   */
+  const writeAdvancedQuery = useCallback(
+    (query: FilterQuery | null, presetId?: string) => {
+      const params = new URLSearchParams(searchParams.toString());
+      const isEmpty =
+        !query || (query.conditions.length === 0 && (query.patterns?.length ?? 0) === 0);
+      if (isEmpty) {
+        params.delete("filters");
+        params.delete("filterPreset");
+      } else {
+        params.set("filters", JSON.stringify(query));
+        if (presetId) {
+          params.set("filterPreset", presetId);
+        } else {
+          params.delete("filterPreset");
+        }
+      }
+      params.delete("lastDonationFrom");
+      params.delete("lastDonationTo");
+      params.delete("minLifetimeAmountCents");
+      params.delete("page");
+      const queryString = params.toString();
+      startTransition(() => {
+        router.replace(queryString ? `${pathname}?${queryString}` : pathname);
+      });
+    },
+    [pathname, router, searchParams],
+  );
+
+  // `FilterBuilder.onApply` awaits this — async so a future server-side
+  // persistence step can slot in without changing the builder contract.
+  const applyAdvancedQuery = useCallback(
+    async (query: FilterQuery, presetId?: string) => {
+      writeAdvancedQuery(query, presetId);
+    },
+    [writeAdvancedQuery],
+  );
+
+  /**
+   * Remove one chip from the applied query. Pattern chips splice their flag
+   * out of `patterns`; condition chips drop the matching condition. Any
+   * hand-edit invalidates the "from preset X" claim, so the preset param is
+   * always dropped.
+   */
+  const removeAdvancedChip = useCallback(
+    (chipId: string) => {
+      if (!activeAdvancedQuery) return;
+      let next: FilterQuery;
+      if (chipId.startsWith("pattern:")) {
+        const pattern = chipId.slice("pattern:".length) as FilterPattern;
+        next = {
+          ...activeAdvancedQuery,
+          patterns: (activeAdvancedQuery.patterns ?? []).filter((p) => p !== pattern),
+        };
+      } else {
+        next = {
+          ...activeAdvancedQuery,
+          conditions: activeAdvancedQuery.conditions.filter(
+            (c) => !isFilterCondition(c) || c.id !== chipId,
+          ),
+        };
+      }
+      writeAdvancedQuery(next);
+    },
+    [activeAdvancedQuery, writeAdvancedQuery],
+  );
+
+  /**
+   * What the builder opens with: the currently-applied query (so reopening
+   * edits in place), or the legacy basic-dialog params translated to DSL
+   * conditions (so a bookmarked pre-DSL URL upgrades seamlessly).
+   */
+  const builderInitialQuery = useMemo<FilterQuery | undefined>(() => {
+    if (activeAdvancedQuery) return activeAdvancedQuery;
+    const legacy = legacyParamsToConditions(
+      initialLastDonationFrom,
+      initialLastDonationTo,
+      initialMinLifetime,
+    );
+    return legacy.length > 0 ? { operator: "AND", conditions: legacy } : undefined;
+  }, [activeAdvancedQuery, initialLastDonationFrom, initialLastDonationTo, initialMinLifetime]);
 
   const navigateToPage = useCallback(
     (page: number) => {
@@ -515,14 +744,19 @@ export function ConstituentsTable({
             </SelectContent>
           </Select>
         )}
+        {/* Epic #418 — flag on: the real FilterBuilder (DSL, presets, live
+            count) replaces the basic dialog as THE filter entry point. Flag
+            off: the legacy basic dialog renders unchanged. */}
         <Button
           type="button"
           variant={hasActiveAdvancedFilters ? "primary" : "secondary"}
           size="sm"
-          onClick={() => setAdvancedFiltersOpen(true)}
+          onClick={() =>
+            advancedFiltersEnabled ? setBuilderOpen(true) : setAdvancedFiltersOpen(true)
+          }
         >
           <SlidersHorizontal size={16} aria-hidden="true" />
-          {tFilters("advancedLabel")}
+          {advancedFiltersEnabled ? tFilters("builderLabel") : tFilters("advancedLabel")}
           {hasActiveAdvancedFilters ? <Badge variant="info">•</Badge> : null}
         </Button>
         {canManageAdminActions && bulkEmailEnabled ? (
@@ -550,6 +784,31 @@ export function ConstituentsTable({
           </>
         ) : null}
       </div>
+
+      {/* Epic #418 — active-filter strip. Static shell like the filter bar
+          above (ADR-035 rule A1): no entrance animation, instantly
+          interactive. Every chip is removable; removal rewrites `?filters=`
+          so the URL stays the single source of truth. */}
+      {advancedFiltersEnabled && activeAdvancedQuery ? (
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <span className="text-xs font-medium text-on-surface-variant">
+            {activePresetName
+              ? tFilters("strip.preset", { name: activePresetName })
+              : tFilters("strip.label")}
+          </span>
+          {advancedChips.map((chip) => (
+            <FilterChip key={chip.id} filter={chip} onRemove={removeAdvancedChip} />
+          ))}
+          <Button type="button" variant="ghost" size="sm" onClick={() => writeAdvancedQuery(null)}>
+            {tFilters("strip.clear")}
+          </Button>
+        </div>
+      ) : null}
+      {advancedFiltersEnabled && advancedFilterInvalid ? (
+        <p className="mb-4 text-sm text-warning" role="alert">
+          {tFilters("strip.invalid")}
+        </p>
+      ) : null}
 
       <DataTable
         columns={columns}
@@ -596,6 +855,21 @@ export function ConstituentsTable({
         highlightJobId={trackedJobId}
         onResumed={(newJobId) => setTrackedJobId(newJobId)}
       />
+
+      {/* Epic #418 — the full FilterBuilder (flag on). The `key` remounts it
+          whenever the applied query changes so its internal useState re-seeds
+          from `initialQuery` (the builder resets to empty after each apply;
+          without the remount, reopening would edit a stale draft instead of
+          the currently-applied filter). */}
+      {advancedFiltersEnabled ? (
+        <FilterBuilder
+          key={filtersParam ?? "no-filter"}
+          open={builderOpen}
+          onOpenChange={setBuilderOpen}
+          onApply={applyAdvancedQuery}
+          initialQuery={builderInitialQuery}
+        />
+      ) : null}
 
       <AdvancedFiltersDialog
         open={advancedFiltersOpen}
