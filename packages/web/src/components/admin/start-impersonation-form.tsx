@@ -444,7 +444,7 @@ function TenantPicker({
         <Button
           type="button"
           variant="ghost"
-          className="w-full justify-between border border-border bg-surface px-3 font-normal"
+          className="w-full justify-between border border-border bg-surface px-3 font-normal focus:border-primary focus:shadow-ring"
           aria-expanded={open}
         >
           <span className={cn("truncate", !value && "text-muted-foreground")}>
@@ -541,7 +541,7 @@ function TargetPicker({
         <Button
           type="button"
           variant="ghost"
-          className="w-full justify-between border border-border bg-surface px-3 font-normal"
+          className="w-full justify-between border border-border bg-surface px-3 font-normal focus:border-primary focus:shadow-ring"
           aria-expanded={open}
         >
           <span className={cn("truncate", !value && "text-muted-foreground")}>

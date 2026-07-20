@@ -303,7 +303,8 @@ export function FilterCondition({ condition, onChange, onRemove }: FilterConditi
             type="button"
             className={cn(
               "inline-flex h-9 w-full items-center justify-between gap-2 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm",
-              "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+              // focus: parity + the standard form-control ring (was a one-off ring-1).
+              "focus:outline-none focus:border-primary focus:shadow-ring",
               selectedValues.length === 0 && "text-on-surface-variant",
             )}
             aria-label={t("selectValuesFor", { field: trDynamic(t, selectedField.label) })}

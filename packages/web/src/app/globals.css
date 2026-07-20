@@ -863,13 +863,20 @@ h4 {
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* Focus snap — motion must never gate input (rule A4). If keyboard focus
-   lands inside a not-yet-revealed block, cancel its entrance: with
-   base = final, `animation: none` makes it instantly visible. */
+/* Focus snap — motion must never gate input (rule A4). If focus lands
+   inside a not-yet-revealed block, collapse its entrance TIMING so it
+   becomes visible instantly. NEVER `animation: none` here: toggling
+   animation-name restarts the animation when the rule stops matching —
+   focusing a <select> moves focus into its PORTALED dropdown, the
+   container loses :focus-within, and the whole form would replay its
+   entrance. Changing only duration/delay never restarts a CSS
+   animation (timing recompute, not a reset): a finished entrance stays
+   finished when these values revert on blur. */
 .reveal-item:focus-visible,
 .reveal-item:focus-within,
 .cascade > *:focus-within {
-  animation: none;
+  animation-duration: 0.01ms;
+  animation-delay: 0s;
 }
 
 /* ── Data-draw chaining cap (rule A4 — 1 s total budget) ──
@@ -978,7 +985,10 @@ h4 {
   animation-delay: calc(var(--cascade-i, 0) * var(--stagger-step, 50ms));
 }
 .row-reveal:focus-within {
-  animation: none;
+  /* Timing collapse, not `animation: none` — same restart trap as the
+     focus-snap rule above (blur would replay the row entrance). */
+  animation-duration: 0.01ms;
+  animation-delay: 0s;
 }
 @media (prefers-reduced-motion: reduce) {
   .row-reveal {
