@@ -1091,4 +1091,220 @@ describe("Advanced Constituent Filters", () => {
       expect(rateLimitedCount).toBe(1);
     });
   });
+
+  describe("GET /v1/constituents?filters= (list-endpoint DSL — Epic #418 follow-up)", () => {
+    /** Build the list URL with a JSON-serialised FilterQuery. */
+    function listUrl(query: unknown, extra = ""): string {
+      return `/v1/constituents?filters=${encodeURIComponent(JSON.stringify(query))}${extra}`;
+    }
+
+    it("filters the list by a regular condition (address.city eq)", async () => {
+      const response = await app.inject({
+        method: "GET",
+        url: listUrl({
+          operator: "AND",
+          conditions: [{ field: "address.city", operator: "eq", value: "New York" }],
+        }),
+        headers: authHeader(token),
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json();
+      const names = body.data.map((c: TestConstituent) => c.firstName).sort();
+      expect(names).toEqual(["Bob", "John"]);
+      expect(body.pagination.total).toBe(2);
+    });
+
+    it("filters by a donation aggregate with EUR→cents scaling (totalAmount gte 1000 EUR)", async () => {
+      // John has 3 × 1000 EUR cleared donations; everyone else is far below.
+      // The value crosses the DSL boundary in EUR and must compare against
+      // `total_amount_cents` via the donation_stats join — this is the test
+      // that fails if the list route forgets that join.
+      const response = await app.inject({
+        method: "GET",
+        url: listUrl({
+          operator: "AND",
+          conditions: [{ field: "donations.totalAmount", operator: "gte", value: 1000 }],
+        }),
+        headers: authHeader(token),
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json();
+      expect(body.data.map((c: TestConstituent) => c.firstName)).toEqual(["John"]);
+    });
+
+    it("supports pattern-only queries (LYBUNT preset)", async () => {
+      const response = await app.inject({
+        method: "GET",
+        url: listUrl({ operator: "AND", conditions: [], patterns: ["LYBUNT"] }),
+        headers: authHeader(token),
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json();
+      // Jane's only cleared donation is last-year December → LYBUNT.
+      expect(body.data.map((c: TestConstituent) => c.firstName)).toEqual(["Jane"]);
+    });
+
+    it("composes with the quick-search param (AND semantics)", async () => {
+      const response = await app.inject({
+        method: "GET",
+        url: listUrl(
+          {
+            operator: "AND",
+            conditions: [{ field: "address.city", operator: "eq", value: "New York" }],
+          },
+          "&search=doe",
+        ),
+        headers: authHeader(token),
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json();
+      // City=New York matches John + Bob; search "doe" narrows to John Doe.
+      expect(body.data.map((c: TestConstituent) => c.firstName)).toEqual(["John"]);
+    });
+
+    it("excludes soft-deleted constituents from filtered results", async () => {
+      const johnId = testConstituents[0]!.id;
+      await withTenantContext(ORG_A, async (db) => {
+        await db
+          .update(constituents)
+          .set({ deletedAt: new Date() })
+          .where(and(eq(constituents.id, johnId), eq(constituents.orgId, ORG_A)));
+      });
+
+      const response = await app.inject({
+        method: "GET",
+        url: listUrl({
+          operator: "AND",
+          conditions: [{ field: "address.city", operator: "eq", value: "New York" }],
+        }),
+        headers: authHeader(token),
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json();
+      expect(body.data.map((c: TestConstituent) => c.firstName)).toEqual(["Bob"]);
+    });
+
+    it("never leaks another tenant's rows (RLS + explicit orgId)", async () => {
+      // Org B runs the same city filter Org A has two matches for. Under the
+      // `api-tests-app` job this exercises the RLS path end-to-end (issue
+      // #455); the explicit eq(orgId) keeps it correct under the owner role.
+      const response = await app.inject({
+        method: "GET",
+        url: listUrl({
+          operator: "AND",
+          conditions: [{ field: "address.city", operator: "eq", value: "New York" }],
+        }),
+        headers: authHeader(tokenB),
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json();
+      expect(body.data).toEqual([]);
+      expect(body.pagination.total).toBe(0);
+    });
+
+    it("rejects unparseable JSON with 400", async () => {
+      const response = await app.inject({
+        method: "GET",
+        url: `/v1/constituents?filters=${encodeURIComponent("{not json")}`,
+        headers: authHeader(token),
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json().title).toBe("Invalid filter query");
+    });
+
+    it("rejects non-object JSON (scalar / array) with 400", async () => {
+      for (const payload of ["42", "[]", "null", '"str"']) {
+        const response = await app.inject({
+          method: "GET",
+          url: `/v1/constituents?filters=${encodeURIComponent(payload)}`,
+          headers: authHeader(token),
+        });
+        expect(response.statusCode).toBe(400);
+      }
+    });
+
+    it("rejects unknown fields with 400 and a structured error list", async () => {
+      const response = await app.inject({
+        method: "GET",
+        url: listUrl({
+          operator: "AND",
+          conditions: [{ field: "constituent.doesNotExist", operator: "eq", value: "x" }],
+        }),
+        headers: authHeader(token),
+      });
+
+      expect(response.statusCode).toBe(400);
+      const body = response.json();
+      expect(body.errors.some((e: string) => e.includes("Unknown field"))).toBe(true);
+    });
+
+    it("404s the filters param when the advanced_filters flag is off — but leaves the plain list untouched", async () => {
+      await db
+        .update(featureFlags)
+        .set({ enabled: false })
+        .where(eq(featureFlags.key, FEATURE_FLAG_KEYS.ADVANCED_FILTERS));
+      await flagService.invalidate();
+      await flagService.invalidateTenant(ORG_A);
+
+      try {
+        // With the param: 404, exactly like the requireFlag-gated routes —
+        // never a silently-unfiltered 200 an operator would mistake for a
+        // filtered list.
+        const gated = await app.inject({
+          method: "GET",
+          url: listUrl({
+            operator: "AND",
+            conditions: [{ field: "address.city", operator: "eq", value: "New York" }],
+          }),
+          headers: authHeader(token),
+        });
+        expect(gated.statusCode).toBe(404);
+
+        // Without the param: the list route behaves exactly as before the
+        // feature existed.
+        const plain = await app.inject({
+          method: "GET",
+          url: "/v1/constituents",
+          headers: authHeader(token),
+        });
+        expect(plain.statusCode).toBe(200);
+        expect(plain.json().pagination.total).toBe(4);
+      } finally {
+        await db
+          .update(featureFlags)
+          .set({ enabled: true })
+          .where(eq(featureFlags.key, FEATURE_FLAG_KEYS.ADVANCED_FILTERS));
+        await flagService.invalidate();
+        await flagService.invalidateTenant(ORG_A);
+      }
+    });
+
+    it("keeps the ConstituentListRow response shape (lastDonationAt from donation_agg)", async () => {
+      const response = await app.inject({
+        method: "GET",
+        url: listUrl({
+          operator: "AND",
+          conditions: [{ field: "donations.count", operator: "gte", value: 1 }],
+        }),
+        headers: authHeader(token),
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json();
+      expect(body.data.length).toBeGreaterThan(0);
+      for (const row of body.data) {
+        // The list row shape (NOT the /filter result shape) — the table
+        // consumes lastDonationAt, types, tags exactly as without filters.
+        expect(row).toHaveProperty("lastDonationAt");
+        expect(row).toHaveProperty("types");
+      }
+    });
+  });
 });

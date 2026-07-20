@@ -91,6 +91,21 @@ export default async function ConstituentsPage({ searchParams }: ConstituentsPag
   const sort = parseSortField(params.sort);
   const order = parseSortOrder(params.order);
 
+  // Epic #418 — advanced-filter DSL from the shareable `?filters=` URL param.
+  // Pre-parse defensively: a hand-mangled URL with unparseable JSON is treated
+  // as "no filter" here AND in the table (both sides run the same JSON.parse
+  // guard), so server and client agree the filter is absent.
+  const rawFilters = Array.isArray(params.filters) ? params.filters[0] : params.filters;
+  let filtersParam: string | undefined;
+  if (rawFilters) {
+    try {
+      JSON.parse(rawFilters);
+      filtersParam = rawFilters;
+    } catch {
+      filtersParam = undefined;
+    }
+  }
+
   const client = await createServerApiClient();
 
   // SSR fetch of the global feature flags — used here to hide the
@@ -105,42 +120,80 @@ export default async function ConstituentsPage({ searchParams }: ConstituentsPag
   // absent (single-badge cell + single-value quick filter), behaviour
   // identical to the legacy single picklist.
   let multiTypeEnabled = false;
+  // Epic #418 — with the flag off, the FilterBuilder entry point, the chip
+  // strip and the `?filters=` passthrough are all absent; the page behaves
+  // byte-for-byte like today (basic "More filters" dialog only).
+  let advancedFiltersEnabled = false;
   try {
     const flags = await FeatureFlagsService.listPublic(client);
     bulkEmailEnabled = isFlagEnabled(flags, FEATURE_FLAG_KEYS.COMMUNICATION_BULK_EMAIL);
     bulkImportEnabled = isFlagEnabled(flags, FEATURE_FLAG_KEYS.CONSTITUENTS_BULK_IMPORT);
     multiTypeEnabled = isFlagEnabled(flags, FEATURE_FLAG_KEYS.CONSTITUENTS_MULTI_TYPE);
+    advancedFiltersEnabled = isFlagEnabled(flags, FEATURE_FLAG_KEYS.ADVANCED_FILTERS);
   } catch {
     bulkEmailEnabled = false;
     bulkImportEnabled = false;
     multiTypeEnabled = false;
+    advancedFiltersEnabled = false;
   }
 
+  // Only forward the DSL when the flag is on — the API 404s the param
+  // otherwise. A shared filter URL opened by a flag-off tenant degrades to
+  // the unfiltered list with no filter affordances (surface fully absent).
+  const effectiveFilters = advancedFiltersEnabled ? filtersParam : undefined;
+
+  const listQuery = {
+    page,
+    perPage,
+    search: searchValue,
+    // Flag on → multi-value `?types=` filter; flag off → legacy single
+    // `?type=` so the off-state query is byte-for-byte what it is today.
+    type: multiTypeEnabled ? undefined : typeValue,
+    types: multiTypeEnabled && typeValues.length > 0 ? typeValues : undefined,
+    sort,
+    order,
+    filters: effectiveFilters,
+  };
+
   let result: ConstituentListResponse;
+  // True when the API rejected a syntactically-valid-JSON `?filters=` value
+  // (unknown field, bad operator — a hand-edited or stale shared link). The
+  // page falls back to the unfiltered list and the table shows an inline
+  // notice instead of silently pretending the filter applied.
+  let advancedFilterInvalid = false;
   try {
-    result = await ConstituentService.listConstituents(client, {
-      page,
-      perPage,
-      search: searchValue,
-      // Flag on → multi-value `?types=` filter; flag off → legacy single
-      // `?type=` so the off-state query is byte-for-byte what it is today.
-      type: multiTypeEnabled ? undefined : typeValue,
-      types: multiTypeEnabled && typeValues.length > 0 ? typeValues : undefined,
-      sort,
-      order,
-    });
+    result = await ConstituentService.listConstituents(client, listQuery);
   } catch (err) {
     if (err instanceof ApiProblem && (err.status === 401 || err.status === 403)) {
       result = {
         data: [],
         pagination: { page, perPage, total: 0, totalPages: 0 },
       };
+    } else if (effectiveFilters && err instanceof ApiProblem && err.status === 400) {
+      advancedFilterInvalid = true;
+      result = await ConstituentService.listConstituents(client, {
+        ...listQuery,
+        filters: undefined,
+      });
     } else {
       throw err;
     }
   }
 
   const hasAny = result.pagination.total > 0;
+  // A zero-result view REACHED THROUGH filtering must keep the table shell
+  // (search box, filter strip) mounted so the operator can clear the filter —
+  // the page-level "seed your first constituents" empty state is only for a
+  // genuinely empty, unfiltered base.
+  const hasActiveQueryContext = Boolean(
+    searchValue ||
+      typeValue ||
+      typeValues.length > 0 ||
+      effectiveFilters ||
+      params.lastDonationFrom ||
+      params.lastDonationTo ||
+      params.minLifetimeAmountCents,
+  );
 
   return (
     <>
@@ -169,7 +222,7 @@ export default async function ConstituentsPage({ searchParams }: ConstituentsPag
         }
       />
 
-      {hasAny ? (
+      {hasAny || hasActiveQueryContext ? (
         <ConstituentsTable
           constituents={result.data}
           pagination={result.pagination}
@@ -177,6 +230,8 @@ export default async function ConstituentsPage({ searchParams }: ConstituentsPag
           canWrite={canWrite}
           bulkEmailEnabled={bulkEmailEnabled}
           multiTypeEnabled={multiTypeEnabled}
+          advancedFiltersEnabled={advancedFiltersEnabled}
+          advancedFilterInvalid={advancedFilterInvalid}
           sort={sort}
           order={order}
         />

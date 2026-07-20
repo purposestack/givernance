@@ -2379,7 +2379,14 @@
         "majorDonor": "Grands donateurs"
       },
       "noOptions": "Aucune option disponible",
-      "removeFilter": "Retirer le filtre {label}"
+      "removeFilter": "Retirer le filtre {label}",
+      "builderLabel": "Filtres avancés",
+      "strip": {
+        "label": "Filtre actif",
+        "preset": "Modèle : {name}",
+        "clear": "Effacer le filtre",
+        "invalid": "Le filtre de ce lien est invalide et a été ignoré — la liste complète est affichée."
+      }
     },
     "actions": {
       "new": "Nouveau constituant",
