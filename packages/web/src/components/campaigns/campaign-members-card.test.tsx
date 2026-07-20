@@ -9,6 +9,7 @@ import { CampaignMembersCard } from "./campaign-members-card";
 
 // Mock next-intl
 vi.mock("next-intl", () => ({
+  useLocale: () => "fr",
   useTranslations: () => (key: string) => {
     const translations: Record<string, string | Record<string, string>> = {
       title: "Campaign Members",

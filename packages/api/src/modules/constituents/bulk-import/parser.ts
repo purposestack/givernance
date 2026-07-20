@@ -148,6 +148,17 @@ function normaliseHeaderToken(raw: string): CanonicalHeader | null {
 }
 
 /**
+ * Would this header be claimed by the core map? The template generator
+ * (Epic #539) consults this so a custom-field label that shadows a core
+ * alias (e.g. "Email") is emitted as its `cf_<key>` alias instead —
+ * core resolution always wins on import, so the label header would
+ * misroute the column.
+ */
+export function isCoreImportHeader(raw: string): boolean {
+  return normaliseHeaderToken(raw) !== null;
+}
+
+/**
  * Spreadsheet formula-injection mitigation (CWE-1236). Excel and most
  * CSV consumers evaluate cells starting with one of these as a formula;
  * prefixing with `'` makes them plain text on re-export.

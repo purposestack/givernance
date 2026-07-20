@@ -2,6 +2,8 @@
  * Advanced filter types and interfaces for constituent querying
  */
 
+import type { CustomFieldType } from "@givernance/shared/custom-fields";
+
 export type FilterOperator =
   | "eq"
   | "neq"
@@ -133,6 +135,47 @@ export interface FieldMetadata {
    * unit drift surfaced by the advanced-filters audit).
    */
   valueUnit?: "cents";
+  /**
+   * `"custom"` routes the condition to the JSONB lane in the query builder
+   * (Epic #539). Absent / `"core"` = regular Drizzle-column path.
+   */
+  source?: "core" | "custom";
+  /** The custom-field definition type; drives the JSONB cast + operator set. */
+  customType?: CustomFieldType;
+  /**
+   * The registry `key` inside the `custom` blob. Server-resolved from the
+   * per-org definition catalog — the DSL only ever carries the dotted
+   * `custom.<key>` name, never a raw column or JSON key.
+   */
+  jsonKey?: string;
+  /**
+   * Display label. Custom fields carry the operator-authored label (rendered
+   * literally); core fields derive their `fields.<name>` i18n key at
+   * serialization time in `/filter/fields`.
+   */
+  label?: string;
+  /**
+   * Catalog grouping for the FE builder. Core fields carry their static
+   * category; every custom field is `"custom"`.
+   */
+  category?: "identity" | "demographics" | "donation_history" | "custom";
+  /**
+   * Picklist / multi-picklist options (all of them, with the `active` bit —
+   * inactive options still need label resolution on persisted segments).
+   */
+  options?: Array<{ id: string; label: string; active: boolean }>;
+  /**
+   * All custom fields are nullable (absent key ≡ null ≡ "is empty") and
+   * always offer isNull / isNotNull.
+   */
+  nullable?: boolean;
+  /**
+   * GDPR Art. 9 marker carried from the definition. Sensitive fields stay
+   * filterable, but their stored values are NEVER enumerable through the
+   * suggestions endpoint (bulk value enumeration without record-level
+   * access would sidestep the docs/35 sensitive-data fence).
+   */
+  sensitive?: boolean;
 }
 
 /**

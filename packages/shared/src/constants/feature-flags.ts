@@ -213,6 +213,71 @@ export const FEATURE_FLAG_KEYS = {
    *     every badge spot shows one badge (the first type).
    */
   CONSTITUENTS_MULTI_TYPE: "constituents.multi_type",
+
+  /**
+   * Gates custom fields on the constituent domain (Epic #539, PR-1..6).
+   *
+   * One flag per domain — deliberate per-domain kill switches so a
+   * problem confined to one surface (e.g. a slow projected column on
+   * the donation list) can be disabled without pulling the whole
+   * customization engine platform-wide. The definitions registry,
+   * `custom` JSONB columns, and erasure hooks are always live
+   * (erasure is NEVER flag-gated); the flags gate the operator/admin
+   * affordances only.
+   *
+   * `scope='tenant'` + `tenant_override_allowed=false` for the initial
+   * rollout (bulk-email precedent): Givernance staff enable per tenant
+   * after a brief CSM walk-through of the field builder + quota meter.
+   * Graduation to org-admin self-service is Epic #539 open question #6.
+   *
+   * `public=true`: `/settings/custom-fields` (tab visibility), the
+   * constituent form/detail/list, the filter builder, and the export
+   * button all SSR-fetch `/v1/feature-flags` to hide their surfaces.
+   *
+   * Surfaces gated by this key:
+   *   - API: `/v1/custom-fields*` routes for `domain='constituent'`
+   *     (the catalog route filters domains to enabled flags).
+   *   - API: `custom` payload on constituent create/update; `?filters=`
+   *     conditions on `custom.<key>` fields; CSV export custom columns.
+   *   - Worker: bulk-import template 1.1 custom columns + row
+   *     validation re-check `isFlagEnabled` at pickup.
+   *   - Web: constituents tab of /settings/custom-fields, form section,
+   *     detail rows, list columns, filter category.
+   *
+   * Emergency rollback: see `docs/runbooks/feature-flag-rollback.md`.
+   */
+  CONSTITUENTS_CUSTOM_FIELDS: "constituents.custom_fields",
+
+  /**
+   * Gates custom fields on the donation domain (Epic #539). See
+   * `CONSTITUENTS_CUSTOM_FIELDS` for the per-domain kill-switch
+   * rationale and rollout posture (same: tenant scope, staff-enabled,
+   * public projection).
+   *
+   * Surfaces gated by this key:
+   *   - API: `/v1/custom-fields*` routes for `domain='donation'`;
+   *     `custom` payload on donation create/update.
+   *   - API: `donorCustom` projection on donation list/detail rides the
+   *     CONSTITUENT defs (`show_on_related`) but renders on donation
+   *     surfaces — it hides when THIS flag is off for the tenant.
+   *   - Web: donations tab of /settings/custom-fields, form section,
+   *     detail rows, list columns.
+   */
+  DONATIONS_CUSTOM_FIELDS: "donations.custom_fields",
+
+  /**
+   * Gates custom fields on the campaign domain (Epic #539). See
+   * `CONSTITUENTS_CUSTOM_FIELDS` for the per-domain kill-switch
+   * rationale and rollout posture (same: tenant scope, staff-enabled,
+   * public projection).
+   *
+   * Surfaces gated by this key:
+   *   - API: `/v1/custom-fields*` routes for `domain='campaign'`;
+   *     `custom` payload on campaign create/update.
+   *   - Web: campaigns tab of /settings/custom-fields, form section,
+   *     detail rows, list columns.
+   */
+  CAMPAIGNS_CUSTOM_FIELDS: "campaigns.custom_fields",
 } as const;
 
 export type FeatureFlagKey = (typeof FEATURE_FLAG_KEYS)[keyof typeof FEATURE_FLAG_KEYS];
@@ -318,6 +383,36 @@ export const FEATURE_FLAG_REGISTRY: ReadonlyArray<{
       "Lets a single constituent hold several types at once — for example someone who is both a donor and a volunteer — instead of just one. Off by default: each constituent keeps a single type until you turn this on from this page.",
     scope: "tenant",
     tenantOverrideAllowed: true,
+    public: true,
+  },
+  {
+    key: FEATURE_FLAG_KEYS.CONSTITUENTS_CUSTOM_FIELDS,
+    defaultEnabled: false,
+    label: "Custom fields on constituents",
+    description:
+      "Lets your organisation define its own typed fields on constituent records — text, numbers, dates, checkboxes, amounts, and picklists with managed options — then fill, filter, and export them like any built-in field. Off by default: Givernance staff turn it on for your organisation during the initial rollout.",
+    scope: "tenant",
+    tenantOverrideAllowed: false,
+    public: true,
+  },
+  {
+    key: FEATURE_FLAG_KEYS.DONATIONS_CUSTOM_FIELDS,
+    defaultEnabled: false,
+    label: "Custom fields on donations",
+    description:
+      "Lets your organisation define its own typed fields on donation records — for example an internal reference or a thematic classification — then fill and export them like any built-in field. Off by default: Givernance staff turn it on for your organisation during the initial rollout.",
+    scope: "tenant",
+    tenantOverrideAllowed: false,
+    public: true,
+  },
+  {
+    key: FEATURE_FLAG_KEYS.CAMPAIGNS_CUSTOM_FIELDS,
+    defaultEnabled: false,
+    label: "Custom fields on campaigns",
+    description:
+      "Lets your organisation define its own typed fields on campaign records — for example a budget code or an audience segment — then fill and export them like any built-in field. Off by default: Givernance staff turn it on for your organisation during the initial rollout.",
+    scope: "tenant",
+    tenantOverrideAllowed: false,
     public: true,
   },
 ];

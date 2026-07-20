@@ -28,6 +28,16 @@
 import type { Readable } from "node:stream";
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
+import {
+  buildCustomHeaderResolver,
+  buildCustomPatchFromRow,
+  buildCustomValidator,
+  type CustomFieldDefinition,
+  type CustomFieldValues,
+  type CustomHeaderResolver,
+  type CustomValidator,
+  customImportAlias,
+} from "@givernance/shared/custom-fields";
 import type { ProcessBulkImportJob } from "@givernance/shared/jobs";
 import {
   auditLogs,
@@ -35,10 +45,11 @@ import {
   bulkImportJobs,
   bulkImportResults,
   constituents,
+  customFieldDefinitions,
 } from "@givernance/shared/schema";
 import type { Job } from "bullmq";
 import { parse as parseCsvSync } from "csv-parse/sync";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import ExcelJS from "exceljs";
 import { env } from "../env.js";
 import { withWorkerContext } from "../lib/db.js";
@@ -157,6 +168,21 @@ function normaliseHeader(raw: string): CanonicalHeader | null {
   return HEADER_ALIASES[cleaned] ?? null;
 }
 
+/**
+ * Resolved per-column key: a canonical header, a `cf_<key>` custom-field
+ * alias (Epic #539 — resolved via the org's active catalog when the
+ * tenant flag is on; core headers always win), or `null` (column
+ * dropped). With the flag off `customResolver` is null, so `cf_` /
+ * label-headed columns fall through to `null` — the off-state ignores
+ * custom columns entirely.
+ */
+function resolveHeader(raw: string, customResolver: CustomHeaderResolver | null): string | null {
+  const core = normaliseHeader(raw);
+  if (core) return core;
+  const def = customResolver?.(raw);
+  return def ? customImportAlias(def.key) : null;
+}
+
 function neutraliseFormula(value: string): string {
   if (!value) return value;
   const first = value.charCodeAt(0);
@@ -205,7 +231,7 @@ interface ParsedRow {
   parseError?: { code: string; message: string };
 }
 
-function parseCsvBuffer(buffer: Buffer): ParsedRow[] {
+function parseCsvBuffer(buffer: Buffer, customResolver: CustomHeaderResolver | null): ParsedRow[] {
   const records = parseCsvSync(buffer, {
     bom: true,
     skip_empty_lines: true,
@@ -215,7 +241,7 @@ function parseCsvBuffer(buffer: Buffer): ParsedRow[] {
   }) as string[][];
   if (records.length === 0) return [];
   const headerRow = records[0] ?? [];
-  const headerKeys = headerRow.map((h) => normaliseHeader(h ?? ""));
+  const headerKeys = headerRow.map((h) => resolveHeader(h ?? "", customResolver));
   const rows: ParsedRow[] = [];
   const dataRows = records.slice(1, 1 + MAX_ROWS);
   for (let i = 0; i < dataRows.length; i++) {
@@ -233,19 +259,22 @@ function parseCsvBuffer(buffer: Buffer): ParsedRow[] {
   return rows;
 }
 
-function extractHeaderKeysXlsx(values: unknown[]): (CanonicalHeader | null)[] {
-  const keys: (CanonicalHeader | null)[] = [];
+function extractHeaderKeysXlsx(
+  values: unknown[],
+  customResolver: CustomHeaderResolver | null,
+): (string | null)[] {
+  const keys: (string | null)[] = [];
   for (let col = 1; col < values.length; col++) {
     const raw = values[col];
     const text = typeof raw === "string" ? raw : raw == null ? "" : String(raw);
-    keys.push(normaliseHeader(text));
+    keys.push(resolveHeader(text, customResolver));
   }
   return keys;
 }
 
 function extractXlsxRow(
   cells: unknown[],
-  headerKeys: (CanonicalHeader | null)[],
+  headerKeys: (string | null)[],
 ): { values: Record<string, string>; parseError?: { code: string; message: string } } {
   const values: Record<string, string> = {};
   let parseError: { code: string; message: string } | undefined;
@@ -263,7 +292,10 @@ function extractXlsxRow(
   return { values, parseError };
 }
 
-async function parseXlsxBuffer(buffer: Buffer): Promise<ParsedRow[]> {
+async function parseXlsxBuffer(
+  buffer: Buffer,
+  customResolver: CustomHeaderResolver | null,
+): Promise<ParsedRow[]> {
   const workbook = new ExcelJS.Workbook();
   // ExcelJS narrows to a plain Buffer; cast through ArrayBuffer to keep
   // tsc strict happy under Node 20+'s `Buffer<ArrayBufferLike>`.
@@ -273,7 +305,7 @@ async function parseXlsxBuffer(buffer: Buffer): Promise<ParsedRow[]> {
   const headerVals = Array.isArray(sheet.getRow(1).values)
     ? (sheet.getRow(1).values as unknown[])
     : [];
-  const headerKeys = extractHeaderKeysXlsx(headerVals);
+  const headerKeys = extractHeaderKeysXlsx(headerVals, customResolver);
   const rows: ParsedRow[] = [];
   const cap = Math.min(sheet.rowCount, MAX_ROWS + 1);
   for (let r = 2; r <= cap; r++) {
@@ -292,9 +324,14 @@ function isCsv(mimeType: string, fileName: string): boolean {
   return /\.csv$/i.test(fileName);
 }
 
-async function parseFile(buffer: Buffer, mimeType: string, fileName: string): Promise<ParsedRow[]> {
-  if (isCsv(mimeType, fileName)) return parseCsvBuffer(buffer);
-  return parseXlsxBuffer(buffer);
+async function parseFile(
+  buffer: Buffer,
+  mimeType: string,
+  fileName: string,
+  customResolver: CustomHeaderResolver | null,
+): Promise<ParsedRow[]> {
+  if (isCsv(mimeType, fileName)) return parseCsvBuffer(buffer, customResolver);
+  return parseXlsxBuffer(buffer, customResolver);
 }
 
 // ─── Validation (lockstep with API validation.ts) ──────────────────────────
@@ -324,6 +361,8 @@ interface ConstituentPayload {
   // when the `constituents.multi_type` flag is off for the tenant.
   types?: ConstituentTypeLiteral[];
   tags?: string[];
+  // Epic #539 — validated custom-field values (definition key → value).
+  custom?: CustomFieldValues;
 }
 
 function validateCountryWorker(
@@ -548,6 +587,10 @@ export interface RowContext {
   // silently truncated, so the off-state matches the legacy picklist AND
   // the operator gets a fixable error-CSV line instead of silent data loss.
   multiTypeEnabled: boolean;
+  // Epic #539 — the org's active constituent catalog + compiled validator,
+  // null when `constituents.custom_fields` is off for the tenant (custom
+  // columns were then already dropped at header resolution).
+  customFields: { defs: readonly CustomFieldDefinition[]; validator: CustomValidator } | null;
 }
 
 async function recordFailedRow(
@@ -574,11 +617,12 @@ async function insertCreatedRow(ctx: RowContext, payload: ConstituentPayload): P
     // when the flag is off) is enforced upstream in `processOneRow`, so by the
     // time a row reaches here `types` is already flag-legal. Omitted `types`
     // leaves the DB defaults (`{donor}` / `donor`) to apply.
-    const { types, ...rest } = payload;
+    const { types, custom, ...rest } = payload;
     const typeColumns = types && types.length > 0 ? { types, type: types[0] } : {};
+    const customColumn = custom && Object.keys(custom).length > 0 ? { custom } : {};
     const [inserted] = await ctx.tx
       .insert(constituents)
-      .values({ ...rest, ...typeColumns, orgId: ctx.orgId })
+      .values({ ...rest, ...typeColumns, ...customColumn, orgId: ctx.orgId })
       .returning({ id: constituents.id });
     if (!inserted) throw new Error("Constituent insert returned no row");
     ctx.batchDelta.created += 1;
@@ -637,6 +681,38 @@ export async function processOneRow(ctx: RowContext): Promise<void> {
     return;
   }
 
+  // 2c. Custom-field cells (Epic #539). Coercion (labels → option ids,
+  // decimals → cents) then the shared validator — the same authority the
+  // API write path uses. An unknown picklist value is a per-row error,
+  // NEVER an auto-created option. `enforceRequired` stays off: bulk
+  // import is the historical-data path; required is a form-level
+  // constraint on operator-driven creates.
+  if (ctx.customFields) {
+    const coerced = buildCustomPatchFromRow(ctx.row.values, ctx.customFields.defs);
+    if (coerced.errors.length > 0) {
+      const first = coerced.errors[0];
+      await recordFailedRow(
+        ctx,
+        first?.code ?? "INVALID_CUSTOM_VALUE",
+        coerced.errors.map((e) => e.message).join("; "),
+      );
+      return;
+    }
+    const validated = ctx.customFields.validator.validatePatch({}, coerced.patch);
+    if (!validated.ok) {
+      const first = validated.errors[0];
+      await recordFailedRow(
+        ctx,
+        `CUSTOM_${(first?.code ?? "invalid").toUpperCase()}`,
+        validated.errors.map((e) => e.message).join("; "),
+      );
+      return;
+    }
+    if (Object.keys(validated.merged).length > 0) {
+      v.payload.custom = validated.merged;
+    }
+  }
+
   // 3. Duplicate detection — same trigram + email-match scorer as the API.
   const dup = await findDuplicate(ctx.tx, ctx.orgId, v.payload);
   if (dup) {
@@ -682,6 +758,53 @@ export async function processBulkImport(
     FEATURE_FLAG_KEYS.CONSTITUENTS_MULTI_TYPE,
     data.orgId,
   );
+
+  // Epic #539 — tenant-aware custom-fields gate, read once per job. When
+  // on, the org's active constituent catalog drives both header
+  // resolution (`cf_<key>` + label) and per-row value validation; when
+  // off, custom columns are dropped at header resolution (off-state QA:
+  // the feature is completely absent).
+  const customFieldsEnabled = await isFlagEnabledForTenant(
+    FEATURE_FLAG_KEYS.CONSTITUENTS_CUSTOM_FIELDS,
+    data.orgId,
+  );
+  let customFields: RowContext["customFields"] = null;
+  let customResolver: CustomHeaderResolver | null = null;
+  if (customFieldsEnabled) {
+    const defRows = await withWorkerContext(data.orgId, (tx) =>
+      tx
+        .select({
+          id: customFieldDefinitions.id,
+          domain: customFieldDefinitions.domain,
+          key: customFieldDefinitions.key,
+          label: customFieldDefinitions.label,
+          description: customFieldDefinitions.description,
+          type: customFieldDefinitions.type,
+          options: customFieldDefinitions.options,
+          sortOrder: customFieldDefinitions.sortOrder,
+          required: customFieldDefinitions.required,
+          filterable: customFieldDefinitions.filterable,
+          exportable: customFieldDefinitions.exportable,
+          showOnRelated: customFieldDefinitions.showOnRelated,
+          sensitive: customFieldDefinitions.sensitive,
+          purposeText: customFieldDefinitions.purposeText,
+        })
+        .from(customFieldDefinitions)
+        .where(
+          and(
+            eq(customFieldDefinitions.orgId, data.orgId),
+            eq(customFieldDefinitions.domain, "constituent"),
+            isNull(customFieldDefinitions.archivedAt),
+          ),
+        )
+        .orderBy(asc(customFieldDefinitions.sortOrder), asc(customFieldDefinitions.id)),
+    );
+    if (defRows.length > 0) {
+      const defs: CustomFieldDefinition[] = defRows;
+      customFields = { defs, validator: buildCustomValidator(defs) };
+      customResolver = buildCustomHeaderResolver(defs);
+    }
+  }
 
   // 1. Load + flip to processing (idempotent).
   const meta = await withWorkerContext(data.orgId, async (tx) => {
@@ -742,7 +865,7 @@ export async function processBulkImport(
   let parsedRows: ParsedRow[];
   try {
     const buffer = await downloadFile(meta.file.s3Bucket, meta.file.s3Key);
-    parsedRows = await parseFile(buffer, meta.file.mimeType, meta.file.fileName);
+    parsedRows = await parseFile(buffer, meta.file.mimeType, meta.file.fileName, customResolver);
   } catch (err) {
     log.error(
       { err: err instanceof Error ? err.message : String(err) },
@@ -784,6 +907,7 @@ export async function processBulkImport(
           batchDelta,
           log,
           multiTypeEnabled,
+          customFields,
         });
       }
     });

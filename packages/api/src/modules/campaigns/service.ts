@@ -1,5 +1,6 @@
 /** Campaigns service — business logic for postal campaign operations */
 
+import type { CustomFieldValues } from "@givernance/shared/custom-fields";
 import {
   bankAccounts,
   campaignDocuments,
@@ -102,6 +103,12 @@ export interface CreateCampaignInput {
    * when `bankAccountId IS NULL`.
    */
   qrReferenceMode?: "auto" | "qrr" | "scor";
+  /**
+   * Pre-validated + merged custom blob (Epic #539). The ROUTE owns
+   * validation via the customization value-service; the service persists
+   * whatever it receives verbatim — never pass a raw client patch here.
+   */
+  custom?: CustomFieldValues;
 }
 
 export interface UpdateCampaignInput {
@@ -116,6 +123,8 @@ export interface UpdateCampaignInput {
   fundIds?: string[];
   bankAccountId?: string | null;
   qrReferenceMode?: "auto" | "qrr" | "scor";
+  /** See `CreateCampaignInput.custom` — validated + merged upstream; `undefined` = no change. */
+  custom?: CustomFieldValues;
 }
 
 export interface ListCampaignsQuery {
@@ -145,6 +154,9 @@ function campaignSelectFields() {
     // docs/25 §3 decision #4.
     bankAccountId: campaigns.bankAccountId,
     qrReferenceMode: campaigns.qrReferenceMode,
+    // RAW custom blob — the route strips it and re-emits only the
+    // definition-filtered projection (Epic #539 anti-goal #5).
+    custom: campaigns.custom,
     createdAt: campaigns.createdAt,
     updatedAt: campaigns.updatedAt,
   };
@@ -362,6 +374,7 @@ export async function createCampaign(orgId: string, input: CreateCampaignInput, 
         operationalCostCents: input.operationalCostCents ?? null,
         bankAccountId: input.bankAccountId ?? null,
         qrReferenceMode: input.qrReferenceMode ?? "auto",
+        ...(input.custom !== undefined ? { custom: input.custom } : {}),
       })
       .returning({ id: campaigns.id });
 
@@ -397,6 +410,26 @@ export async function createCampaign(orgId: string, input: CreateCampaignInput, 
 /** Get a single campaign by ID */
 export async function getCampaign(orgId: string, id: string) {
   return withTenantContext(orgId, async (tx) => getCampaignById(tx, orgId, id));
+}
+
+/**
+ * Current custom blob of one campaign — the read the update route needs
+ * to apply a merge-patch over. Returns null when the campaign doesn't
+ * exist in this tenant (route maps to 404, indistinguishable from a
+ * cross-tenant id per ADR-019).
+ */
+export async function getCampaignCustom(
+  orgId: string,
+  id: string,
+): Promise<CustomFieldValues | null> {
+  return withTenantContext(orgId, async (tx) => {
+    const [row] = await tx
+      .select({ custom: campaigns.custom })
+      .from(campaigns)
+      .where(and(eq(campaigns.id, id), eq(campaigns.orgId, orgId)));
+
+    return row ? (row.custom ?? {}) : null;
+  });
 }
 
 /**
@@ -533,15 +566,28 @@ export async function updateCampaign(
         // mode switch. `undefined` = no change; `null` = unlink.
         bankAccountId: input.bankAccountId,
         qrReferenceMode: input.qrReferenceMode,
+        // Full replacement blob — the route already merge-patched it over
+        // the existing values. `undefined` leaves the column untouched.
+        custom: input.custom,
         updatedAt: new Date(),
       })
       .where(and(eq(campaigns.id, id), eq(campaigns.orgId, orgId)))
       .returning({ id: campaigns.id });
 
+    // Custom values are unredactable PII — the event records only THAT
+    // they changed, never the blob itself (docs/35 GDPR posture).
+    const { custom: customChange, ...loggableChanges } = input;
     await tx.insert(outboxEvents).values({
       tenantId: orgId,
       type: "campaign.updated",
-      payload: { campaignId: id, changes: input, updatedBy: userId },
+      payload: {
+        campaignId: id,
+        changes: {
+          ...loggableChanges,
+          ...(customChange !== undefined ? { customChanged: true } : {}),
+        },
+        updatedBy: userId,
+      },
     });
 
     return updated ? getCampaignById(tx, orgId, updated.id) : null;

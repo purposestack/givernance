@@ -6,6 +6,7 @@
  * GET /v1/donations (packages/api/src/modules/donations/routes.ts).
  */
 
+import type { CustomFieldValues } from "@givernance/shared/custom-fields";
 import type { Pagination } from "@/models/constituent";
 
 export type ReceiptStatus = "pending" | "generated" | "failed";
@@ -27,6 +28,12 @@ export interface Donation {
   paymentRef: string | null;
   donatedAt: string;
   fiscalYear: number | null;
+  /**
+   * Donation-domain custom-field values (Epic #539), keyed by definition
+   * key. Absent on older API builds or when `donations.custom_fields` is
+   * off for the tenant.
+   */
+  custom?: CustomFieldValues;
   createdAt: string;
   updatedAt: string;
 }
@@ -35,6 +42,12 @@ export interface DonationListRow extends Donation {
   constituent: { firstName: string; lastName: string } | null;
   campaign: { name: string } | null;
   receiptStatus: ReceiptStatus | null;
+  /**
+   * Cross-domain projection (Epic #539 §6): the linked constituent's
+   * `showOnRelated ∧ ¬sensitive` custom values. Eligibility is recomputed
+   * server-side per request — render defensively when absent.
+   */
+  donorCustom?: CustomFieldValues;
 }
 
 export interface DonationListResponse {
@@ -88,6 +101,8 @@ export interface DonationDetail extends Donation {
     email: string | null;
   };
   allocations: DonationAllocation[];
+  /** Cross-domain projection — see `DonationListRow.donorCustom`. */
+  donorCustom?: CustomFieldValues;
 }
 
 export interface DonationDetailResponse {
@@ -104,6 +119,8 @@ export interface DonationCreateInput {
   donatedAt?: string;
   fiscalYear?: number;
   allocations?: DonationAllocationInput[];
+  /** Merge-patch of custom values (Epic #539): absent = untouched, null clears a key. */
+  custom?: Record<string, unknown>;
 }
 
 export interface DonationUpdateInput {
@@ -116,6 +133,8 @@ export interface DonationUpdateInput {
   donatedAt?: string;
   fiscalYear?: number | null;
   allocations?: DonationAllocationInput[];
+  /** Merge-patch of custom values (Epic #539): absent = untouched, null clears a key. */
+  custom?: Record<string, unknown>;
 }
 
 /**

@@ -8,6 +8,7 @@ if (!FormatRegistry.Has("email")) {
   );
 }
 
+import type { CustomFieldDefinition, CustomFieldValue } from "@givernance/shared/custom-fields";
 import { ConstituentCreateSchema, ConstituentUpdateSchema } from "@givernance/shared/validators";
 import { typeboxResolver } from "@hookform/resolvers/typebox";
 import { AlertTriangle } from "lucide-react";
@@ -15,6 +16,13 @@ import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
 import { type DefaultValues, type Resolver, type UseFormReturn, useForm } from "react-hook-form";
+import {
+  buildCustomFieldPatch,
+  CustomFieldsSection,
+  extractCustomFieldErrors,
+  initialCustomValues,
+  missingRequiredCustomKeys,
+} from "@/components/shared/custom-fields";
 import {
   Form,
   FormControl,
@@ -99,7 +107,15 @@ type EditMode = { mode: "edit"; constituent: Constituent };
  * (`constituents.multi_type`, issue #465) in the page server component and
  * threaded down. On → multiselect type control; off → single `Select`.
  */
-export type ConstituentFormProps = (CreateMode | EditMode) & { multiTypeEnabled: boolean };
+export type ConstituentFormProps = (CreateMode | EditMode) & {
+  multiTypeEnabled: boolean;
+  /**
+   * Active constituent-domain custom-field definitions (Epic #539), SSR-
+   * fetched by the page when `constituents.custom_fields` is on. Empty (the
+   * default) ⇒ the custom-fields section is completely absent.
+   */
+  customFieldDefs?: CustomFieldDefinition[];
+};
 
 /** Coerce the constituent's stored types into a non-empty form-default array. */
 function defaultTypes(constituent: Constituent | undefined): ConstituentType[] {
@@ -115,10 +131,61 @@ function defaultTypes(constituent: Constituent | undefined): ConstituentType[] {
 }
 
 export function ConstituentForm(props: ConstituentFormProps) {
-  const { mode, multiTypeEnabled } = props;
+  const { mode, multiTypeEnabled, customFieldDefs = [] } = props;
   const router = useRouter();
   const t = useTranslations("constituentForm");
   const tType = useTranslations("constituents.types");
+  const tCustom = useTranslations("customFields");
+
+  // Epic #539 — custom values live OUTSIDE react-hook-form: the section is a
+  // controlled map, validated server-side (client checks are UX only).
+  const [initialCustom] = useState<Record<string, CustomFieldValue>>(() =>
+    initialCustomValues(customFieldDefs, props.constituent?.custom),
+  );
+  const [customValues, setCustomValues] = useState<Record<string, CustomFieldValue>>(() => ({
+    ...initialCustom,
+  }));
+  const [customErrors, setCustomErrors] = useState<Record<string, string>>({});
+
+  const handleCustomChange = (key: string, value: CustomFieldValue | null) => {
+    setCustomValues((prev) => {
+      const next = { ...prev };
+      if (value === null) delete next[key];
+      else next[key] = value;
+      return next;
+    });
+    setCustomErrors((prev) => {
+      if (!(key in prev)) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  };
+
+  /**
+   * Required check (create only — the server enforces required on new writes
+   * only) + merge-patch build. Returns `undefined` when nothing to send.
+   */
+  const prepareCustomPatch = (): { ok: boolean; patch?: Record<string, unknown> } => {
+    if (customFieldDefs.length === 0) return { ok: true };
+    if (mode === "create") {
+      const missing = missingRequiredCustomKeys(customFieldDefs, customValues);
+      if (missing.length > 0) {
+        setCustomErrors(
+          Object.fromEntries(missing.map((key) => [key, tCustom("form.requiredMissing")])),
+        );
+        return { ok: false };
+      }
+    }
+    return {
+      ok: true,
+      patch: buildCustomFieldPatch(
+        mode === "create" ? {} : initialCustom,
+        customValues,
+        customFieldDefs,
+      ),
+    };
+  };
 
   const defaultValues: DefaultValues<ConstituentFormValues> = {
     types: defaultTypes(props.constituent),
@@ -156,12 +223,14 @@ export function ConstituentForm(props: ConstituentFormProps) {
       form.setError("types", { type: "manual", message: t("errors.typesRequired") });
       return;
     }
+    const customPrep = prepareCustomPatch();
+    if (!customPrep.ok) return;
     try {
       if (mode === "create") {
-        const created = await ConstituentService.createConstituent(
-          createClientApiClient(),
-          toApiPayload(values, "create"),
-        );
+        const created = await ConstituentService.createConstituent(createClientApiClient(), {
+          ...toApiPayload(values, "create"),
+          ...(customPrep.patch ? { custom: customPrep.patch } : {}),
+        });
         toast.success(t("success.created"));
         router.push(`/constituents/${created.id}`);
         router.refresh();
@@ -169,7 +238,10 @@ export function ConstituentForm(props: ConstituentFormProps) {
         const updated = await ConstituentService.updateConstituent(
           createClientApiClient(),
           props.constituent.id,
-          toApiPayload(values, "edit"),
+          {
+            ...toApiPayload(values, "edit"),
+            ...(customPrep.patch ? { custom: customPrep.patch } : {}),
+          },
         );
         toast.success(t("success.updated"));
         router.push(`/constituents/${updated.id}`);
@@ -185,6 +257,12 @@ export function ConstituentForm(props: ConstituentFormProps) {
       if (!(err instanceof ApiProblem)) {
         console.error("ConstituentForm submit failed (unexpected error):", err);
       }
+      // Epic #539 — surface the registry validator's per-key 422s inline on
+      // the custom section (unknown option, too long, invalid date, …).
+      if (err instanceof ApiProblem && (err.status === 422 || err.status === 400)) {
+        const perKey = extractCustomFieldErrors(err.extensions.fieldErrors);
+        if (Object.keys(perKey).length > 0) setCustomErrors(perKey);
+      }
       handleApiError(err, form, values, setDuplicateState, {
         validation: t("errors.validation"),
         generic: t("errors.generic"),
@@ -199,10 +277,15 @@ export function ConstituentForm(props: ConstituentFormProps) {
       return;
     }
     setDuplicateState((prev) => ({ ...prev, open: false }));
+    const customPrep = prepareCustomPatch();
+    if (!customPrep.ok) return;
     try {
       const created = await ConstituentService.createConstituent(
         createClientApiClient(),
-        toApiPayload(values, "create"),
+        {
+          ...toApiPayload(values, "create"),
+          ...(customPrep.patch ? { custom: customPrep.patch } : {}),
+        },
         { force: true },
       );
       toast.success(t("success.created"));
@@ -465,6 +548,17 @@ export function ConstituentForm(props: ConstituentFormProps) {
               />
             </div>
           </FormSection>
+
+          {/* Epic #539 — absent entirely when the flag is off / no defs. */}
+          <CustomFieldsSection
+            definitions={customFieldDefs}
+            values={customValues}
+            onChange={handleCustomChange}
+            errors={customErrors}
+            title={tCustom("form.sectionTitle")}
+            description={tCustom("form.sectionDescription")}
+            disabled={isSubmitting}
+          />
 
           {rootError ? (
             <p role="alert" className="py-3 text-sm font-medium text-error">

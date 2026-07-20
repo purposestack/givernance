@@ -94,10 +94,16 @@ Givernance is not trying to be Salesforce. It is trying to be the tool that 80% 
 | Characteristic | Range |
 |---|---|
 | Annual operating budget | €50K – €5M |
-| Staff count | 3 – 150 FTE + volunteers |
+| Staff count | 3 – 200 FTE + volunteers |
 | Active constituents (donors + beneficiaries) | 500 – 100,000 |
 | Countries | EU 27, UK, Switzerland, Norway |
 | Org types | Charities, associations, foundations, social enterprises |
+
+#### Amendment (2026-07, Epic #539 — pending pricing sign-off)
+
+The target segment explicitly **includes mid-size NPOs of 50–200 staff with €2–5M multi-year budgets**. Field feedback (client calls, 2026-07) showed this cohort disqualifying Givernance on two axes — integrations and customization (custom fields, evolving picklists, per-org/per-domain configuration, cross-domain visibility) — before ever reaching a pricing conversation. The per-organization customization engine ([35-customization.md](35-customization.md)) is the wedge that makes these evaluations winnable: Bloomerang-grade typed custom fields on a governed, quota-bounded engine, configured by the org's own staff in an afternoon, without the €75k–275k consultant-driven implementation that Salesforce NPSP imposes on this segment.
+
+The upper bound stays deliberate: we serve mid-size NPOs on published quotas and governed overrides, we do **not** chase MSF-class evaluators (2M€+ tooling budgets, federated hierarchies) with unbounded flexibility — that path rebuilds Salesforce. Staff-count ceiling raised from 150 to 200 accordingly; the pricing-tier consequences (quota table in [35-customization.md § 5](35-customization.md), tier naming per [08-pricing-packaging.md](08-pricing-packaging.md)) **await formal pricing sign-off** (Epic #539 open questions 1–2).
 
 ### Secondary: Consultants and implementation partners
 - Nonprofit technology consultants migrating clients off Salesforce

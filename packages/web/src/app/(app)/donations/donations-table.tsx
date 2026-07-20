@@ -1,12 +1,13 @@
 "use client";
 
+import type { CustomFieldDefinition } from "@givernance/shared/custom-fields";
 import type { ColumnDef, SortingState } from "@tanstack/react-table";
 import { Gift, MoreHorizontal, Pencil, Search, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
-
+import { buildCustomFieldColumns } from "@/components/shared/custom-fields";
 import { EmptyState } from "@/components/shared/empty-state";
 import {
   AlertDialog,
@@ -73,6 +74,16 @@ interface DonationsTableProps {
    */
   sort: DonationSortField;
   order: DonationSortOrder;
+  /**
+   * Epic #539 — donation-domain custom columns rendered from `row.custom`.
+   * Empty (flag off / no defs) ⇒ no custom columns, table identical to today.
+   */
+  customFieldDefs?: CustomFieldDefinition[];
+  /**
+   * Epic #539 §6 — projected (showOnRelated ∧ ¬sensitive) constituent
+   * definitions rendered as donor columns from `row.donorCustom`.
+   */
+  donorCustomDefs?: CustomFieldDefinition[];
 }
 
 export function DonationsTable({
@@ -84,6 +95,8 @@ export function DonationsTable({
   order,
   dateFrom,
   dateTo,
+  customFieldDefs = [],
+  donorCustomDefs = [],
 }: DonationsTableProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -92,6 +105,7 @@ export function DonationsTable({
   const t = useTranslations("donations");
   const tReceipt = useTranslations("donations.receiptStatus");
   const tFilters = useTranslations("donations.filters");
+  const tCustom = useTranslations("customFields");
   const [donationToDelete, setDonationToDelete] = useState<DonationListRow | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const initialSearch = searchParams.get("search") ?? "";
@@ -293,6 +307,19 @@ export function DonationsTable({
           return <Badge variant={RECEIPT_VARIANTS[status]}>{t(`receiptStatus.${status}`)}</Badge>;
         },
       },
+      // Epic #539 — donation-domain custom columns, then the donor projection
+      // (§6). Both flag-gated by the page: empty defs spread nothing.
+      ...buildCustomFieldColumns<DonationListRow>(customFieldDefs, {
+        locale,
+        getValues: (row) => row.custom,
+        booleanLabels: { yes: tCustom("boolean.yes"), no: tCustom("boolean.no") },
+      }),
+      ...buildCustomFieldColumns<DonationListRow>(donorCustomDefs, {
+        locale,
+        getValues: (row) => row.donorCustom,
+        idPrefix: "donorCustom",
+        booleanLabels: { yes: tCustom("boolean.yes"), no: tCustom("boolean.no") },
+      }),
       // Drop the actions column entirely when no row action is available,
       // so we don't render an `sr-only` "Actions" header above empty cells.
       // Mirrors the constituents-table pattern from PR #170.
@@ -319,7 +346,7 @@ export function DonationsTable({
           ]
         : []),
     ],
-    [canDelete, canWrite, locale, t],
+    [canDelete, canWrite, customFieldDefs, donorCustomDefs, locale, t, tCustom],
   );
 
   return (

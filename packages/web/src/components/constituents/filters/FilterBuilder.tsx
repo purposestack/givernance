@@ -3,7 +3,7 @@
 
 import { Plus } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -18,14 +18,17 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "@/components/ui/toast";
 import { useFocusReturn } from "@/hooks/use-focus-return";
+import { createClientApiClient } from "@/lib/api/client-browser";
 import { FilterChip } from "./FilterChip";
 import { FilterCondition } from "./FilterCondition";
 import { FilterPresets } from "./FilterPresets";
 import { FilterPreview } from "./FilterPreview";
+import { fetchCustomFilterFields, mergeFilterCatalog } from "./filter-catalog";
 import { filterFields } from "./filter-presets";
 import {
   type FilterChipData,
   type FilterCondition as FilterConditionType,
+  type FilterField,
   type FilterPreset,
   type FilterQuery,
   isFilterCondition,
@@ -48,14 +51,50 @@ interface FilterBuilderProps {
    */
   onApply: (query: FilterQuery, presetId?: string) => Promise<void>;
   initialQuery?: FilterQuery;
+  /**
+   * Client-side fallback for the org's custom filter fields (Epic #539),
+   * built from the SSR-fetched definition catalog via
+   * `customFieldToFilterField`. Used only when the enriched
+   * `/filter/fields` fetch fails or isn't available — the fetched catalog
+   * wins because it reflects what the BE registry will actually accept.
+   */
+  customFilterFields?: FilterField[];
 }
 
 /**
  * Main filter builder dialog for creating complex constituent queries.
  */
-export function FilterBuilder({ open, onOpenChange, onApply, initialQuery }: FilterBuilderProps) {
+export function FilterBuilder({
+  open,
+  onOpenChange,
+  onApply,
+  initialQuery,
+  customFilterFields,
+}: FilterBuilderProps) {
   const t = useTranslations("constituents.filters");
   useFocusReturn(open);
+
+  // Epic #539 — custom fields from the enriched /filter/fields catalog,
+  // fetched once per dialog opening. `null` = not (yet) available → fall
+  // back to the caller-provided projection, then to static-only. Core
+  // filtering must never break because this fetch failed.
+  const [fetchedCustomFields, setFetchedCustomFields] = useState<FilterField[] | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    void (async () => {
+      const fetched = await fetchCustomFilterFields(createClientApiClient());
+      if (!cancelled && fetched) setFetchedCustomFields(fetched);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  const fields = useMemo(
+    () => mergeFilterCatalog(filterFields, fetchedCustomFields ?? customFilterFields ?? []),
+    [fetchedCustomFields, customFilterFields],
+  );
 
   const [query, setQuery] = useState<FilterQuery>(
     initialQuery || {
@@ -198,8 +237,10 @@ export function FilterBuilder({ open, onOpenChange, onApply, initialQuery }: Fil
         // `fields.donations.lastDate`). `FilterChip` resolves it through
         // `useTranslations("constituents.filters")`. Unknown fields (future
         // BE keys not yet catalogued FE-side) fall back to the raw field
-        // name so the chip still renders something readable.
-        const known = filterFields.find((f) => f.name === c.field);
+        // name so the chip still renders something readable. Custom-field
+        // labels are literals — FilterChip renders unregistered keys
+        // verbatim, so they pass straight through (Epic #539 contract).
+        const known = fields.find((f) => f.name === c.field);
         return {
           id: c.id,
           label: known?.label ?? c.field,
@@ -329,6 +370,7 @@ export function FilterBuilder({ open, onOpenChange, onApply, initialQuery }: Fil
                           condition={condition}
                           onChange={(updated) => handleUpdateCondition(index, updated)}
                           onRemove={() => handleRemoveCondition(index)}
+                          fields={fields}
                         />
                       </div>
                     ))}
@@ -363,6 +405,7 @@ export function FilterBuilder({ open, onOpenChange, onApply, initialQuery }: Fil
                         <FilterChip
                           key={filter.id}
                           filter={filter}
+                          fields={fields}
                           onRemove={(id) => {
                             const index = query.conditions.findIndex((c) => c.id === id);
                             if (index >= 0) handleRemoveCondition(index);

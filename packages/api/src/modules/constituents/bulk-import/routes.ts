@@ -19,10 +19,12 @@
 
 import { basename } from "node:path";
 import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
+import type { CustomFieldDefinition } from "@givernance/shared/custom-fields";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
 import { fileTypeFromBuffer } from "file-type";
 import { requireFlag } from "../../../lib/flags/flag-guard.js";
+import { flagService } from "../../../lib/flags/flag-service.js";
 import { requireAuth, requireWrite } from "../../../lib/guards.js";
 import { getBulkImportObject } from "../../../lib/s3.js";
 import {
@@ -36,6 +38,7 @@ import {
   problemDetail,
   UuidSchema,
 } from "../../../lib/schemas.js";
+import { getActiveDefinitions } from "../../customization/lib/value-service.js";
 import {
   BulkImportValidationError,
   dispatchBulkImport,
@@ -334,8 +337,19 @@ export async function registerBulkImportRoutes(app: FastifyInstance) {
         response: { 200: Type.String(), ...ErrorResponses },
       },
     },
-    async (_request, reply) => {
-      const body = buildImportTemplateCsv();
+    async (request, reply) => {
+      // Epic #539 — per-tenant template: one column per non-archived
+      // constituent definition, only while the tenant's custom-fields
+      // flag is on (off-state template is byte-identical to pre-#539).
+      const orgId = request.auth?.orgId;
+      let customDefs: CustomFieldDefinition[] = [];
+      if (
+        orgId &&
+        (await flagService.isEnabled(FEATURE_FLAG_KEYS.CONSTITUENTS_CUSTOM_FIELDS, { orgId }))
+      ) {
+        customDefs = await getActiveDefinitions(orgId, "constituent");
+      }
+      const body = buildImportTemplateCsv(customDefs);
       reply.header("Content-Type", "text/csv; charset=utf-8");
       reply.header("Content-Disposition", `attachment; filename="${TEMPLATE_FILENAME}"`);
       // Avoid CDN / browser caching — the template can evolve and we

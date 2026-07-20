@@ -6,6 +6,7 @@
  * over the typed ApiClient that maps responses to the frontend models below.
  */
 
+import type { CustomFieldValues } from "@givernance/shared/custom-fields";
 import type { FilterQuery as FilterBuilderQuery } from "@/components/constituents/filters/filter-types";
 import type { ApiClient } from "@/lib/api";
 
@@ -26,6 +27,12 @@ export interface CampaignMember {
   type: string;
   addedAt: string;
   campaignDonationCents: number;
+  /**
+   * Cross-domain projection (Epic #539 §6): the member's `showOnRelated ∧
+   * ¬sensitive` constituent custom values. Recomputed server-side per
+   * request; absent on older API builds — render defensively.
+   */
+  donorCustom?: CustomFieldValues;
 }
 
 export interface CampaignMemberPagination {

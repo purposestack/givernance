@@ -25,7 +25,7 @@
  */
 
 import type { Locale } from "@givernance/shared/i18n";
-import { BRANDING_EVENT_TYPES } from "@givernance/shared/jobs";
+import { BRANDING_EVENT_TYPES, CUSTOM_FIELD_EVENT_TYPES } from "@givernance/shared/jobs";
 import { resolvePayloadLocale } from "./payload-locale.js";
 
 export interface RoutingInput {
@@ -118,6 +118,26 @@ export type RoutingDecision =
       outboxId: string;
       orgId: string;
       bulkImportJobId: string;
+      traceparent?: string;
+    }
+  | {
+      kind: "custom-field-option-merge";
+      orgId: string;
+      mergeId: string;
+      definitionId: string;
+      sourceOptionId: string;
+      targetOptionId: string;
+      requestedBy: string | null;
+      traceparent?: string;
+    }
+  | {
+      kind: "custom-field-option-merge-undo";
+      orgId: string;
+      mergeId: string;
+      definitionId: string;
+      sourceOptionId: string;
+      targetOptionId: string;
+      requestedBy: string | null;
       traceparent?: string;
     }
   | {
@@ -258,10 +278,49 @@ export function routeDomainEvent(input: RoutingInput): RoutingDecision {
     };
   }
 
+  const customFieldMerge = routeCustomFieldMerge({ type, tenantId, payload, traceparent });
+  if (customFieldMerge) return customFieldMerge;
+
   const surveyEmail = routeSurveyInvitationEmail({ type, payload, traceparent });
   if (surveyEmail) return surveyEmail;
 
   return { kind: "unhandled", type };
+}
+
+/**
+ * Extracted (same complexity-budget rationale as the survey branch
+ * below). Merge and undo share the payload contract — only the routing
+ * kind differs.
+ */
+function routeCustomFieldMerge(input: {
+  type: string;
+  tenantId: string;
+  payload: Record<string, unknown>;
+  traceparent?: string;
+}): Extract<
+  RoutingDecision,
+  { kind: "custom-field-option-merge" | "custom-field-option-merge-undo" }
+> | null {
+  const { type, tenantId, payload, traceparent } = input;
+  if (
+    type !== CUSTOM_FIELD_EVENT_TYPES.OPTION_MERGE_REQUESTED &&
+    type !== CUSTOM_FIELD_EVENT_TYPES.OPTION_MERGE_UNDO_REQUESTED
+  ) {
+    return null;
+  }
+  return {
+    kind:
+      type === CUSTOM_FIELD_EVENT_TYPES.OPTION_MERGE_REQUESTED
+        ? "custom-field-option-merge"
+        : "custom-field-option-merge-undo",
+    orgId: tenantId,
+    mergeId: payload.mergeId as string,
+    definitionId: payload.definitionId as string,
+    sourceOptionId: payload.sourceOptionId as string,
+    targetOptionId: payload.targetOptionId as string,
+    requestedBy: typeof payload.requestedBy === "string" ? payload.requestedBy : null,
+    traceparent,
+  };
 }
 
 /**

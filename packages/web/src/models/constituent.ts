@@ -6,6 +6,8 @@
  * GET /v1/constituents (packages/api/src/modules/constituents/routes.ts).
  */
 
+import type { CustomFieldValues } from "@givernance/shared/custom-fields";
+
 export type ConstituentType = "donor" | "volunteer" | "member" | "beneficiary" | "partner";
 
 export interface Constituent {
@@ -42,6 +44,13 @@ export interface Constituent {
    */
   type: ConstituentType | string;
   tags: string[] | null;
+  /**
+   * Custom-field values keyed by definition key (Epic #539). Serialised
+   * server-side through the definition-driven serializer — only keys with an
+   * active definition appear. Absent on older API builds or when the
+   * `constituents.custom_fields` flag is off.
+   */
+  custom?: CustomFieldValues;
   deletedAt: string | null;
   createdAt: string;
   updatedAt: string;

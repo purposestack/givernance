@@ -129,4 +129,40 @@ export const PINO_REDACT_PATHS: readonly string[] = [
   "donor.phone",
   "donor.firstName",
   "donor.lastName",
+
+  // ─── Custom-field values (Epic #539) ──────────────────────────────────────
+  // The `custom` JSONB blob on constituents/donations/campaigns holds
+  // operator-defined values the platform cannot classify — treat the whole
+  // container as PII and redact it wherever it can ride a log line: request
+  // bodies, entity objects spread into log context, and the `donorCustom`
+  // cross-domain projection. Redacting the container key covers every child
+  // path (`custom.*`) without per-key enumeration.
+  "body.custom",
+  "req.body.custom",
+  "request.body.custom",
+  "custom",
+  "*.custom",
+  "body.constituent.custom",
+  "req.body.constituent.custom",
+  "constituent.custom",
+  "donor.custom",
+  "donorCustom",
+  "*.donorCustom",
+  "donor_custom",
+  "*.donor_custom",
+  // Projection carriers beyond `donorCustom`: the campaign-member read
+  // model emits `constituentCustom`, and the service layers stage raw
+  // blobs under `customRaw` / `donorCustomRaw` / `_constituentCustom`
+  // before the route serializers strip them — a service row spread into
+  // a log line must redact those internal keys too.
+  "constituentCustom",
+  "*.constituentCustom",
+  "constituent_custom",
+  "*.constituent_custom",
+  "customRaw",
+  "*.customRaw",
+  "donorCustomRaw",
+  "*.donorCustomRaw",
+  "_constituentCustom",
+  "*._constituentCustom",
 ];

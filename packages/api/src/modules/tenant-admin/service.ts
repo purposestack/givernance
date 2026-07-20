@@ -26,6 +26,7 @@
  */
 
 import { randomBytes, randomUUID } from "node:crypto";
+import type { TenantPlan } from "@givernance/shared/constants";
 import { APP_DEFAULT_LOCALE, isSupportedLocale, type Locale } from "@givernance/shared/i18n";
 import {
   auditLogs,
@@ -79,7 +80,7 @@ export type CreateEnterpriseTenantResult =
 export interface CreateEnterpriseTenantInput {
   name: string;
   slug: string;
-  plan?: "starter" | "pro" | "enterprise";
+  plan?: TenantPlan;
   audit: AuditContext;
 }
 

@@ -1,3 +1,5 @@
+import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
+import type { CustomFieldDefinition, CustomFieldValues } from "@givernance/shared/custom-fields";
 import { ArrowLeft, Gift, Globe, Pencil, Trophy } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -9,6 +11,11 @@ import { CampaignStatusActions } from "@/components/campaigns/campaign-status-ac
 import { PostalCampaignSection } from "@/components/campaigns/postal-campaign-section";
 import { QrTrackingCard } from "@/components/campaigns/qr-tracking-card";
 import { CountUp } from "@/components/shared/count-up";
+import {
+  CustomFieldDetailRows,
+  fetchCustomFieldDefinitionsOrEmpty,
+  projectableDefinitions,
+} from "@/components/shared/custom-fields";
 import { EmptyState } from "@/components/shared/empty-state";
 import { InfoTooltipButton } from "@/components/shared/info-tooltip-button";
 import { PageHeader } from "@/components/shared/page-header";
@@ -26,6 +33,7 @@ import { BankAccountService } from "@/services/BankAccountService";
 import { CampaignPublicPageService } from "@/services/CampaignPublicPageService";
 import { CampaignService } from "@/services/CampaignService";
 import { DonationService } from "@/services/DonationService";
+import { FeatureFlagsService, isFlagEnabled } from "@/services/FeatureFlagsService";
 import {
   type CampaignMember,
   type CampaignQrStats,
@@ -233,6 +241,27 @@ export default async function CampaignDetailPage({
 
   const isAdmin = auth.roles.includes("org_admin");
 
+  // Epic #539 — campaign-domain fields on this campaign + the constituent
+  // projection (donorCustom, §6) for the donation/member sub-tables. Flag
+  // off / fetch failure ⇒ no defs ⇒ every custom surface absent.
+  let campaignCustomEnabled = false;
+  let constituentCustomEnabled = false;
+  try {
+    const flags = await FeatureFlagsService.listPublic(client);
+    campaignCustomEnabled = isFlagEnabled(flags, FEATURE_FLAG_KEYS.CAMPAIGNS_CUSTOM_FIELDS);
+    constituentCustomEnabled = isFlagEnabled(flags, FEATURE_FLAG_KEYS.CONSTITUENTS_CUSTOM_FIELDS);
+  } catch {
+    campaignCustomEnabled = false;
+    constituentCustomEnabled = false;
+  }
+  const [campaignDefs, constituentDefs] = await Promise.all([
+    fetchCustomFieldDefinitionsOrEmpty(client, "campaign", campaignCustomEnabled),
+    fetchCustomFieldDefinitionsOrEmpty(client, "constituent", constituentCustomEnabled),
+  ]);
+  // Server re-enforces projection eligibility per request; this filter only
+  // picks which columns the sub-tables render.
+  const donorDefs = projectableDefinitions(constituentDefs);
+
   const [
     stats,
     roiMetrics,
@@ -336,6 +365,12 @@ export default async function CampaignDetailPage({
             description={campaign.description}
             canEdit={canWrite}
           />
+          {/* Epic #539 — absent entirely when the flag is off / no defs. */}
+          <CampaignCustomFieldsCard
+            definitions={campaignDefs}
+            values={campaign.custom}
+            locale={locale}
+          />
           <CampaignRoiChart
             costCents={roiMetrics.totalCostCents > 0 ? roiMetrics.totalCostCents : null}
             totalRaisedCents={roiMetrics.rawRaisedCents}
@@ -374,6 +409,7 @@ export default async function CampaignDetailPage({
               initialMembers={membersResult.data}
               initialMemberTotal={membersResult.total}
               initialExports={postalExports}
+              donorCustomDefs={donorDefs}
               mergedPdfEnabled={mergedPdfEnabled}
             />
           ) : null}
@@ -383,6 +419,7 @@ export default async function CampaignDetailPage({
             donationsLabel={tDonations("title")}
             sort={donationsSort}
             order={donationsOrder}
+            donorCustomDefs={donorDefs}
           />
         </div>
       </div>
@@ -677,12 +714,15 @@ async function DonationBreakdownCard({
   donationsLabel,
   sort,
   order,
+  donorCustomDefs,
 }: {
   campaign: Campaign;
   donationsResult: DonationListResponse;
   donationsLabel: string;
   sort: DonationSortField;
   order: DonationSortOrder;
+  /** Epic #539 §6 — projected donor fields spread as extra columns. */
+  donorCustomDefs: CustomFieldDefinition[];
 }) {
   const t = await getTranslations("campaigns.detail");
   const { data: donations, pagination } = donationsResult;
@@ -711,8 +751,47 @@ async function DonationBreakdownCard({
           className="px-0 py-8"
         />
       ) : (
-        <DonationsTable donations={donations} pagination={pagination} sort={sort} order={order} />
+        <DonationsTable
+          donations={donations}
+          pagination={pagination}
+          sort={sort}
+          order={order}
+          donorCustomDefs={donorCustomDefs}
+        />
       )}
+    </Card>
+  );
+}
+
+/**
+ * "Custom fields" card on the campaign detail page (Epic #539). Every active
+ * campaign-domain definition renders a row — empty values as an em-dash — so
+ * operators see the full configured surface.
+ */
+async function CampaignCustomFieldsCard({
+  definitions,
+  values,
+  locale,
+}: {
+  definitions: CustomFieldDefinition[];
+  values: CustomFieldValues | undefined;
+  locale: string;
+}) {
+  if (definitions.length === 0) return null;
+  const tCustom = await getTranslations("customFields");
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{tCustom("detail.sectionTitle")}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <CustomFieldDetailRows
+          definitions={definitions}
+          values={values}
+          locale={locale}
+          booleanLabels={{ yes: tCustom("boolean.yes"), no: tCustom("boolean.no") }}
+        />
+      </CardContent>
     </Card>
   );
 }

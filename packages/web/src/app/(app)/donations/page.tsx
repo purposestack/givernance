@@ -1,7 +1,12 @@
+import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
 import { Gift, Plus } from "lucide-react";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
+import {
+  fetchCustomFieldDefinitionsOrEmpty,
+  projectableDefinitions,
+} from "@/components/shared/custom-fields";
 import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
@@ -10,6 +15,7 @@ import { createServerApiClient } from "@/lib/api/client-server";
 import { hasPermission, requireAuth } from "@/lib/auth/guards";
 import type { DonationListResponse, DonationSortField, DonationSortOrder } from "@/models/donation";
 import { DonationService } from "@/services/DonationService";
+import { FeatureFlagsService, isFlagEnabled } from "@/services/FeatureFlagsService";
 
 import { DonationsTable } from "./donations-table";
 
@@ -94,6 +100,25 @@ export default async function DonationsPage({ searchParams }: DonationsPageProps
 
   const client = await createServerApiClient();
 
+  // Epic #539 — donation-domain custom columns (`row.custom`) + the donor
+  // projection columns (`row.donorCustom`, §6). Flag off / fetch failure ⇒
+  // no defs ⇒ both column sets completely absent.
+  let donationCustomEnabled = false;
+  let constituentCustomEnabled = false;
+  try {
+    const flags = await FeatureFlagsService.listPublic(client);
+    donationCustomEnabled = isFlagEnabled(flags, FEATURE_FLAG_KEYS.DONATIONS_CUSTOM_FIELDS);
+    constituentCustomEnabled = isFlagEnabled(flags, FEATURE_FLAG_KEYS.CONSTITUENTS_CUSTOM_FIELDS);
+  } catch {
+    donationCustomEnabled = false;
+    constituentCustomEnabled = false;
+  }
+  const [donationDefs, constituentDefs] = await Promise.all([
+    fetchCustomFieldDefinitionsOrEmpty(client, "donation", donationCustomEnabled),
+    fetchCustomFieldDefinitionsOrEmpty(client, "constituent", constituentCustomEnabled),
+  ]);
+  const donorDefs = projectableDefinitions(constituentDefs);
+
   let result: DonationListResponse;
   try {
     result = await DonationService.listDonations(client, {
@@ -168,6 +193,8 @@ export default async function DonationsPage({ searchParams }: DonationsPageProps
             order={order}
             dateFrom={dateFrom ?? ""}
             dateTo={dateTo ?? ""}
+            customFieldDefs={donationDefs}
+            donorCustomDefs={donorDefs}
           />
         ) : (
           <div className="reveal-item rounded-2xl bg-surface-container-lowest border border-border-brand">

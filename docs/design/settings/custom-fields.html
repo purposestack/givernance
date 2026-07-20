@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/svg+xml" href="../shared/assets/givernance-logo.svg">
+  <title>Givernance &mdash; Paramètres &mdash; Champs personnalisés</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+  <link rel="stylesheet" href="../shared/tokens.css">
+  <link rel="stylesheet" href="../shared/base.css">
+  <style>
+    /* ── Settings → Champs personnalisés (Epic #539, mirrors
+       app/(app)/settings/custom-fields/{page,custom-fields-manager,custom-field-dialog,option-merge-dialog}.tsx)
+       Page only visible when at least one of the three domain flags
+       (constituents/donations/campaigns .custom_fields) is on; each
+       domain tab renders only when its own flag is on. ── */
+    .settings-tabs { display: inline-flex; gap: var(--space-2); background: var(--color-surface-container); padding: var(--space-2); border-radius: var(--radius-2xl); margin-bottom: var(--space-6); overflow-x: auto; max-width: 100%; }
+    .settings-tab { padding: var(--space-2) var(--space-4); border-radius: var(--radius-lg); font-size: var(--text-sm); font-weight: var(--weight-medium); color: var(--color-on-surface-variant); cursor: pointer; text-decoration: none; white-space: nowrap; }
+    .settings-tab.active { background: var(--color-surface-container-lowest); color: var(--color-on-surface); box-shadow: 0 0 0 1px rgba(190, 201, 193, 0.2); }
+
+    /* Domain tabs — one per flag-enabled domain */
+    .domain-tabs { display: inline-flex; gap: var(--space-1); border-bottom: 1px solid var(--color-outline-variant); margin-bottom: var(--space-5); width: 100%; }
+    .domain-tab { padding: var(--space-3) var(--space-4); font-size: var(--text-sm); font-weight: var(--weight-medium); color: var(--color-on-surface-variant); border-bottom: 2px solid transparent; text-decoration: none; display: inline-flex; align-items: center; gap: var(--space-2); }
+    .domain-tab.active { color: var(--color-primary); border-bottom-color: var(--color-primary); }
+    .domain-tab .count { font-size: var(--text-xs); background: var(--color-surface-container); border-radius: var(--radius-full); padding: 0 var(--space-2); color: var(--color-on-surface-variant); }
+
+    /* Quota meter — always visible (scarcity as UX) */
+    .quota-card { display: flex; align-items: center; gap: var(--space-5); background: var(--color-surface-container-lowest); border: 1px solid var(--color-outline-variant); border-radius: var(--radius-2xl); padding: var(--space-4) var(--space-5); margin-bottom: var(--space-5); flex-wrap: wrap; }
+    .quota-count { font-family: var(--font-heading); font-size: var(--text-xl); color: var(--color-on-surface); white-space: nowrap; }
+    .quota-count small { font-size: var(--text-sm); color: var(--color-on-surface-variant); font-weight: var(--weight-regular); }
+    .quota-bar { flex: 1; min-width: 180px; }
+    .quota-hint { flex-basis: 100%; font-size: var(--text-xs); color: var(--color-on-surface-variant); margin: 0; }
+
+    /* Field list */
+    .field-row td { vertical-align: middle; }
+    .drag-handle { color: var(--color-on-surface-variant); cursor: grab; display: inline-flex; opacity: .6; }
+    .field-label { font-weight: var(--weight-medium); color: var(--color-on-surface); }
+    .field-key { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-muted); }
+    .field-badges { display: inline-flex; gap: var(--space-1); flex-wrap: wrap; margin-left: var(--space-2); }
+    .usage-cell { min-width: 140px; }
+    .usage-bar { display: flex; align-items: center; gap: var(--space-2); }
+    .usage-bar .progress { width: 72px; }
+    .usage-pct { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-secondary); }
+    .usage-masked { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-on-surface-variant); font-style: italic; }
+
+    /* Archived section */
+    .archived-section { margin-top: var(--space-8); }
+    .archived-title { font-family: var(--font-heading); font-size: var(--text-sm); text-transform: uppercase; letter-spacing: var(--tracking-wide); color: var(--color-on-surface-variant); margin-bottom: var(--space-3); }
+    .archived-row { display: flex; justify-content: space-between; gap: var(--space-4); align-items: center; background: var(--color-surface-container-low); border: 1px dashed var(--color-outline-variant); border-radius: var(--radius-2xl); padding: var(--space-4) var(--space-5); }
+    .archived-note { font-size: var(--text-xs); color: var(--color-on-surface-variant); margin-top: var(--space-1); }
+
+    /* Dialog previews (rendered inline in the mockup; in the app these
+       are top-anchored Radix dialogs per ADR-035 D15) */
+    .dialog-preview { max-width: 560px; background: var(--color-surface-container-lowest); border: 1px solid var(--color-outline-variant); border-radius: var(--radius-lg); padding: var(--space-6); box-shadow: 0 12px 40px rgba(20, 40, 34, 0.14); }
+    .dialog-preview h3 { font-family: var(--font-heading); font-size: var(--text-xl); margin: 0 0 var(--space-1); color: var(--color-on-surface); }
+    .dialog-preview .dialog-sub { font-size: var(--text-sm); color: var(--color-on-surface-variant); margin: 0 0 var(--space-5); }
+    .key-preview { font-family: var(--font-mono); font-size: var(--text-xs); background: var(--color-surface-container); border-radius: var(--radius-md); padding: var(--space-2) var(--space-3); color: var(--color-text-secondary); margin-top: var(--space-2); }
+    .art9-box { background: rgba(176, 105, 0, 0.07); border-left: 3px solid var(--color-warning, #b06900); border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); font-size: var(--text-xs); color: var(--color-text-secondary); margin-top: var(--space-2); }
+    .toggle-row { display: flex; align-items: flex-start; gap: var(--space-3); padding: var(--space-2) 0; }
+    .toggle-row input[type="checkbox"] { margin-top: 3px; }
+    .toggle-row .toggle-text b { display: block; font-size: var(--text-sm); color: var(--color-on-surface); font-weight: var(--weight-medium); }
+    .toggle-row .toggle-text span { font-size: var(--text-xs); color: var(--color-on-surface-variant); }
+
+    /* Option manager (inside the edit dialog, picklist types only) */
+    .option-list { border: 1px solid var(--color-outline-variant); border-radius: var(--radius-md); divide-y: 1px; margin-top: var(--space-2); }
+    .option-row { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--color-outline-variant); }
+    .option-row:last-child { border-bottom: none; }
+    .option-row .form-input { flex: 1; padding: var(--space-1) var(--space-2); font-size: var(--text-sm); }
+    .option-row.inactive .form-input { color: var(--color-on-surface-variant); text-decoration: line-through; }
+    .option-id { font-family: var(--font-mono); font-size: 10px; color: var(--color-text-muted); }
+    .merge-count { background: rgba(8, 103, 91, 0.06); border-left: 3px solid var(--color-primary); border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); font-size: var(--text-sm); color: var(--color-text-secondary); margin: var(--space-4) 0; }
+
+    .preview-heading { font-family: var(--font-heading); font-size: var(--text-sm); color: var(--color-on-surface-variant); margin: var(--space-10) 0 var(--space-3); text-transform: uppercase; letter-spacing: var(--tracking-wide); }
+  </style>
+</head>
+<body>
+  <div class="app-layout">
+
+    <!-- Sidebar — org-operator -->
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <img src="../shared/assets/givernance-logo.svg" alt="Givernance" class="sidebar-brand-logo-img" style="width:36px;height:36px;object-fit:cover;">
+        <span class="sidebar-brand-text">Givernance</span>
+      </div>
+      <nav class="sidebar-nav" aria-label="Navigation principale">
+        <a href="../dashboard.html" class="nav-item">
+          <span class="material-symbols-outlined nav-item-icon">dashboard</span>
+          <span class="nav-item-label">Dashboard</span>
+        </a>
+        <a href="../constituents/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-item-icon">groups</span>
+          <span class="nav-item-label">Constituants</span>
+        </a>
+        <a href="../campaigns/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-item-icon">campaign</span>
+          <span class="nav-item-label">Campagnes</span>
+        </a>
+        <a href="../donations/list.html" class="nav-item">
+          <span class="material-symbols-outlined nav-item-icon">volunteer_activism</span>
+          <span class="nav-item-label">Dons</span>
+        </a>
+        <div class="sidebar-section">Bientôt</div>
+        <span class="nav-item"><span class="material-symbols-outlined nav-item-icon">account_balance</span><span class="nav-item-label">Subventions</span><span class="nav-item-soon">Bientôt</span></span>
+        <span class="nav-item"><span class="material-symbols-outlined nav-item-icon">layers</span><span class="nav-item-label">Programmes</span><span class="nav-item-soon">Bientôt</span></span>
+        <span class="nav-item"><span class="material-symbols-outlined nav-item-icon">front_hand</span><span class="nav-item-label">Bénévoles</span><span class="nav-item-soon">Bientôt</span></span>
+        <span class="nav-item"><span class="material-symbols-outlined nav-item-icon">monitoring</span><span class="nav-item-label">Impact</span><span class="nav-item-soon">Bientôt</span></span>
+        <span class="nav-item"><span class="material-symbols-outlined nav-item-icon">forum</span><span class="nav-item-label">Communications</span><span class="nav-item-soon">Bientôt</span></span>
+        <span class="nav-item"><span class="material-symbols-outlined nav-item-icon">assessment</span><span class="nav-item-label">Rapports</span><span class="nav-item-soon">Bientôt</span></span>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="sidebar-user-card">
+          <div class="sidebar-footer-avatar">CM</div>
+          <div class="sidebar-footer-info">
+            <div class="sidebar-footer-name">Claire Martin</div>
+            <div class="sidebar-footer-role">Association Démo</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <div class="main-wrapper">
+      <header class="topbar">
+        <div class="topbar-breadcrumb">
+          <a href="../dashboard.html">Dashboard</a>
+          <span class="topbar-breadcrumb-sep">›</span>
+          <a href="feature-flags.html">Paramètres</a>
+          <span class="topbar-breadcrumb-sep">›</span>
+          <span class="topbar-breadcrumb-current">Champs personnalisés</span>
+        </div>
+        <div class="topbar-actions">
+          <button class="topbar-icon-btn" title="Notifications" aria-label="Notifications">
+            <span class="material-symbols-outlined">notifications</span>
+          </button>
+          <div class="topbar-avatar" title="Claire Martin">CM</div>
+        </div>
+      </header>
+
+      <main class="main-content">
+        <div class="page-header">
+          <div class="page-header-left">
+            <h1 class="page-title">Champs personnalisés</h1>
+            <p class="page-subtitle">Ajoutez vos propres champs typés aux constituants, dons et campagnes — sans consultant, sans ticket. Les listes de choix évoluent sans casse : renommer est gratuit, fusionner est prévisualisé, rien n'est jamais supprimé silencieusement.</p>
+          </div>
+          <div class="page-header-actions">
+            <button type="button" class="btn btn-primary">
+              <span class="material-symbols-outlined">add</span>
+              Nouveau champ
+            </button>
+          </div>
+        </div>
+
+        <!-- Settings sub-nav (mirrors components/settings/settings-navigation.tsx;
+             the « Champs personnalisés » entry only renders when at least one
+             domain flag is on) -->
+        <nav class="settings-tabs" aria-label="Sections des paramètres">
+          <a href="#" class="settings-tab">Organisation</a>
+          <a href="#" class="settings-tab">Membres</a>
+          <a href="#" class="settings-tab">Fonds</a>
+          <a href="bank-accounts-list.html" class="settings-tab">Comptes bancaires</a>
+          <a href="feature-flags.html" class="settings-tab">Feature flags</a>
+          <a href="custom-fields.html" class="settings-tab active" aria-current="page">Champs personnalisés</a>
+        </nav>
+
+        <!-- Domain tabs — one per flag-enabled domain. A domain whose flag
+             is off does not render its tab at all (off-state QA). -->
+        <nav class="domain-tabs" aria-label="Domaines">
+          <a href="#" class="domain-tab active" aria-current="page">Constituants <span class="count">5</span></a>
+          <a href="#" class="domain-tab">Dons <span class="count">2</span></a>
+          <a href="#" class="domain-tab">Campagnes <span class="count">0</span></a>
+        </nav>
+
+        <!-- Quota meter — always visible, archived fields don't count -->
+        <section class="quota-card" aria-label="Quota de champs">
+          <span class="quota-count">5 / 25 <small>champs sur ce domaine</small></span>
+          <div class="quota-bar">
+            <div class="progress"><div class="progress-fill" style="width: 20%;"></div></div>
+          </div>
+          <p class="quota-hint">Votre offre inclut 25 champs par domaine. Les champs archivés ne comptent pas. Besoin de plus&nbsp;? Contactez-nous — les extensions de quota sont tracées et motivées.</p>
+        </section>
+
+        <!-- Field list — drag handles reorder (POST /v1/custom-fields/reorder),
+             ordering propagates to formulaires, fiches, colonnes et export. -->
+        <div class="data-table-wrapper">
+          <table class="data-table" aria-label="Champs personnalisés — Constituants">
+            <thead>
+              <tr>
+                <th style="width:32px;" aria-label="Réordonner"></th>
+                <th>Champ</th>
+                <th>Type</th>
+                <th class="usage-cell">Utilisation</th>
+                <th>Options</th>
+                <th aria-label="Actions"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="field-row" draggable="true">
+                <td><span class="drag-handle material-symbols-outlined" aria-hidden="true">drag_indicator</span></td>
+                <td>
+                  <span class="field-label">Segment donateur</span>
+                  <span class="field-badges">
+                    <span class="badge badge-info">Projeté sur les dons</span>
+                  </span>
+                  <div class="field-key">segment_donateur</div>
+                </td>
+                <td><span class="badge badge-neutral">Liste de choix</span></td>
+                <td class="usage-cell">
+                  <div class="usage-bar">
+                    <div class="progress"><div class="progress-fill" style="width: 62%;"></div></div>
+                    <span class="usage-pct">62&nbsp;%</span>
+                  </div>
+                </td>
+                <td class="text-mono">6</td>
+                <td class="text-right">
+                  <button type="button" class="btn btn-ghost btn-sm">Modifier</button>
+                  <button type="button" class="btn btn-ghost btn-sm">Archiver</button>
+                </td>
+              </tr>
+              <tr class="field-row" draggable="true">
+                <td><span class="drag-handle material-symbols-outlined" aria-hidden="true">drag_indicator</span></td>
+                <td>
+                  <span class="field-label">Membre du conseil</span>
+                  <span class="field-badges">
+                    <span class="badge badge-warning">Requis</span>
+                  </span>
+                  <div class="field-key">membre_du_conseil</div>
+                </td>
+                <td><span class="badge badge-neutral">Case à cocher</span></td>
+                <td class="usage-cell">
+                  <!-- k-anonymity: counts under 5 are masked as « < 5 » -->
+                  <span class="usage-masked">&lt;&nbsp;5 fiches</span>
+                </td>
+                <td class="text-muted">—</td>
+                <td class="text-right">
+                  <button type="button" class="btn btn-ghost btn-sm">Modifier</button>
+                  <button type="button" class="btn btn-ghost btn-sm">Archiver</button>
+                </td>
+              </tr>
+              <tr class="field-row" draggable="true">
+                <td><span class="drag-handle material-symbols-outlined" aria-hidden="true">drag_indicator</span></td>
+                <td>
+                  <span class="field-label">Régime alimentaire</span>
+                  <span class="field-badges">
+                    <span class="badge badge-error">Sensible — Art. 9</span>
+                  </span>
+                  <div class="field-key">regime_alimentaire</div>
+                </td>
+                <td><span class="badge badge-neutral">Liste de choix</span></td>
+                <td class="usage-cell">
+                  <div class="usage-bar">
+                    <div class="progress"><div class="progress-fill progress-fill--amber" style="width: 18%;"></div></div>
+                    <span class="usage-pct">18&nbsp;%</span>
+                  </div>
+                </td>
+                <td class="text-mono">4</td>
+                <td class="text-right">
+                  <button type="button" class="btn btn-ghost btn-sm">Modifier</button>
+                  <button type="button" class="btn btn-ghost btn-sm">Archiver</button>
+                </td>
+              </tr>
+              <tr class="field-row" draggable="true">
+                <td><span class="drag-handle material-symbols-outlined" aria-hidden="true">drag_indicator</span></td>
+                <td>
+                  <span class="field-label">Première rencontre</span>
+                  <div class="field-key">premiere_rencontre</div>
+                </td>
+                <td><span class="badge badge-neutral">Date</span></td>
+                <td class="usage-cell">
+                  <div class="usage-bar">
+                    <div class="progress"><div class="progress-fill" style="width: 41%;"></div></div>
+                    <span class="usage-pct">41&nbsp;%</span>
+                  </div>
+                </td>
+                <td class="text-muted">—</td>
+                <td class="text-right">
+                  <button type="button" class="btn btn-ghost btn-sm">Modifier</button>
+                  <button type="button" class="btn btn-ghost btn-sm">Archiver</button>
+                </td>
+              </tr>
+              <tr class="field-row" draggable="true">
+                <td><span class="drag-handle material-symbols-outlined" aria-hidden="true">drag_indicator</span></td>
+                <td>
+                  <span class="field-label">Montant promis</span>
+                  <div class="field-key">montant_promis</div>
+                </td>
+                <td><span class="badge badge-neutral">Montant (EUR)</span></td>
+                <td class="usage-cell">
+                  <div class="usage-bar">
+                    <div class="progress"><div class="progress-fill" style="width: 9%;"></div></div>
+                    <span class="usage-pct">9&nbsp;%</span>
+                  </div>
+                </td>
+                <td class="text-muted">—</td>
+                <td class="text-right">
+                  <button type="button" class="btn btn-ghost btn-sm">Modifier</button>
+                  <button type="button" class="btn btn-ghost btn-sm">Archiver</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Archived fields — values are kept, restore possible -->
+        <section class="archived-section" aria-label="Champs archivés">
+          <h2 class="archived-title">Champs archivés (1)</h2>
+          <div class="archived-row">
+            <div>
+              <span class="field-label">Newsletter papier</span>
+              <span class="field-badges"><span class="badge badge-neutral">Case à cocher</span></span>
+              <div class="field-key">newsletter_papier</div>
+              <p class="archived-note">Les valeurs déjà saisies sont <strong>conservées</strong> : elles restent visibles sur les fiches et dans les exports, mais le champ n'apparaît plus dans les formulaires, filtres et colonnes.</p>
+            </div>
+            <button type="button" class="btn btn-secondary btn-sm">Restaurer</button>
+          </div>
+        </section>
+
+        <!-- ════════════ Dialog previews ════════════ -->
+
+        <h3 class="preview-heading">Aperçu — tiroir de création / édition (custom-field-dialog.tsx)</h3>
+        <div class="dialog-preview">
+          <h3>Nouveau champ — Constituants</h3>
+          <p class="dialog-sub">Le type est définitif après création : pour changer de type, archivez puis recréez le champ.</p>
+
+          <div class="form-group">
+            <label class="form-label form-label-required" for="cf-label">Libellé</label>
+            <input id="cf-label" class="form-input" type="text" value="Segment donateur" placeholder="Ex. Segment donateur">
+            <!-- Key auto-derived from the label, shown ONCE at creation,
+                 immutable afterwards (never editable, never re-shown in edit). -->
+            <div class="key-preview">Clé technique&nbsp;: <strong>segment_donateur</strong> — dérivée du libellé, visible uniquement maintenant, définitive après création.</div>
+          </div>
+
+          <div class="form-cols-2">
+            <div class="form-group">
+              <label class="form-label form-label-required" for="cf-type">Type</label>
+              <select id="cf-type" class="form-select">
+                <option>Texte court</option>
+                <option>Texte long</option>
+                <option>Nombre</option>
+                <option>Date</option>
+                <option>Case à cocher</option>
+                <option selected>Liste de choix</option>
+                <option>Liste à choix multiples</option>
+                <option>Montant (EUR)</option>
+              </select>
+              <p class="form-hint">Immutable après création.</p>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="cf-desc">Description</label>
+              <input id="cf-desc" class="form-input" type="text" placeholder="Aide affichée aux opérateurs">
+            </div>
+          </div>
+
+          <!-- Option manager — picklist / multi_picklist only.
+               Inline rename is free (values store stable opt_ ids, never labels);
+               deactivation hides from new writes without touching stored data;
+               merge opens the dedicated dialog below. -->
+          <div class="form-group">
+            <span class="form-label">Options</span>
+            <div class="option-list">
+              <div class="option-row">
+                <span class="drag-handle material-symbols-outlined" aria-hidden="true">drag_indicator</span>
+                <input class="form-input" type="text" value="Grand donateur" aria-label="Renommer l'option Grand donateur">
+                <span class="option-id">opt_Xk2fRp9a</span>
+                <button type="button" class="btn btn-ghost btn-sm">Désactiver</button>
+                <button type="button" class="btn btn-ghost btn-sm">Fusionner…</button>
+              </div>
+              <div class="option-row">
+                <span class="drag-handle material-symbols-outlined" aria-hidden="true">drag_indicator</span>
+                <input class="form-input" type="text" value="Ami" aria-label="Renommer l'option Ami">
+                <span class="option-id">opt_x7uJq2Lw</span>
+                <button type="button" class="btn btn-ghost btn-sm">Désactiver</button>
+                <button type="button" class="btn btn-ghost btn-sm">Fusionner…</button>
+              </div>
+              <div class="option-row inactive">
+                <span class="drag-handle material-symbols-outlined" aria-hidden="true">drag_indicator</span>
+                <input class="form-input" type="text" value="Prospect froid" aria-label="Renommer l'option Prospect froid">
+                <span class="option-id">opt_XJ40Tz_m</span>
+                <span class="badge badge-neutral">Désactivée</span>
+                <button type="button" class="btn btn-ghost btn-sm">Réactiver</button>
+              </div>
+            </div>
+            <button type="button" class="btn btn-ghost btn-sm mt-2">
+              <span class="material-symbols-outlined">add</span>
+              Ajouter une option
+            </button>
+            <p class="form-hint">Renommer une option met à jour tout l'historique — les valeurs stockent des identifiants stables, jamais les libellés. Rien n'est supprimé&nbsp;: on désactive ou on fusionne.</p>
+          </div>
+
+          <div class="form-group">
+            <div class="toggle-row">
+              <input type="checkbox" id="cf-required">
+              <label class="toggle-text" for="cf-required"><b>Requis</b><span>Exigé sur les nouvelles saisies uniquement — jamais bloquant sur l'existant.</span></label>
+            </div>
+            <div class="toggle-row">
+              <input type="checkbox" id="cf-filterable" checked>
+              <label class="toggle-text" for="cf-filterable"><b>Filtrable</b><span>Disponible dans les filtres avancés et les segments de campagne.</span></label>
+            </div>
+            <div class="toggle-row">
+              <input type="checkbox" id="cf-exportable" checked>
+              <label class="toggle-text" for="cf-exportable"><b>Exportable</b><span>Inclus dans l'export CSV — jamais conditionné à votre offre.</span></label>
+            </div>
+            <div class="toggle-row">
+              <input type="checkbox" id="cf-projected" checked>
+              <label class="toggle-text" for="cf-projected"><b>Afficher sur les dons liés</b><span>Projette ce champ du donateur sur la liste et la fiche de ses dons (max. 5 champs, jamais un champ sensible). Domaine Constituants uniquement.</span></label>
+            </div>
+            <div class="toggle-row">
+              <input type="checkbox" id="cf-sensitive">
+              <label class="toggle-text" for="cf-sensitive"><b>Donnée sensible (RGPD Art. 9)</b><span>Santé, religion, opinions, orientation… La finalité devient obligatoire.</span></label>
+            </div>
+            <!-- Shown when the sensitive toggle is on -->
+            <div class="art9-box">
+              <strong>Article 9 RGPD.</strong> Ce champ contiendra des données de catégorie particulière. Il est structurellement exclu de la projection inter-domaines et de tout traitement IA, badgé sur toutes les surfaces, et sa finalité est consignée au registre des traitements (Art. 30).
+            </div>
+            <div class="form-group mt-2">
+              <label class="form-label form-label-required" for="cf-purpose">Finalité du traitement</label>
+              <textarea id="cf-purpose" class="form-textarea" rows="2" placeholder="Pourquoi collectez-vous cette donnée ? Ex. adapter les repas servis lors des événements bénévoles."></textarea>
+            </div>
+          </div>
+
+          <div class="flex gap-2" style="justify-content: flex-end; margin-top: var(--space-6);">
+            <button type="button" class="btn btn-ghost">Annuler</button>
+            <button type="button" class="btn btn-primary">Créer le champ</button>
+          </div>
+        </div>
+
+        <h3 class="preview-heading">Aperçu — fusion d'options avec décompte (option-merge-dialog.tsx)</h3>
+        <div class="dialog-preview">
+          <h3>Fusionner «&nbsp;Amis&nbsp;» dans «&nbsp;Ami&nbsp;»</h3>
+          <p class="dialog-sub">Toutes les fiches portant «&nbsp;Amis&nbsp;» basculeront sur «&nbsp;Ami&nbsp;». L'option fusionnée est désactivée, jamais supprimée.</p>
+          <div class="form-group">
+            <label class="form-label" for="merge-target">Option de destination</label>
+            <select id="merge-target" class="form-select">
+              <option selected>Ami</option>
+              <option>Grand donateur</option>
+            </select>
+          </div>
+          <!-- Dry-run: POST …/options/:optId/merge?dryRun=true → affected count -->
+          <div class="merge-count">
+            <strong>142 fiches</strong> seront réécrites. La fusion s'exécute en arrière-plan et reste <strong>annulable pendant 30&nbsp;jours</strong>.
+          </div>
+          <div class="flex gap-2" style="justify-content: flex-end;">
+            <button type="button" class="btn btn-ghost">Annuler</button>
+            <button type="button" class="btn btn-primary">Lancer la fusion</button>
+          </div>
+        </div>
+
+        <h3 class="preview-heading">Aperçu — état vide (aucun champ sur le domaine)</h3>
+        <div class="card card--flat" style="max-width: 720px;">
+          <div class="empty-state">
+            <div class="empty-state-icon"><span class="material-symbols-outlined" style="font-size:48px;">tune</span></div>
+            <h2 class="empty-state-title">Aucun champ personnalisé</h2>
+            <p class="empty-state-text">Créez votre premier champ pour ce domaine — un libellé, un type, et il apparaît immédiatement dans les formulaires, fiches, colonnes, filtres et exports. Configurable en un après-midi, par vous.</p>
+            <button type="button" class="btn btn-primary">
+              <span class="material-symbols-outlined">add</span>
+              Nouveau champ
+            </button>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+<script src="../shared/mobile.js"></script>
+</body>
+</html>

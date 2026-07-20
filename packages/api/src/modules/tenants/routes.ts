@@ -1,5 +1,6 @@
 /** Tenant routes — platform-admin CRUD for organizations */
 
+import { TENANT_PLAN_VALUES, type TenantPlan } from "@givernance/shared/constants";
 import { SUPPORTED_LOCALES } from "@givernance/shared/i18n";
 import { outboxEvents, tenants } from "@givernance/shared/schema";
 import { Type } from "@sinclair/typebox";
@@ -20,9 +21,7 @@ import { getTenantSnapshot } from "./service.js";
 const CreateTenantBody = Type.Object({
   name: Type.String({ minLength: 1, maxLength: 255 }),
   slug: Type.String({ minLength: 1, maxLength: 100, pattern: "^[a-z0-9-]+$" }),
-  plan: Type.Optional(
-    Type.Union([Type.Literal("starter"), Type.Literal("pro"), Type.Literal("enterprise")]),
-  ),
+  plan: Type.Optional(Type.Union(TENANT_PLAN_VALUES.map((value) => Type.Literal(value)))),
 });
 
 const TenantBaseCurrencySchema = Type.Union([
@@ -248,7 +247,7 @@ export async function tenantRoutes(app: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      const body = request.body as { name: string; slug: string; plan?: string };
+      const body = request.body as { name: string; slug: string; plan?: TenantPlan };
 
       // Transactional outbox: insert tenant + outbox event in same transaction.
       // outbox_events has FORCE RLS, so we set tenant context within the transaction

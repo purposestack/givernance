@@ -1,8 +1,16 @@
 /** Constituent routes — full CRUD with search, filtering, and soft-delete */
 
+import { createHash } from "node:crypto";
 import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
+import { auditLogs } from "@givernance/shared/schema";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
+import {
+  CustomFieldValidationError,
+  customFieldsDisabledProblem,
+  customFieldsProblem,
+} from "../../lib/custom-field-values.js";
+import { withTenantContext } from "../../lib/db.js";
 import { requireFlag } from "../../lib/flags/flag-guard.js";
 import { flagService as defaultFlagService } from "../../lib/flags/flag-service.js";
 import { requireAuth, requireOrgAdmin, requireWrite } from "../../lib/guards.js";
@@ -19,6 +27,11 @@ import {
   UuidSchema,
 } from "../../lib/schemas.js";
 import {
+  buildCustomSerializer,
+  getActiveDefinitions,
+  getReadableDefinitions,
+} from "../customization/lib/value-service.js";
+import {
   BulkEmailResumeError,
   BulkEmailValidationError,
   dispatchBulkEmail,
@@ -27,6 +40,8 @@ import {
   resumeBulkEmailJob,
 } from "./bulk-email-service.js";
 import { registerBulkImportRoutes } from "./bulk-import/routes.js";
+import { constituentsExportFilename, streamConstituentsCsv } from "./export.js";
+import { type FieldRegistryBundle, getFieldRegistryBundle } from "./filters/field-registry.js";
 import { registerFilterEndpoints } from "./filters/filter.routes.js";
 import { FilterService } from "./filters/filter.service.js";
 import type { FilterQuery } from "./filters/types.js";
@@ -87,6 +102,27 @@ const ConstituentAddressUpdateFields = {
   ),
 };
 
+/**
+ * Custom-field merge-patch carrier (Epic #539). Values are validated at
+ * runtime against the org's active definition catalog (types, options,
+ * lengths) — the TypeBox layer only bounds the shape: an object keyed by
+ * definition keys, `null` meaning "clear this key". Only forwarded to the
+ * service when `constituents.custom_fields` is on (422 otherwise).
+ */
+const CustomPatchBody = Type.Record(Type.String({ maxLength: 63 }), Type.Unknown());
+
+/**
+ * Custom values in responses. The route serializes the stored blob
+ * through `buildCustomSerializer(activeDefs)` before it reaches this
+ * schema — the definition-driven firewall; this Record only types what
+ * that serializer emits. `String` last: fast-json-stringify coerces to
+ * the first compatible union member, and everything is string-coercible.
+ */
+const CustomValuesResponse = Type.Record(
+  Type.String(),
+  Type.Union([Type.Boolean(), Type.Number(), Type.Array(Type.String()), Type.String()]),
+);
+
 const ConstituentCreateBody = Type.Object({
   firstName: Type.String({ minLength: 1, maxLength: 255 }),
   lastName: Type.String({ minLength: 1, maxLength: 255 }),
@@ -98,6 +134,7 @@ const ConstituentCreateBody = Type.Object({
   types: Type.Optional(ConstituentTypesArray),
   type: Type.Optional(ConstituentTypeEnum),
   tags: Type.Optional(Type.Array(Type.String())),
+  custom: Type.Optional(CustomPatchBody),
 });
 
 // Per the convention in @givernance/shared validators: optional fields accept
@@ -121,6 +158,7 @@ const ConstituentUpdateBody = Type.Object(
     types: Type.Optional(ConstituentTypesArray),
     type: Type.Optional(ConstituentTypeEnum),
     tags: Type.Optional(Type.Array(Type.String())),
+    custom: Type.Optional(CustomPatchBody),
   },
   { minProperties: 1 },
 );
@@ -227,6 +265,9 @@ const ConstituentResponse = Type.Object({
     description: "Back-compat mirror of types[0]; removed once readers migrate to `types`.",
   }),
   tags: Type.Union([Type.Null(), Type.Array(Type.String())]),
+  // Epic #539 — present only when `constituents.custom_fields` is on;
+  // always the serializer's key-picked output, never the raw blob.
+  custom: Type.Optional(CustomValuesResponse),
   deletedAt: Type.Union([Type.Null(), Type.String()]),
   createdAt: Type.String(),
   updatedAt: Type.String(),
@@ -317,6 +358,185 @@ async function rejectMultiTypeWhenDisabled(
   );
 }
 
+/**
+ * Custom-fields gate (Epic #539). Like multi-type above, the flag is NOT
+ * a `requireFlag` preHandler on the CRUD routes — only the `custom`
+ * affordance is gated, never the endpoint. With the flag off, a payload
+ * carrying `custom` is a 422 and responses omit the key entirely.
+ */
+async function isCustomFieldsEnabled(request: FastifyRequest, orgId: string): Promise<boolean> {
+  const flags = request.flagService ?? defaultFlagService;
+  return flags.isEnabled(FEATURE_FLAG_KEYS.CONSTITUENTS_CUSTOM_FIELDS, { orgId });
+}
+
+/**
+ * Duplicate pre-check for the create handler — returns the matches to
+ * put in the 409 body, or null when creation may proceed (`force=true`
+ * or no candidates).
+ */
+async function findCreateDuplicates(
+  orgId: string,
+  body: { firstName: string; lastName: string; email?: string },
+  force: boolean | undefined,
+) {
+  if (force) return null;
+  const duplicates = await findDuplicates(orgId, {
+    firstName: body.firstName,
+    lastName: body.lastName,
+    email: body.email,
+  });
+  return duplicates.length > 0 ? duplicates : null;
+}
+
+/**
+ * One-shot gate for the create/update handlers: resolves the flag and,
+ * when a `custom` payload arrives while it's off, the 422 to send.
+ */
+async function resolveCustomGate(
+  request: FastifyRequest,
+  orgId: string,
+  custom: unknown,
+): Promise<{ enabled: boolean; problem: ReturnType<typeof problemDetail> | null }> {
+  const enabled = await isCustomFieldsEnabled(request, orgId);
+  // Empty-object payloads pass with the flag off (same rule as the
+  // donation/campaign gates) — only actual gated values are rejected.
+  const carriesValues =
+    custom !== undefined &&
+    custom !== null &&
+    typeof custom === "object" &&
+    Object.keys(custom as Record<string, unknown>).length > 0;
+  const problem =
+    !enabled && carriesValues
+      ? customFieldsDisabledProblem(FEATURE_FLAG_KEYS.CONSTITUENTS_CUSTOM_FIELDS)
+      : null;
+  return { enabled, problem };
+}
+
+type FiltersParamResult =
+  | { ok: true; filter: FilterQuery | undefined; registryBundle?: FieldRegistryBundle }
+  | { ok: false; status: 400 | 404; problem: ReturnType<typeof problemDetail> };
+
+/**
+ * Shared `?filters=` DSL handling for the list + export routes (Epic
+ * #418 / ADR-033). With `advanced_filters` off the param does not exist,
+ * so a request carrying it 404s exactly like the gated routes do
+ * (`requireFlag` posture — never silently return an UNFILTERED result an
+ * operator believes is filtered, and never disclose the feature to a
+ * scanner via a 400/403).
+ */
+async function parseFiltersParam(
+  request: FastifyRequest,
+  orgId: string,
+  filters: string | undefined,
+): Promise<FiltersParamResult> {
+  if (filters === undefined) {
+    return { ok: true, filter: undefined };
+  }
+
+  const flags = request.flagService ?? defaultFlagService;
+  const enabled = await flags.isEnabled(FEATURE_FLAG_KEYS.ADVANCED_FILTERS, { orgId });
+  if (!enabled) {
+    request.log.info(
+      {
+        event: "flag.route_gated",
+        flagKey: FEATURE_FLAG_KEYS.ADVANCED_FILTERS,
+        path: request.routeOptions.url ?? request.url,
+        method: request.method,
+      },
+      "List filters param gated off — feature flag disabled",
+    );
+    return { ok: false, status: 404, problem: problemDetail(404, "Not Found", "Route not found") };
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(filters);
+  } catch {
+    return {
+      ok: false,
+      status: 400,
+      problem: problemDetail(
+        400,
+        "Invalid filter query",
+        "The filters parameter is not valid JSON",
+      ),
+    };
+  }
+
+  // `validateQuery` expects an object — reject scalars/null/arrays here
+  // so a hand-edited URL can't crash it with a property access on null.
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    return {
+      ok: false,
+      status: 400,
+      problem: problemDetail(
+        400,
+        "Invalid filter query",
+        "The filters parameter must be a JSON object",
+      ),
+    };
+  }
+
+  // Per-org registry so `custom.<key>` conditions validate and compile;
+  // returned to the caller so the downstream where-clause build reuses it.
+  const registryBundle = await getFieldRegistryBundle(orgId);
+  const filterService = new FilterService(orgId, request.log, registryBundle);
+  const validation = filterService.validateQuery(parsed as FilterQuery);
+  if (!validation.valid) {
+    if (validation.archivedFields.length > 0) {
+      return {
+        ok: false,
+        status: 400,
+        problem: problemDetail(
+          400,
+          "custom_field_archived",
+          "The filter references archived custom fields",
+          { errors: validation.errors, archived_fields: validation.archivedFields },
+        ),
+      };
+    }
+    return {
+      ok: false,
+      status: 400,
+      problem: problemDetail(400, "Invalid filter query", "The filter query contains errors", {
+        errors: validation.errors,
+      }),
+    };
+  }
+
+  return { ok: true, filter: parsed as FilterQuery, registryBundle };
+}
+
+/**
+ * Applies the strict-response firewall to rows about to be serialized:
+ * flag off → the `custom` key is removed; flag on → the stored blob is
+ * replaced by definition-driven serializer output, so stray keys never
+ * leave the API. List/mutation responses serialize ACTIVE definitions
+ * only; the detail read passes `includeArchived` so archived-definition
+ * values stay readable there (docs/35: "values retained, read-only on
+ * detail + exports") — never on forms, filters, or columns.
+ */
+async function projectCustomOnRows(
+  orgId: string,
+  enabled: boolean,
+  rows: Array<Record<string, unknown>>,
+  options?: { includeArchived?: boolean },
+): Promise<void> {
+  if (!enabled) {
+    for (const row of rows) {
+      delete row.custom;
+    }
+    return;
+  }
+  const defs = options?.includeArchived
+    ? await getReadableDefinitions(orgId, "constituent")
+    : await getActiveDefinitions(orgId, "constituent");
+  const serialize = buildCustomSerializer(defs);
+  for (const row of rows) {
+    row.custom = serialize(row.custom);
+  }
+}
+
 export async function constituentRoutes(app: FastifyInstance) {
   /** List constituents with pagination, search, and filtering */
   app.get(
@@ -354,65 +574,11 @@ export async function constituentRoutes(app: FastifyInstance) {
         filters?: string;
       };
 
-      // Advanced-filter DSL param (Epic #418 / ADR-033). Same flag gate as
-      // the /constituents/filter routes: with `advanced_filters` off the
-      // param does not exist, so a request carrying it 404s exactly like the
-      // gated routes do (`requireFlag` posture — never silently return an
-      // UNFILTERED list an operator believes is filtered, and never disclose
-      // the feature to a scanner via a 400/403).
-      let advancedFilter: FilterQuery | undefined;
-      if (query.filters !== undefined) {
-        const flags = request.flagService ?? defaultFlagService;
-        const enabled = await flags.isEnabled(FEATURE_FLAG_KEYS.ADVANCED_FILTERS, { orgId });
-        if (!enabled) {
-          request.log.info(
-            {
-              event: "flag.route_gated",
-              flagKey: FEATURE_FLAG_KEYS.ADVANCED_FILTERS,
-              path: request.routeOptions.url ?? request.url,
-              method: request.method,
-            },
-            "List filters param gated off — feature flag disabled",
-          );
-          return reply.status(404).send(problemDetail(404, "Not Found", "Route not found"));
-        }
-
-        let parsed: unknown;
-        try {
-          parsed = JSON.parse(query.filters);
-        } catch {
-          return reply
-            .status(400)
-            .send(
-              problemDetail(400, "Invalid filter query", "The filters parameter is not valid JSON"),
-            );
-        }
-
-        // `validateQuery` expects an object — reject scalars/null/arrays here
-        // so a hand-edited URL can't crash it with a property access on null.
-        if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-          return reply
-            .status(400)
-            .send(
-              problemDetail(
-                400,
-                "Invalid filter query",
-                "The filters parameter must be a JSON object",
-              ),
-            );
-        }
-
-        const filterService = new FilterService(orgId, request.log);
-        const validation = filterService.validateQuery(parsed as FilterQuery);
-        if (!validation.valid) {
-          return reply.status(400).send(
-            problemDetail(400, "Invalid filter query", "The filter query contains errors", {
-              errors: validation.errors,
-            }),
-          );
-        }
-        advancedFilter = parsed as FilterQuery;
+      const filtersResult = await parseFiltersParam(request, orgId, query.filters);
+      if (!filtersResult.ok) {
+        return reply.status(filtersResult.status).send(filtersResult.problem);
       }
+      const advancedFilter = filtersResult.filter;
 
       const tags = query.tags ? (Array.isArray(query.tags) ? query.tags : [query.tags]) : undefined;
       // `?types=donor&types=volunteer` arrives as an array; `?types=donor` as
@@ -440,7 +606,14 @@ export async function constituentRoutes(app: FastifyInstance) {
         minLifetimeAmountCents: query.minLifetimeAmountCents,
         maxLifetimeAmountCents: query.maxLifetimeAmountCents,
         advancedFilter,
+        registryBundle: filtersResult.registryBundle,
       });
+
+      await projectCustomOnRows(
+        orgId,
+        await isCustomFieldsEnabled(request, orgId),
+        result.data as unknown as Array<Record<string, unknown>>,
+      );
 
       return { data: result.data, pagination: result.pagination };
     },
@@ -469,6 +642,13 @@ export async function constituentRoutes(app: FastifyInstance) {
       if (!constituent) {
         return reply.status(404).send(problemDetail(404, "Not Found", "Constituent not found"));
       }
+
+      await projectCustomOnRows(
+        orgId,
+        await isCustomFieldsEnabled(request, orgId),
+        [constituent as unknown as Record<string, unknown>],
+        { includeArchived: true },
+      );
 
       return { data: constituent };
     },
@@ -508,6 +688,83 @@ export async function constituentRoutes(app: FastifyInstance) {
     },
   );
 
+  /**
+   * Constituents CSV export (Epic #539 §5) — canonical columns + one
+   * column per `exportable` non-archived custom-field definition
+   * (admin sort order, option ids resolved to labels, multi joined
+   * `'; '`). Streams keyset-paginated batches; honors the same
+   * `?filters=` DSL as the list route. Never plan-gated — quotas gate
+   * field creation, never data egress — and doubles as the DSAR /
+   * Art. 15 vehicle (docs/35 §6). `requireFlag` FIRST: with
+   * `constituents.custom_fields` off the route does not exist (404).
+   * `requireWrite` (not bare auth): bulk egress of the full tenant PII
+   * set has no viewer-role use case — same posture as duplicates/search.
+   * "Never plan-gated" constrains plan gating, not role gating.
+   */
+  app.get(
+    "/constituents/export.csv",
+    {
+      preHandler: [requireFlag(FEATURE_FLAG_KEYS.CONSTITUENTS_CUSTOM_FIELDS), requireWrite],
+      schema: {
+        tags: ["Constituents"],
+        querystring: Type.Object({
+          /** Same 8 KiB-capped JSON `FilterQuery` as `GET /constituents`. */
+          filters: Type.Optional(Type.String({ maxLength: 8192 })),
+        }),
+        // No 200 schema: the response is a streamed CSV body, not JSON.
+        response: { 400: ProblemDetailSchema, ...ErrorResponses },
+      },
+    },
+    async (request, reply) => {
+      const orgId = request.auth?.orgId;
+      if (!orgId) {
+        return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
+      }
+
+      const query = request.query as { filters?: string };
+      const filtersResult = await parseFiltersParam(request, orgId, query.filters);
+      if (!filtersResult.ok) {
+        return reply.status(filtersResult.status).send(filtersResult.problem);
+      }
+
+      // Archived defs included (labels suffixed): the export doubles as the
+      // DSAR / Art. 15 vehicle, so retained values must not silently vanish
+      // from it when a definition is archived.
+      const exportableDefs = (await getReadableDefinitions(orgId, "constituent")).filter(
+        (def) => def.exportable,
+      );
+
+      // Bulk PII egress leaves a trail (GDPR Art. 5(2)): who exported,
+      // under which filter (hashed — the DSL itself may embed PII terms).
+      await withTenantContext(orgId, (tx) =>
+        tx.insert(auditLogs).values({
+          orgId,
+          userId: request.auth?.userId ?? "",
+          actorId: request.auth?.act?.sub ?? null,
+          action: "constituents.exported",
+          resourceType: "constituents",
+          newValues: {
+            filterHash: query.filters
+              ? createHash("sha256").update(query.filters).digest("hex").slice(0, 16)
+              : null,
+            customColumns: exportableDefs.length,
+          },
+        }),
+      );
+
+      reply.header("content-type", "text/csv; charset=utf-8");
+      reply.header("content-disposition", `attachment; filename="${constituentsExportFilename()}"`);
+      return reply.send(
+        streamConstituentsCsv(
+          orgId,
+          exportableDefs,
+          filtersResult.filter,
+          filtersResult.registryBundle,
+        ),
+      );
+    },
+  );
+
   /** Create a new constituent (with duplicate pre-check unless force=true) */
   app.post(
     "/constituents",
@@ -544,6 +801,7 @@ export async function constituentRoutes(app: FastifyInstance) {
         types?: string[];
         type?: string;
         tags?: string[];
+        custom?: Record<string, unknown>;
       };
       const query = request.query as { force?: boolean };
 
@@ -552,25 +810,39 @@ export async function constituentRoutes(app: FastifyInstance) {
         return reply.status(422).send(multiTypeError);
       }
 
-      if (!query.force) {
-        const duplicates = await findDuplicates(orgId, {
-          firstName: body.firstName,
-          lastName: body.lastName,
-          email: body.email,
-        });
-        if (duplicates.length > 0) {
-          return reply.status(409).send({
-            ...problemDetail(409, "Conflict", "Potential duplicate constituents found"),
-            duplicates,
-          });
-        }
+      const customGate = await resolveCustomGate(request, orgId, body.custom);
+      if (customGate.problem) {
+        return reply.status(422).send(customGate.problem);
       }
 
-      const constituent = await createConstituent(orgId, body);
-      if (constituent) {
-        reply.header("Location", `/v1/constituents/${constituent.id}`);
+      const duplicates = await findCreateDuplicates(orgId, body, query.force);
+      if (duplicates) {
+        return reply.status(409).send({
+          ...problemDetail(409, "Conflict", "Potential duplicate constituents found"),
+          duplicates,
+        });
       }
-      return reply.status(201).send({ data: constituent });
+
+      try {
+        // Flag on: always pass a patch (`{}` when the body has none) so
+        // `required` definitions are enforced on the create path.
+        const constituent = await createConstituent(orgId, {
+          ...body,
+          custom: customGate.enabled ? (body.custom ?? {}) : undefined,
+        });
+        if (constituent) {
+          reply.header("Location", `/v1/constituents/${constituent.id}`);
+          await projectCustomOnRows(orgId, customGate.enabled, [
+            constituent as unknown as Record<string, unknown>,
+          ]);
+        }
+        return reply.status(201).send({ data: constituent });
+      } catch (err) {
+        if (err instanceof CustomFieldValidationError) {
+          return reply.status(422).send(customFieldsProblem(err.errors));
+        }
+        throw err;
+      }
     },
   );
 
@@ -611,6 +883,7 @@ export async function constituentRoutes(app: FastifyInstance) {
         types?: string[];
         type?: string;
         tags?: string[];
+        custom?: Record<string, unknown>;
       };
 
       const multiTypeError = await rejectMultiTypeWhenDisabled(request, orgId, body.types);
@@ -618,13 +891,31 @@ export async function constituentRoutes(app: FastifyInstance) {
         return reply.status(422).send(multiTypeError);
       }
 
-      const updated = await updateConstituent(orgId, id, body, userId);
-
-      if (!updated) {
-        return reply.status(404).send(problemDetail(404, "Not Found", "Constituent not found"));
+      const customEnabled = await isCustomFieldsEnabled(request, orgId);
+      if (!customEnabled && body.custom !== undefined) {
+        return reply
+          .status(422)
+          .send(customFieldsDisabledProblem(FEATURE_FLAG_KEYS.CONSTITUENTS_CUSTOM_FIELDS));
       }
 
-      return { data: updated };
+      try {
+        const updated = await updateConstituent(orgId, id, body, userId);
+
+        if (!updated) {
+          return reply.status(404).send(problemDetail(404, "Not Found", "Constituent not found"));
+        }
+
+        await projectCustomOnRows(orgId, customEnabled, [
+          updated as unknown as Record<string, unknown>,
+        ]);
+
+        return { data: updated };
+      } catch (err) {
+        if (err instanceof CustomFieldValidationError) {
+          return reply.status(422).send(customFieldsProblem(err.errors));
+        }
+        throw err;
+      }
     },
   );
 
@@ -659,6 +950,10 @@ export async function constituentRoutes(app: FastifyInstance) {
       if (!deleted) {
         return reply.status(404).send(problemDetail(404, "Not Found", "Constituent not found"));
       }
+
+      await projectCustomOnRows(orgId, await isCustomFieldsEnabled(request, orgId), [
+        deleted as unknown as Record<string, unknown>,
+      ]);
 
       return { data: deleted };
     },

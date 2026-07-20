@@ -93,16 +93,34 @@ interface FilterConditionProps {
   condition: FilterConditionType;
   onChange: (condition: FilterConditionType) => void;
   onRemove: () => void;
+  /**
+   * Field catalog to offer (Epic #539): the static core fields merged with
+   * the org's custom fields. Defaults to the static catalog so existing
+   * call sites render byte-for-byte as before.
+   */
+  fields?: FilterField[];
 }
 
 /**
  * Single filter condition editor with field, operator, and value inputs.
  */
-export function FilterCondition({ condition, onChange, onRemove }: FilterConditionProps) {
+export function FilterCondition({
+  condition,
+  onChange,
+  onRemove,
+  fields = filterFields,
+}: FilterConditionProps) {
   const t = useTranslations("constituents.filters");
 
-  const selectedField = filterFields.find((f) => f.name === condition.field);
+  const selectedField = fields.find((f) => f.name === condition.field);
   const availableOperators = selectedField?.operators || ["eq"];
+
+  // Epic #539 label contract: custom-field labels/options are operator data
+  // rendered literally; core labels stay i18n keys resolved through `t`.
+  const fieldLabelText = (field: FilterField): string =>
+    field.labelKind === "literal" ? field.label : trDynamic(t, field.label);
+  const optionLabelText = (field: FilterField, label: string): string =>
+    field.labelKind === "literal" ? label : trDynamic(t, label);
 
   // Tenant-defined option lists (e.g. tags) fetched at edit-time from the
   // suggestions endpoint. Empty for fields with a static picklist.
@@ -138,7 +156,7 @@ export function FilterCondition({ condition, onChange, onRemove }: FilterConditi
     field.asyncSuggestions ? asyncOptions : (field.options ?? []);
 
   const handleFieldChange = (fieldName: string) => {
-    const field = filterFields.find((f) => f.name === fieldName);
+    const field = fields.find((f) => f.name === fieldName);
     if (field) {
       // Reset operator and seed a value shaped for that operator when the field
       // changes: nullary → null (no input), multi-value → [], between →
@@ -177,7 +195,7 @@ export function FilterCondition({ condition, onChange, onRemove }: FilterConditi
   const renderBetweenInput = (selectedField: FilterField) => {
     const rawValues = Array.isArray(condition.value) ? condition.value : ["", ""];
     const values: [string, string] = [String(rawValues[0] ?? ""), String(rawValues[1] ?? "")];
-    const fieldLabel = trDynamic(t, selectedField.label);
+    const fieldLabel = fieldLabelText(selectedField);
     if (selectedField.type === "date") {
       return (
         <div className="flex gap-2 items-center">
@@ -241,14 +259,14 @@ export function FilterCondition({ condition, onChange, onRemove }: FilterConditi
     >
       <SelectTrigger
         className="w-full"
-        aria-label={t("selectValueFor", { field: trDynamic(t, selectedField.label) })}
+        aria-label={t("selectValueFor", { field: fieldLabelText(selectedField) })}
       >
         <SelectValue placeholder={t("selectValue")} />
       </SelectTrigger>
       <SelectContent>
         {selectedField.options?.map((option) => (
           <SelectItem key={option.value} value={option.value}>
-            {trDynamic(t, option.label)}
+            {optionLabelText(selectedField, option.label)}
           </SelectItem>
         ))}
       </SelectContent>
@@ -292,7 +310,7 @@ export function FilterCondition({ condition, onChange, onRemove }: FilterConditi
         : selectedValues.length <= 2
           ? fieldOptions
               .filter((opt) => selectedSet.has(opt.value))
-              .map((opt) => trDynamic(t, opt.label))
+              .map((opt) => optionLabelText(selectedField, opt.label))
               .join(", ")
           : t("selectValuesCount", { count: selectedValues.length });
 
@@ -307,7 +325,7 @@ export function FilterCondition({ condition, onChange, onRemove }: FilterConditi
               "focus:outline-none focus:border-primary focus:shadow-ring",
               selectedValues.length === 0 && "text-on-surface-variant",
             )}
-            aria-label={t("selectValuesFor", { field: trDynamic(t, selectedField.label) })}
+            aria-label={t("selectValuesFor", { field: fieldLabelText(selectedField) })}
           >
             <span className="truncate text-left">{triggerLabel}</span>
             <ChevronDown size={16} aria-hidden="true" className="shrink-0 opacity-60" />
@@ -329,7 +347,9 @@ export function FilterCondition({ condition, onChange, onRemove }: FilterConditi
                     aria-pressed={checked}
                   >
                     <CheckboxVisual checked={checked} />
-                    <span className="flex-1 truncate">{trDynamic(t, option.label)}</span>
+                    <span className="flex-1 truncate">
+                      {optionLabelText(selectedField, option.label)}
+                    </span>
                     {checked ? <Check size={14} aria-hidden="true" className="opacity-60" /> : null}
                   </button>
                 </li>
@@ -348,7 +368,7 @@ export function FilterCondition({ condition, onChange, onRemove }: FilterConditi
     >
       <SelectTrigger
         className="w-full"
-        aria-label={t("selectBooleanFor", { field: trDynamic(t, selectedField.label) })}
+        aria-label={t("selectBooleanFor", { field: fieldLabelText(selectedField) })}
       >
         <SelectValue />
       </SelectTrigger>
@@ -383,7 +403,7 @@ export function FilterCondition({ condition, onChange, onRemove }: FilterConditi
         max={selectedField.max}
         step={selectedField.step}
         className="w-full"
-        aria-label={t("enterValueFor", { field: trDynamic(t, selectedField.label) })}
+        aria-label={t("enterValueFor", { field: fieldLabelText(selectedField) })}
       />
     );
   };
@@ -416,7 +436,7 @@ export function FilterCondition({ condition, onChange, onRemove }: FilterConditi
     return renderDefaultInput(selectedField);
   };
 
-  const fieldsByCategory = filterFields.reduce<Record<FilterCategory, FilterField[]>>(
+  const fieldsByCategory = fields.reduce<Record<FilterCategory, FilterField[]>>(
     (acc, field) => {
       const bucket = acc[field.category] ?? [];
       bucket.push(field);
@@ -445,7 +465,7 @@ export function FilterCondition({ condition, onChange, onRemove }: FilterConditi
                 </div>
                 {fields.map((field) => (
                   <SelectItem key={field.name} value={field.name}>
-                    {trDynamic(t, field.label)}
+                    {fieldLabelText(field)}
                   </SelectItem>
                 ))}
               </div>

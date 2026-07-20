@@ -1,6 +1,12 @@
 /** Constituent service — business logic for constituent operations */
 
 import {
+  buildCustomValidator,
+  type CustomFieldPatch,
+  type CustomFieldValues,
+  type CustomValidator,
+} from "@givernance/shared/custom-fields";
+import {
   campaignConstituents,
   constituents,
   donations,
@@ -25,7 +31,11 @@ import {
   type SQL,
   sql,
 } from "drizzle-orm";
+import { CustomFieldValidationError } from "../../lib/custom-field-values.js";
 import { withTenantContext } from "../../lib/db.js";
+import { sanitizeAuditDiff } from "../../lib/sanitize-audit-diff.js";
+import { getActiveDefinitions } from "../customization/lib/value-service.js";
+import type { FieldRegistryBundle } from "./filters/field-registry.js";
 import { donationStatsJoin, FilterService } from "./filters/filter.service.js";
 import type { FilterQuery } from "./filters/types.js";
 
@@ -86,6 +96,12 @@ export interface ListConstituentsQuery {
    * the `advanced_filters` flag before it reaches this service.
    */
   advancedFilter?: FilterQuery;
+  /**
+   * Per-org field registry resolved by the route alongside validation —
+   * required for `advancedFilter` conditions on `custom.<key>` fields to
+   * compile (the static registry knows only core fields).
+   */
+  registryBundle?: FieldRegistryBundle;
 }
 
 /**
@@ -175,6 +191,37 @@ export interface ConstituentInput {
   // older clients). Coerced into `types` when `types` is omitted.
   type?: string;
   tags?: string[];
+  /**
+   * Custom-field merge-patch (Epic #539): explicit `null` clears a key,
+   * absent keys stay untouched. The route only forwards it when the
+   * `constituents.custom_fields` flag is on; the service validates against
+   * the org's active catalog and throws `CustomFieldValidationError` (422).
+   */
+  custom?: CustomFieldPatch;
+}
+
+/**
+ * Validates a `custom` merge-patch against the org's active constituent
+ * catalog and returns the merged blob to persist. Fetches the (cached)
+ * catalog OUTSIDE the caller's transaction — `getActiveDefinitions` opens
+ * its own tenant context, so callers must invoke this before entering
+ * `withTenantContext`, or pass the returned validator in.
+ */
+async function buildConstituentCustomValidator(orgId: string): Promise<CustomValidator> {
+  return buildCustomValidator(await getActiveDefinitions(orgId, "constituent"));
+}
+
+function applyValidatedCustomPatch(
+  validator: CustomValidator,
+  existing: CustomFieldValues,
+  patch: CustomFieldPatch,
+  options?: { enforceRequired?: boolean },
+): CustomFieldValues {
+  const result = validator.validatePatch(existing, patch, options);
+  if (!result.ok) {
+    throw new CustomFieldValidationError(result.errors);
+  }
+  return result.merged;
 }
 
 /**
@@ -388,7 +435,9 @@ export async function listConstituents(orgId: string, query: ListConstituentsQue
     // `donation_agg` and `donation_stats` project disjoint column names, so
     // the two subquery joins coexist without ambiguity.
     const advancedWhere = query.advancedFilter
-      ? new FilterService(orgId).buildCompleteWhereClause(query.advancedFilter)
+      ? new FilterService(orgId, undefined, query.registryBundle).buildCompleteWhereClause(
+          query.advancedFilter,
+        )
       : undefined;
 
     const where = and(
@@ -463,13 +512,28 @@ export async function getConstituent(orgId: string, id: string) {
 
 /** Create a new constituent in an organization */
 export async function createConstituent(orgId: string, input: ConstituentInput) {
+  // Create path enforces `required` definitions — the route passes
+  // `custom: {}` (not undefined) when the flag is on precisely so a
+  // payload omitting a required field still fails the 422 matrix here.
+  const customColumn =
+    input.custom !== undefined
+      ? applyValidatedCustomPatch(await buildConstituentCustomValidator(orgId), {}, input.custom, {
+          enforceRequired: true,
+        })
+      : undefined;
+
   return withTenantContext(orgId, async (tx) => {
     // Strip the two raw type inputs and replace with the reconciled column
     // patch so we never write a stale `type`/`types` pair.
-    const { type: _legacyType, types: _types, ...rest } = input;
+    const { type: _legacyType, types: _types, custom: _custom, ...rest } = input;
     const [result] = await tx
       .insert(constituents)
-      .values({ ...rest, ...reconcileTypeColumns(input), orgId })
+      .values({
+        ...rest,
+        ...reconcileTypeColumns(input),
+        ...(customColumn !== undefined ? { custom: customColumn } : {}),
+        orgId,
+      })
       .returning();
 
     return result;
@@ -483,6 +547,12 @@ export async function updateConstituent(
   input: Partial<ConstituentInput>,
   userId: string,
 ) {
+  // Catalog fetch opens its own tenant context — resolve before the tx.
+  // No `enforceRequired` on updates: required is enforced on new writes
+  // only, never retro-blocking.
+  const validator =
+    input.custom !== undefined ? await buildConstituentCustomValidator(orgId) : null;
+
   return withTenantContext(orgId, async (tx) => {
     const [existing] = await tx
       .select()
@@ -493,19 +563,31 @@ export async function updateConstituent(
 
     if (!existing) return null;
 
-    const { type: _legacyType, types: _types, ...rest } = input;
+    const customColumn =
+      validator && input.custom !== undefined
+        ? applyValidatedCustomPatch(validator, existing.custom, input.custom)
+        : undefined;
+
+    const { type: _legacyType, types: _types, custom: _custom, ...rest } = input;
     const [updated] = await tx
       .update(constituents)
       // `reconcileTypeColumns` returns `{}` when neither type field is in the
       // patch, leaving the existing `type`/`types` columns untouched.
-      .set({ ...rest, ...reconcileTypeColumns(input), updatedAt: new Date() })
-      .where(eq(constituents.id, id))
+      .set({
+        ...rest,
+        ...reconcileTypeColumns(input),
+        ...(customColumn !== undefined ? { custom: customColumn } : {}),
+        updatedAt: new Date(),
+      })
+      .where(and(eq(constituents.id, id), eq(constituents.orgId, orgId)))
       .returning();
 
     await tx.insert(outboxEvents).values({
       tenantId: orgId,
       type: "constituent.updated",
-      payload: { constituentId: id, changes: input, updatedBy: userId },
+      // Custom values never enter the long-retention outbox/audit trail —
+      // the change-set records `{ customKeysChanged: [keys] }` only.
+      payload: { constituentId: id, changes: sanitizeAuditDiff(input), updatedBy: userId },
     });
 
     return updated;
@@ -528,7 +610,7 @@ export async function deleteConstituent(orgId: string, id: string, userId: strin
     const [deleted] = await tx
       .update(constituents)
       .set({ deletedAt: now, updatedAt: now })
-      .where(eq(constituents.id, id))
+      .where(and(eq(constituents.id, id), eq(constituents.orgId, orgId)))
       .returning();
 
     await tx.insert(outboxEvents).values({
@@ -712,14 +794,23 @@ export async function mergeConstituents(
     const duplicateTags = duplicate.tags ?? [];
     const mergedTags = [...new Set([...primaryTags, ...duplicateTags])];
 
+    // Custom-field values — v1 conflict rule (Epic #539 §5): survivor wins,
+    // missing keys copied from the duplicate. Runs regardless of flag state:
+    // values ride the row's lifecycle, and the merge_history snapshots below
+    // already capture both sides' full pre-merge blobs for Art. 5(2).
+    const mergedCustom: CustomFieldValues = {
+      ...(duplicate.custom ?? {}),
+      ...(primary.custom ?? {}),
+    };
+
     const now = new Date();
 
     // Update primary with filled fields + merged tags — `.returning()` so we
     // can capture the post-merge state for the audit snapshot below.
     const [survivorAfter] = await tx
       .update(constituents)
-      .set({ ...fieldsToFill, tags: mergedTags, updatedAt: now })
-      .where(eq(constituents.id, primaryId))
+      .set({ ...fieldsToFill, tags: mergedTags, custom: mergedCustom, updatedAt: now })
+      .where(and(eq(constituents.id, primaryId), eq(constituents.orgId, orgId)))
       .returning();
 
     // Move all donations from duplicate to primary
@@ -732,7 +823,7 @@ export async function mergeConstituents(
     await tx
       .update(constituents)
       .set({ deletedAt: now, updatedAt: now })
-      .where(eq(constituents.id, duplicateId));
+      .where(and(eq(constituents.id, duplicateId), eq(constituents.orgId, orgId)));
 
     // GDPR Art. 5(2) accountability snapshot — before/after PII of BOTH
     // records must be reconstructable from audit trail. Scalar fields (ids,

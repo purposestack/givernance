@@ -6,11 +6,18 @@ import { useTranslations } from "next-intl";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { filterFields, getOperatorLabel } from "./filter-presets";
-import type { FilterChipData } from "./filter-types";
+import type { FilterChipData, FilterField } from "./filter-types";
 
 interface FilterChipProps {
   filter: FilterChipData;
   onRemove?: (id: string) => void;
+  /**
+   * Field catalog used to resolve option-value labels (Epic #539): pass the
+   * merged core+custom catalog so custom picklist values render their
+   * operator-authored labels instead of raw `opt_…` ids. Defaults to the
+   * static core catalog.
+   */
+  fields?: FilterField[];
 }
 
 /**
@@ -63,6 +70,7 @@ export function resolveValueToken(
   field: string,
   v: unknown,
   translate: (key: string) => string,
+  catalog: FilterField[] = filterFields,
 ): string {
   if (v && typeof v === "object" && !Array.isArray(v)) {
     const obj = v as Record<string, unknown>;
@@ -71,9 +79,12 @@ export function resolveValueToken(
     return String(v);
   }
   if (typeof v === "string") {
-    const meta = filterFields.find((f) => f.name === field);
+    const meta = catalog.find((f) => f.name === field);
     const optionLabel = meta?.options?.find((o) => o.value === v)?.label;
     if (optionLabel) {
+      // Custom-field option labels are operator data — literal by contract
+      // (Epic #539), never routed through the translator.
+      if (meta?.labelKind === "literal") return optionLabel;
       const resolved = translate(optionLabel);
       // `translate` falls back to the key itself for unknown messages — only
       // use it when it actually resolved to something other than the key.
@@ -96,8 +107,9 @@ function formatArrayValue(
   field: string,
   value: unknown[],
   translate: (key: string) => string,
+  catalog: FilterField[] = filterFields,
 ): string {
-  return value.map((v) => resolveValueToken(field, v, translate)).join(", ");
+  return value.map((v) => resolveValueToken(field, v, translate, catalog)).join(", ");
 }
 
 /**
@@ -108,8 +120,9 @@ function formatArrayValue(
  * tell at a glance "this came from a quick template, not a hand-built
  * condition". Conditions render unchanged.
  */
-export function FilterChip({ filter, onRemove }: FilterChipProps) {
+export function FilterChip({ filter, onRemove, fields }: FilterChipProps) {
   const t = useTranslations("constituents.filters");
+  const catalog = fields ?? filterFields;
   const isPattern = filter.kind === "pattern";
   // `filter.label` and `filter.field` are both candidates: callers either
   // store an i18n key (the new contract from `filter-presets.ts` /
@@ -156,7 +169,7 @@ export function FilterChip({ filter, onRemove }: FilterChipProps) {
         }
         return `${value[0]} - ${value[1]}`;
       }
-      return formatArrayValue(filter.field, value, translateToken);
+      return formatArrayValue(filter.field, value, translateToken, catalog);
     }
 
     if (typeof value === "boolean") {
@@ -169,7 +182,7 @@ export function FilterChip({ filter, onRemove }: FilterChipProps) {
 
     // Single-value condition (e.g. legacy `eq donor`) — resolve through the
     // field's option labels too, so the type reads localised.
-    return resolveValueToken(filter.field, value, translateToken);
+    return resolveValueToken(filter.field, value, translateToken, catalog);
   };
 
   const operatorLabel = trDynamicWithFallback(t, getOperatorLabel(filter.operator));

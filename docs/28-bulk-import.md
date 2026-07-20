@@ -243,6 +243,18 @@ Bulk import is a contractual feature (Art. 6(1)(b)) — the operator is using th
 | **Multipart CSRF** | ADR-011 double-submit token on every `multipart/form-data` POST. The CSRF check runs before the multipart parser. | `packages/api/src/plugins/csrf.ts` |
 | **Worker job replay** (BullMQ retries after a partial-fan-out crash) | The worker is idempotent on `(job_id, row_number)` — the per-row INSERT into `bulk_import_results` is wrapped in a "skip if already exists" check, and `processed_rows` is recomputed from `bulk_import_results` rather than blind-incremented. A retry resumes from the next un-recorded row. | Worker `processBulkImport` |
 
+### 6.bis Custom-field columns — template 1.1 (Epic #539)
+
+With `constituents.custom_fields` enabled, the downloaded template becomes
+**per-tenant** (`template_version: '1.1'`): one extra column per non-archived
+constituent-domain custom-field definition, header = the definition label with a
+stable `cf_<key>` alias so renamed labels never break a saved spreadsheet. The
+worker validates those cells through the shared `buildCustomValidator` (picklist
+labels resolved case-insensitively to option ids; unknown values → per-row
+error, **never** auto-created options) and re-checks `isFlagEnabled` at pickup.
+Flag off ⇒ the template and the parser are exactly the 1.0 shape above. See
+[35-customization.md](35-customization.md).
+
 ## 7. Future work explicitly out of scope
 
 The MVP intentionally **does not** ship these — they are real gaps but each one expands the threat model or the support surface enough that it deserves its own epic:

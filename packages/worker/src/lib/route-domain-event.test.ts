@@ -223,6 +223,74 @@ describe("routeDomainEvent (issue #152)", () => {
     });
   });
 
+  it("routes custom_field.option_merge_requested → custom-field-option-merge (Epic #539)", () => {
+    const decision = routeDomainEvent({
+      id,
+      tenantId,
+      type: "custom_field.option_merge_requested",
+      payload: {
+        mergeId: "merge-1",
+        definitionId: "def-1",
+        sourceOptionId: "opt_aaaaaaaa",
+        targetOptionId: "opt_bbbbbbbb",
+        requestedBy: "33333333-3333-3333-3333-333333333333",
+      },
+      traceparent,
+    });
+    expect(decision).toEqual({
+      kind: "custom-field-option-merge",
+      orgId: tenantId,
+      mergeId: "merge-1",
+      definitionId: "def-1",
+      sourceOptionId: "opt_aaaaaaaa",
+      targetOptionId: "opt_bbbbbbbb",
+      requestedBy: "33333333-3333-3333-3333-333333333333",
+      traceparent,
+    });
+  });
+
+  it("preserves null requestedBy on option-merge when the field is missing", () => {
+    const decision = routeDomainEvent({
+      id,
+      tenantId,
+      type: "custom_field.option_merge_requested",
+      payload: {
+        mergeId: "merge-1",
+        definitionId: "def-1",
+        sourceOptionId: "opt_aaaaaaaa",
+        targetOptionId: "opt_bbbbbbbb",
+      },
+      traceparent,
+    });
+    expect(decision).toMatchObject({ kind: "custom-field-option-merge", requestedBy: null });
+  });
+
+  it("routes custom_field.option_merge_undo_requested → custom-field-option-merge-undo", () => {
+    const decision = routeDomainEvent({
+      id,
+      tenantId,
+      type: "custom_field.option_merge_undo_requested",
+      payload: {
+        mergeId: "merge-1",
+        definitionId: "def-1",
+        sourceOptionId: "opt_aaaaaaaa",
+        targetOptionId: "opt_bbbbbbbb",
+        requestedBy: "33333333-3333-3333-3333-333333333333",
+      },
+      traceparent,
+    });
+    expect(decision).toEqual({
+      kind: "custom-field-option-merge-undo",
+      orgId: tenantId,
+      mergeId: "merge-1",
+      definitionId: "def-1",
+      sourceOptionId: "opt_aaaaaaaa",
+      targetOptionId: "opt_bbbbbbbb",
+      requestedBy: "33333333-3333-3333-3333-333333333333",
+      traceparent,
+    });
+  });
+
   it("returns unhandled for an unknown type so the worker logs a breadcrumb instead of throwing", () => {
     const decision = routeDomainEvent({
       id,

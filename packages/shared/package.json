@@ -11,6 +11,7 @@
     "./jobs": "./src/jobs/index.ts",
     "./validators": "./src/validators/index.ts",
     "./constants": "./src/constants/index.ts",
+    "./custom-fields": "./src/custom-fields/index.ts",
     "./finance/reporting": "./src/finance/reporting/index.ts",
     "./lib/svg-sanitiser": "./src/lib/svg-sanitiser.ts",
     "./lib/s3-branding": "./src/lib/s3-branding.ts",

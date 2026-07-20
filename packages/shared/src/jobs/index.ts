@@ -262,6 +262,76 @@ export interface ProcessBulkImportJob {
   };
 }
 
+// ─── Custom fields (Epic #539) ──────────────────────────────────────────────
+
+/**
+ * Outbox event types emitted by the customization module. The API's
+ * option-merge route writes the row inside the same transaction as the
+ * merge bookkeeping; the relay hands it to `routeDomainEvent`, which
+ * enqueues the backfill onto `CUSTOM_FIELDS_QUEUE` (queue + job names
+ * live in `custom-fields/constants.ts` so the web package can import
+ * that directory without pulling these backend job types).
+ */
+export const CUSTOM_FIELD_EVENT_TYPES = {
+  /**
+   * A picklist option merge was requested. Payload contract (ids only,
+   * no PII): `{ mergeId, definitionId, sourceOptionId, targetOptionId,
+   * requestedBy? }` — `requestedBy` is the Keycloak `sub` of the
+   * requesting admin (same identifier every other `audit_logs.user_id`
+   * carries) so the worker can attribute the backfill audit row.
+   */
+  OPTION_MERGE_REQUESTED: "custom_field.option_merge_requested",
+  /**
+   * A previously executed option merge is being reverted (30-day undo
+   * window). Same payload contract as the merge event; the worker
+   * restores `previous_value` from `custom_field_merge_undo` rows.
+   */
+  OPTION_MERGE_UNDO_REQUESTED: "custom_field.option_merge_undo_requested",
+} as const;
+
+/**
+ * Option-merge backfill input (Epic #539). Rewrites stored values of
+ * the merged option id to the survivor across the definition's domain
+ * table, chunk by chunk, writing `custom_field_merge_undo` rows in the
+ * same transaction as each chunk's rewrite (idempotent: rewritten rows
+ * stop matching the containment predicate, so a retry resumes cleanly
+ * and never duplicates undo rows).
+ */
+export interface CustomFieldOptionMergeJob {
+  name: "custom-field-option-merge-backfill";
+  data: {
+    orgId: string;
+    /** Groups the undo rows of one merge — the undo unit. */
+    mergeId: string;
+    definitionId: string;
+    sourceOptionId: string;
+    targetOptionId: string;
+    /** Keycloak `sub` of the requesting admin (audit attribution). */
+    requestedBy?: string | null;
+    traceparent?: string;
+  };
+}
+
+/**
+ * Option-merge undo input (Epic #539). Restores the pre-merge value of
+ * each `custom_field_merge_undo` row of one merge and deletes the undo
+ * row in the same transaction — a crashed/retried job resumes exactly
+ * where it left off and never double-restores.
+ */
+export interface CustomFieldOptionMergeUndoJob {
+  name: "custom-field-option-merge-undo-backfill";
+  data: {
+    orgId: string;
+    mergeId: string;
+    definitionId: string;
+    sourceOptionId: string;
+    targetOptionId: string;
+    /** Keycloak `sub` of the requesting admin (audit attribution). */
+    requestedBy?: string | null;
+    traceparent?: string;
+  };
+}
+
 /** Union of all job types */
 export type JobDefinition =
   | GenerateReceiptJob
@@ -277,6 +347,8 @@ export type JobDefinition =
   | KeycloakSyncOrgLogoJob
   | SignupResendJob
   | ProcessBulkImportJob
+  | CustomFieldOptionMergeJob
+  | CustomFieldOptionMergeUndoJob
   | GenerateMonthlyFinanceReportJob;
 
 /** Queue names */

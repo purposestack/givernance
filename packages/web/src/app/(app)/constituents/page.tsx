@@ -4,6 +4,7 @@ import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
 import { BulkImportTrigger } from "@/components/constituents/bulk-import-trigger";
+import { fetchCustomFieldDefinitionsOrEmpty } from "@/components/shared/custom-fields";
 import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
@@ -124,18 +125,28 @@ export default async function ConstituentsPage({ searchParams }: ConstituentsPag
   // strip and the `?filters=` passthrough are all absent; the page behaves
   // byte-for-byte like today (basic "More filters" dialog only).
   let advancedFiltersEnabled = false;
+  // Epic #539 — with the flag off (or the catalog fetch failing) the defs
+  // array stays empty and every custom column is completely absent.
+  let customFieldsEnabled = false;
   try {
     const flags = await FeatureFlagsService.listPublic(client);
     bulkEmailEnabled = isFlagEnabled(flags, FEATURE_FLAG_KEYS.COMMUNICATION_BULK_EMAIL);
     bulkImportEnabled = isFlagEnabled(flags, FEATURE_FLAG_KEYS.CONSTITUENTS_BULK_IMPORT);
     multiTypeEnabled = isFlagEnabled(flags, FEATURE_FLAG_KEYS.CONSTITUENTS_MULTI_TYPE);
     advancedFiltersEnabled = isFlagEnabled(flags, FEATURE_FLAG_KEYS.ADVANCED_FILTERS);
+    customFieldsEnabled = isFlagEnabled(flags, FEATURE_FLAG_KEYS.CONSTITUENTS_CUSTOM_FIELDS);
   } catch {
     bulkEmailEnabled = false;
     bulkImportEnabled = false;
     multiTypeEnabled = false;
     advancedFiltersEnabled = false;
+    customFieldsEnabled = false;
   }
+  const customFieldDefs = await fetchCustomFieldDefinitionsOrEmpty(
+    client,
+    "constituent",
+    customFieldsEnabled,
+  );
 
   // Only forward the DSL when the flag is on — the API 404s the param
   // otherwise. A shared filter URL opened by a flag-off tenant degrades to
@@ -234,6 +245,7 @@ export default async function ConstituentsPage({ searchParams }: ConstituentsPag
           advancedFilterInvalid={advancedFilterInvalid}
           sort={sort}
           order={order}
+          customFieldDefs={customFieldDefs}
         />
       ) : (
         <div className="rounded-2xl bg-surface-container-lowest border border-border-brand reveal-item">

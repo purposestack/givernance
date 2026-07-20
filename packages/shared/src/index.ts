@@ -1,6 +1,7 @@
 /** @givernance/shared — shared types, schemas, events, and validators */
 
 export * from "./constants/index.js";
+export * from "./custom-fields/index.js";
 export * from "./events/index.js";
 export * from "./finance/index.js";
 export * from "./i18n/locales.js";

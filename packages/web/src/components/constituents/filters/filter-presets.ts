@@ -336,6 +336,7 @@ export function getCategoryLabel(category: FilterCategory): string {
     identity: "categories.identity",
     demographics: "categories.demographics",
     donation_history: "categories.donation_history",
+    custom: "categories.custom",
   };
   return keys[category] || category;
 }

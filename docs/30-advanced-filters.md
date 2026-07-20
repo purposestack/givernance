@@ -136,6 +136,23 @@ dead operators, and not on donation-date aggregates (where `isNotNull` would
 match everyone). "Has ever / never donated" is expressed with **Number of
 donations ≥ 1 / = 0** instead.
 
+### 2.6 Custom fields (Epic #539)
+
+Per-org **custom-field definitions** (`filterable=true`, non-archived,
+constituent domain) join the catalog as `custom.<key>` entries via a two-layer
+registry: `getFieldRegistry(orgId)` merges the static core `FIELD_REGISTRY` with
+the org's cached definition catalog. The `/v1/constituents/filter/fields`
+payload carries them with `category: 'custom'`, `labelKind: 'literal'` (the
+label is operator data, not an i18n key), `uiType`, picklist `options`,
+`valueUnit: 'cents'` for currency, and `nullable: true` (every custom field
+offers "is empty" / "has a value"). Picklist/boolean equality compiles to
+GIN-served `custom @> …` containment; keys are server-resolved from the
+registry — the DSL never carries column names. Persisted segments referencing an
+archived definition fail with a named 400 `custom_field_archived`, never
+silently dropped. Full contract: [35-customization.md](35-customization.md) /
+[ADR-036](adrs/adr-036-custom-fields-jsonb-registry.md). Donation- and
+campaign-domain fields stay out of the filter engine in v1.
+
 ## 3. Architecture
 
 ### 3.1 Query DSL

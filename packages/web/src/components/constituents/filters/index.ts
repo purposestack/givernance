@@ -10,6 +10,11 @@ export { FilterCondition } from "./FilterCondition";
 export { FilterPresets } from "./FilterPresets";
 export { FilterPreview } from "./FilterPreview";
 
+export {
+  customFieldToFilterField,
+  fetchCustomFilterFields,
+  mergeFilterCatalog,
+} from "./filter-catalog";
 export { filterFields, filterPresets, getCategoryLabel, getOperatorLabel } from "./filter-presets";
 
 export type {

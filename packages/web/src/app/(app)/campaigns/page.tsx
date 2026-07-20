@@ -1,7 +1,9 @@
+import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
 import { Megaphone, Plus } from "lucide-react";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
+import { fetchCustomFieldDefinitionsOrEmpty } from "@/components/shared/custom-fields";
 import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
@@ -10,6 +12,7 @@ import { createServerApiClient } from "@/lib/api/client-server";
 import { hasPermission, requireAuth } from "@/lib/auth/guards";
 import type { CampaignListResponse, CampaignSortField, CampaignSortOrder } from "@/models/campaign";
 import { CampaignService } from "@/services/CampaignService";
+import { FeatureFlagsService, isFlagEnabled } from "@/services/FeatureFlagsService";
 
 import { CampaignsTable } from "./campaigns-table";
 
@@ -72,6 +75,20 @@ export default async function CampaignsPage({ searchParams }: CampaignsPageProps
 
   const client = await createServerApiClient();
 
+  // Epic #539 — flag off / fetch failure ⇒ no defs ⇒ no custom columns.
+  let customFieldsEnabled = false;
+  try {
+    const flags = await FeatureFlagsService.listPublic(client);
+    customFieldsEnabled = isFlagEnabled(flags, FEATURE_FLAG_KEYS.CAMPAIGNS_CUSTOM_FIELDS);
+  } catch {
+    customFieldsEnabled = false;
+  }
+  const customFieldDefs = await fetchCustomFieldDefinitionsOrEmpty(
+    client,
+    "campaign",
+    customFieldsEnabled,
+  );
+
   let result: CampaignListResponse;
   try {
     result = await CampaignService.listCampaigns(client, {
@@ -133,6 +150,7 @@ export default async function CampaignsPage({ searchParams }: CampaignsPageProps
           canManageAdminActions={canManageAdminActions}
           sort={sort}
           order={order}
+          customFieldDefs={customFieldDefs}
         />
       ) : (
         <div className="reveal-item rounded-2xl bg-surface-container-lowest border border-border-brand">

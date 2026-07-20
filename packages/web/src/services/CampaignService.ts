@@ -1,3 +1,4 @@
+import { sanitizeCustomValues } from "@/components/shared/custom-fields/definitions";
 import type { ApiClient } from "@/lib/api";
 import type {
   Campaign,
@@ -108,6 +109,7 @@ function mapCampaign(raw: Campaign): Campaign {
     goalAmountCents: raw.goalAmountCents,
     bankAccountId: raw.bankAccountId,
     qrReferenceMode: raw.qrReferenceMode,
+    custom: sanitizeCustomValues(raw.custom),
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt,
   };
@@ -133,6 +135,8 @@ function toRequestBody(input: CampaignCreateInput | CampaignUpdateInput): Record
   // Epic #318 — Swiss QR-bill picker. `null` clears, `undefined` leaves alone.
   if (input.bankAccountId !== undefined) body.bankAccountId = input.bankAccountId;
   if (input.qrReferenceMode !== undefined) body.qrReferenceMode = input.qrReferenceMode;
+  // Epic #539 — custom-value merge-patch; nulls inside are per-key clears.
+  if (input.custom !== undefined) body.custom = input.custom;
 
   return body;
 }

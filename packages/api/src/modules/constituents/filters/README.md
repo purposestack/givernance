@@ -18,11 +18,12 @@ This module implements advanced filtering capabilities for constituents as speci
 
 ### Components
 
-1. **types.ts**: TypeScript interfaces and field registry
-2. **query-builder.ts**: Converts filter DSL to Drizzle ORM queries
-3. **pattern-detector.ts**: Implements special donor pattern detection
-4. **filter.service.ts**: Business logic and orchestration
-5. **filter.routes.ts**: FastAPI route handlers
+1. **types.ts**: TypeScript interfaces and the static core field registry
+2. **field-registry.ts**: Two-layer per-org registry (Epic #539) — merges the org's filterable custom-field definitions (`custom.<key>`) over the static core registry, plus the archived-key set for named 400s
+3. **query-builder.ts**: Converts filter DSL to Drizzle ORM queries (regular-column, aggregate, and custom-JSONB lanes)
+4. **pattern-detector.ts**: Implements special donor pattern detection
+5. **filter.service.ts**: Business logic and orchestration
+6. **filter.routes.ts**: FastAPI route handlers
 
 ### API Endpoints
 
@@ -67,6 +68,36 @@ const lybuntQuery = {
 - Preview endpoint for count-only queries
 - Pagination support to limit result sets
 - Query complexity validation to prevent abuse
+
+## Custom fields (Epic #539)
+
+When `constituents.custom_fields` is enabled for the org, every `filterable`
+non-archived constituent-domain definition joins the registry as
+`custom.<key>`:
+
+- Routes fetch the merged registry per request (`getFieldRegistryBundle`) and
+  pass it into `FilterService` — validation, execution, catalog, suggestions,
+  and sort all resolve against the same map. The DSL never carries raw column
+  names or JSON keys.
+- SQL lanes: boolean / picklist / multi_picklist equality compile to
+  `custom @> …` containment (served by the `jsonb_path_ops` GIN index);
+  text runs `custom->>'k' ILIKE`; number / currency / date run as cast
+  expressions (currency reuses the EUR→cents `valueUnit` normalization,
+  date reuses the end-of-day bounds).
+- All custom fields offer `isNull` / `isNotNull` ("is empty" ≡ key absent or
+  stored JSON null).
+- A query referencing an ARCHIVED definition gets the named 400
+  `custom_field_archived` (never a silent drop) — persisted campaign segments
+  surface it explicitly.
+- `GET /v1/constituents/filter/fields` is per-org and enriched: `label`,
+  `labelKind` (`literal` for operator-authored custom labels, `i18n` for core
+  keys), `category` (`custom` for custom fields), `uiType`, `options`,
+  `valueUnit`, `nullable`. With no definitions the payload is the enriched
+  core set — zero behaviour change.
+- Suggestions: custom text fields run `SELECT DISTINCT custom->>'k'`;
+  picklists answer client-side from `options` (no DB hit).
+- Scope v1: constituent-domain definitions only; the flag off ⇒ custom fields
+  disappear from the registry entirely (validate as unknown fields).
 
 ## Feature Flag
 
