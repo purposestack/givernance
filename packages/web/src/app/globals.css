@@ -506,6 +506,18 @@ body {
   box-shadow: var(--focus-ring);
 }
 
+/* The command-palette search head carries NO focus ring — the input is
+   auto-focused the moment the palette opens, so a ring singles out
+   nothing, and a box around the bare <input> excludes the magnifier +
+   dialog close button (reads as a badly-integrated component). This
+   override is deliberately UNLAYERED: the :focus-visible rule above is
+   unlayered too, so a Tailwind utility (@layer utilities) can never
+   beat it — the suppression must live here, at the same cascade level.
+   See ui/command.tsx (CommandInput). */
+[cmdk-input-wrapper] input:focus-visible {
+  box-shadow: none;
+}
+
 /* ── Heading font ── */
 h1,
 h2,
