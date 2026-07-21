@@ -46,7 +46,7 @@
     "pino": "10.3.1",
     "qrcode": "^1.5.4",
     "sharp": "^0.35.3",
-    "stripe": "^22.3.1",
+    "stripe": "^22.2.0",
     "swissqrbill": "^4.4.0"
   },
   "devDependencies": {
