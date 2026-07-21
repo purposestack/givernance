@@ -29,11 +29,11 @@
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2",
-    "@aws-sdk/client-s3": "^3.1067.0",
-    "@sinclair/typebox": "^0.34.12",
-    "dompurify": "^3.4.11",
+    "@aws-sdk/client-s3": "^3.1086.0",
+    "@sinclair/typebox": "^0.34.52",
+    "dompurify": "^3.4.12",
     "jsdom": "^29.1.1",
-    "lru-cache": "^11.5.1"
+    "lru-cache": "^11.5.2"
   },
   "devDependencies": {
     "@types/jsdom": "^28.0.3",
