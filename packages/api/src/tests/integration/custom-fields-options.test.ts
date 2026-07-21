@@ -476,7 +476,8 @@ describe("option merge — execution + undo", () => {
       sourceOptionId: sourceId,
       targetOptionId: targetId,
     });
-    expect((event?.payload as { requestedBy?: string }).requestedBy).toBeTruthy();
+    const eventPayload = event?.payload as { requestedBy?: string } | undefined;
+    expect(eventPayload?.requestedBy).toBeTruthy();
 
     // A merged option can be neither re-merged nor reactivated.
     const again = await app.inject({

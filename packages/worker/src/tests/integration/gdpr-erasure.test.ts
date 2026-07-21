@@ -444,7 +444,8 @@ describe("processGdprErasure", () => {
       expect(blob.donationCount).toBe(3);
     }
     // The other party's snapshot on the same row is untouched.
-    expect((asSurvivor?.mergedBefore as Record<string, unknown>).firstName).toBe("Untouched");
+    const survivorMergedBefore = asSurvivor?.mergedBefore as Record<string, unknown> | undefined;
+    expect(survivorMergedBefore?.firstName).toBe("Untouched");
 
     const [asMerged] = await db
       .select()
@@ -454,7 +455,8 @@ describe("processGdprErasure", () => {
     expect(mergedBefore.firstName).toBeNull();
     expect(mergedBefore.custom).toBeNull();
     expect(mergedBefore.id).toBe(CONSTITUENT_ID);
-    expect((asMerged?.survivorBefore as Record<string, unknown>).firstName).toBe("Untouched");
+    const mergedSurvivorBefore = asMerged?.survivorBefore as Record<string, unknown> | undefined;
+    expect(mergedSurvivorBefore?.firstName).toBe("Untouched");
 
     // A merge between two unrelated constituents is byte-identical.
     const [unrelated] = await db
