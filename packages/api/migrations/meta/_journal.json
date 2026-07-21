@@ -631,6 +631,13 @@
       "when": 2028180000000,
       "tag": "0089_custom_fields_flags",
       "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 2038180000000,
+      "tag": "0090_seed_donations_advanced_filters_flag",
+      "breakpoints": true
     }
   ]
 }

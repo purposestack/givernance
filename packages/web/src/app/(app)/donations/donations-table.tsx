@@ -2,11 +2,23 @@
 
 import type { CustomFieldDefinition } from "@givernance/shared/custom-fields";
 import type { ColumnDef, SortingState } from "@tanstack/react-table";
-import { Gift, MoreHorizontal, Pencil, Search, Trash2 } from "lucide-react";
+import { Gift, MoreHorizontal, Pencil, Search, SlidersHorizontal, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { FilterBuilder, FilterChip } from "@/components/constituents/filters";
+import { chipsFromQuery } from "@/components/constituents/filters/filter-chip-helpers";
+import {
+  type FilterCondition as FilterConditionType,
+  type FilterQuery,
+  isFilterCondition,
+} from "@/components/constituents/filters/filter-types";
+import {
+  DONATION_FILTER_ENDPOINTS,
+  DONATION_FILTERS_NAMESPACE,
+  useDonationFilterCatalog,
+} from "@/components/donations/filters";
 import { buildCustomFieldColumns } from "@/components/shared/custom-fields";
 import { EmptyState } from "@/components/shared/empty-state";
 import {
@@ -57,6 +69,49 @@ const RECEIPT_VARIANTS: Record<ReceiptStatus, BadgeVariant> = {
   failed: "error",
 };
 
+/**
+ * Parse the shareable `?filters=` URL param into a FilterQuery, or null when
+ * absent/unparseable/malformed. The server component runs the same JSON.parse
+ * guard before forwarding the param to the API, so both sides agree on what
+ * counts as "no filter". (Mirror of the constituents-table helper.)
+ */
+function parseFiltersParam(raw: string | null): FilterQuery | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as FilterQuery;
+    if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.conditions)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Translate the legacy basic-dialog date params into DSL conditions so an
+ * operator upgrading from a bookmarked `?dateFrom=&dateTo=` URL opens the
+ * builder pre-seeded with the equivalent query instead of an empty one.
+ */
+function legacyParamsToConditions(dateFrom: string, dateTo: string): FilterConditionType[] {
+  const conditions: FilterConditionType[] = [];
+  if (dateFrom) {
+    conditions.push({
+      id: "legacy-date-from",
+      field: "donation.donatedAt",
+      operator: "gte",
+      value: dateFrom,
+    });
+  }
+  if (dateTo) {
+    conditions.push({
+      id: "legacy-date-to",
+      field: "donation.donatedAt",
+      operator: "lte",
+      value: dateTo,
+    });
+  }
+  return conditions;
+}
+
 interface DonationsTableProps {
   donations: DonationListRow[];
   pagination: DataTablePagination;
@@ -84,6 +139,21 @@ interface DonationsTableProps {
    * definitions rendered as donor columns from `row.donorCustom`.
    */
   donorCustomDefs?: CustomFieldDefinition[];
+  /**
+   * `true` when the `donations.advanced_filters` flag is on. On → the
+   * "More filters" button opens the full FilterBuilder (donation-domain
+   * query DSL, live count) and the applied query lives in the shareable
+   * `?filters=` URL param, rendered as a chip strip. Off → the legacy basic
+   * date dialog renders unchanged and every advanced surface (button
+   * behaviour, chips, param handling) is completely absent.
+   */
+  advancedFiltersEnabled?: boolean;
+  /**
+   * `true` when the server rejected the URL's `?filters=` value (hand-edited
+   * or stale shared link). The table shows the unfiltered list plus an
+   * inline notice instead of silently pretending the filter applied.
+   */
+  advancedFilterInvalid?: boolean;
 }
 
 export function DonationsTable({
@@ -97,6 +167,8 @@ export function DonationsTable({
   dateTo,
   customFieldDefs = [],
   donorCustomDefs = [],
+  advancedFiltersEnabled = false,
+  advancedFilterInvalid = false,
 }: DonationsTableProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -117,6 +189,116 @@ export function DonationsTable({
   // commits. Wiring router.push/replace inside `startTransition` is the
   // canonical Next.js App Router pattern for this.
   const [isPending, startTransition] = useTransition();
+
+  // ── donations.advanced_filters: DSL filters on the list page ─────────
+  // (mirror of the constituents Epic #418 integration — the URL param is
+  // the single source of truth so filtered views are shareable links).
+  const [builderOpen, setBuilderOpen] = useState(false);
+  const filtersParam = searchParams.get("filters");
+  const activeAdvancedQuery = useMemo(
+    () => (advancedFiltersEnabled ? parseFiltersParam(filtersParam) : null),
+    [advancedFiltersEnabled, filtersParam],
+  );
+
+  /**
+   * Legacy `?dateFrom=/?dateTo=` params translated to an equivalent DSL
+   * query (flag on, no DSL applied). Rendering these through the SAME chip
+   * strip gives a bookmarked pre-DSL URL a one-click clear affordance —
+   * without it the builder button shows "active" but the only way to remove
+   * the date restriction is a non-obvious apply-then-clear two-step.
+   */
+  const legacyQuery = useMemo<FilterQuery | null>(() => {
+    if (!advancedFiltersEnabled || activeAdvancedQuery) return null;
+    const legacy = legacyParamsToConditions(dateFrom, dateTo);
+    return legacy.length > 0 ? { operator: "AND", conditions: legacy } : null;
+  }, [advancedFiltersEnabled, activeAdvancedQuery, dateFrom, dateTo]);
+
+  /** What the chip strip renders: the applied DSL, else the legacy params. */
+  const stripQuery = activeAdvancedQuery ?? legacyQuery;
+
+  // Static catalog immediately; per-org campaign/fund options once a filter
+  // surface is actually in play (never fetched with the flag off).
+  const filterCatalog = useDonationFilterCatalog(
+    advancedFiltersEnabled && (builderOpen || stripQuery !== null),
+  );
+
+  const advancedChips = useMemo(
+    () =>
+      stripQuery
+        ? // No pattern flags in the donations DSL — the label resolver is a
+          // pass-through that can never be reached.
+          chipsFromQuery(stripQuery, (pattern) => pattern, filterCatalog)
+        : [],
+    [stripQuery, filterCatalog],
+  );
+
+  /**
+   * Write (or clear, with `null`) the applied DSL to the URL. Applying a DSL
+   * query clears the legacy basic-dialog params (`dateFrom`/`dateTo` — and
+   * the API-level `amountMin`/`amountMax` should a hand-built URL carry
+   * them): the DSL subsumes them and the two systems must never AND together
+   * invisibly.
+   */
+  const writeAdvancedQuery = useCallback(
+    (query: FilterQuery | null) => {
+      const params = new URLSearchParams(searchParams.toString());
+      const isEmpty = !query || query.conditions.length === 0;
+      if (isEmpty) {
+        params.delete("filters");
+      } else {
+        params.set("filters", JSON.stringify(query));
+      }
+      params.delete("dateFrom");
+      params.delete("dateTo");
+      params.delete("amountMin");
+      params.delete("amountMax");
+      params.delete("page");
+      const queryString = params.toString();
+      startTransition(() => {
+        router.replace(queryString ? `${pathname}?${queryString}` : pathname);
+      });
+    },
+    [pathname, router, searchParams],
+  );
+
+  // `FilterBuilder.onApply` awaits this — async so a future server-side
+  // persistence step can slot in without changing the builder contract.
+  const applyAdvancedQuery = useCallback(
+    async (query: FilterQuery) => {
+      writeAdvancedQuery(query);
+    },
+    [writeAdvancedQuery],
+  );
+
+  /**
+   * Remove one chip from the applied query (rewrites `?filters=`). In legacy
+   * mode the remaining condition (if any) is upgraded to a DSL query —
+   * `writeAdvancedQuery` clears the legacy params either way, so the URL
+   * never mixes the two systems.
+   */
+  const removeAdvancedChip = useCallback(
+    (chipId: string) => {
+      if (!stripQuery) return;
+      writeAdvancedQuery({
+        ...stripQuery,
+        conditions: stripQuery.conditions.filter((c) => !isFilterCondition(c) || c.id !== chipId),
+      });
+    },
+    [stripQuery, writeAdvancedQuery],
+  );
+
+  /**
+   * What the builder opens with: the currently-applied query (so reopening
+   * edits in place), or the legacy date params translated to DSL conditions
+   * (so a bookmarked pre-DSL URL upgrades seamlessly).
+   */
+  const builderInitialQuery = useMemo<FilterQuery | undefined>(() => {
+    if (activeAdvancedQuery) return activeAdvancedQuery;
+    const legacy = legacyParamsToConditions(dateFrom, dateTo);
+    return legacy.length > 0 ? { operator: "AND", conditions: legacy } : undefined;
+  }, [activeAdvancedQuery, dateFrom, dateTo]);
+
+  const hasActiveAdvancedFilters = activeAdvancedQuery !== null || Boolean(dateFrom || dateTo);
 
   // Server-side search: see campaigns-table.tsx for the rationale on why
   // `searchParams` is excluded from the deps.
@@ -376,8 +558,56 @@ export function DonationsTable({
             <SelectItem value="failed">{tReceipt("failed")}</SelectItem>
           </SelectContent>
         </Select>
-        <DonationsFiltersButton dateFrom={dateFrom} dateTo={dateTo} />
+        {/* donations.advanced_filters — flag on: the real FilterBuilder
+            (donation DSL, live count) replaces the basic date dialog as THE
+            filter entry point. Flag off: the legacy basic dialog renders
+            unchanged (surface byte-for-byte what it was). */}
+        {advancedFiltersEnabled ? (
+          <Button
+            type="button"
+            variant={hasActiveAdvancedFilters ? "primary" : "secondary"}
+            size="sm"
+            onClick={() => setBuilderOpen(true)}
+          >
+            <SlidersHorizontal size={16} aria-hidden="true" />
+            {tFilters("builderLabel")}
+            {hasActiveAdvancedFilters ? <Badge variant="info">•</Badge> : null}
+          </Button>
+        ) : (
+          <DonationsFiltersButton dateFrom={dateFrom} dateTo={dateTo} />
+        )}
       </div>
+
+      {/* Active-filter strip (flag on). Static shell like the search row
+          above (ADR-035 rule A1): no entrance animation, instantly
+          interactive. Every chip is removable; removal rewrites `?filters=`
+          so the URL stays the single source of truth. Legacy date params
+          render through the same strip (see `legacyQuery`) so they are just
+          as clearable as a DSL query. */}
+      {advancedFiltersEnabled && stripQuery ? (
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <span className="text-xs font-medium text-on-surface-variant">
+            {tFilters("strip.label")}
+          </span>
+          {advancedChips.map((chip) => (
+            <FilterChip
+              key={chip.id}
+              filter={chip}
+              fields={filterCatalog}
+              namespace={DONATION_FILTERS_NAMESPACE}
+              onRemove={removeAdvancedChip}
+            />
+          ))}
+          <Button type="button" variant="ghost" size="sm" onClick={() => writeAdvancedQuery(null)}>
+            {tFilters("strip.clear")}
+          </Button>
+        </div>
+      ) : null}
+      {advancedFiltersEnabled && advancedFilterInvalid ? (
+        <p className="mb-4 text-sm text-warning" role="alert">
+          {tFilters("strip.invalid")}
+        </p>
+      ) : null}
 
       <DataTable
         columns={columns}
@@ -400,6 +630,27 @@ export function DonationsTable({
           <EmptyState icon={Gift} title={t("empty.title")} description={t("empty.description")} />
         }
       />
+
+      {/* The full FilterBuilder (flag on). The `key` remounts it whenever
+          the applied query changes so its internal useState re-seeds from
+          `initialQuery` (the builder resets to empty after each apply;
+          without the remount, reopening would edit a stale draft instead of
+          the currently-applied filter). No presets: LYBUNT & co are
+          constituent-grain and don't transpose to the donation row grain. */}
+      {advancedFiltersEnabled ? (
+        <FilterBuilder
+          key={filtersParam ?? "no-filter"}
+          open={builderOpen}
+          onOpenChange={setBuilderOpen}
+          onApply={applyAdvancedQuery}
+          initialQuery={builderInitialQuery}
+          fields={filterCatalog}
+          namespace={DONATION_FILTERS_NAMESPACE}
+          previewEndpoint={DONATION_FILTER_ENDPOINTS.preview}
+          suggestionsEndpoint={DONATION_FILTER_ENDPOINTS.suggestions}
+          showPresets={false}
+        />
+      ) : null}
 
       <AlertDialog
         open={donationToDelete !== null}

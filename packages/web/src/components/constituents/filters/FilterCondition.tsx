@@ -116,6 +116,20 @@ interface FilterConditionProps {
    * call sites render byte-for-byte as before.
    */
   fields?: FilterField[];
+  /**
+   * next-intl namespace all i18n keys (chrome, field labels, categories,
+   * operator labels) resolve under. Defaults to the constituents namespace
+   * so existing call sites are untouched; the donations builder passes
+   * `donations.filters`.
+   */
+  namespace?: string;
+  /**
+   * Endpoint the edit-time option suggestions are fetched from for fields
+   * with `asyncSuggestions` (tenant-defined value sets). Defaults to the
+   * constituents endpoint; the donations builder passes
+   * `/v1/donations/filter/suggestions`.
+   */
+  suggestionsEndpoint?: string;
 }
 
 /**
@@ -126,18 +140,27 @@ export function FilterCondition({
   onChange,
   onRemove,
   fields = filterFields,
+  namespace = "constituents.filters",
+  suggestionsEndpoint = "/v1/constituents/filter/suggestions",
 }: FilterConditionProps) {
-  const t = useTranslations("constituents.filters");
+  // Cast to the constituents namespace: both filter namespaces expose the
+  // exact same chrome-key layout (selectField, operators.*, categories.*, …)
+  // so the constituents typing is the shared contract; domain-specific keys
+  // (field labels, options) always go through `trDynamic`.
+  const t = useTranslations(namespace as "constituents.filters");
 
   const selectedField = fields.find((f) => f.name === condition.field);
   const availableOperators = selectedField?.operators || ["eq"];
 
   // Epic #539 label contract: custom-field labels/options are operator data
   // rendered literally; core labels stay i18n keys resolved through `t`.
+  // Option labels can override the field-level kind (`optionLabelKind`) —
+  // donations entity pickers have an i18n field label but literal
+  // tenant-authored option labels (campaign / fund names).
   const fieldLabelText = (field: FilterField): string =>
     field.labelKind === "literal" ? field.label : trDynamic(t, field.label);
   const optionLabelText = (field: FilterField, label: string): string =>
-    field.labelKind === "literal" ? label : trDynamic(t, label);
+    (field.optionLabelKind ?? field.labelKind) === "literal" ? label : trDynamic(t, label);
 
   // Tenant-defined option lists (e.g. tags) fetched at edit-time from the
   // suggestions endpoint. Empty for fields with a static picklist.
@@ -153,7 +176,7 @@ export function FilterCondition({
       try {
         const client = createClientApiClient();
         const res = await client.get<{ data: string[] }>(
-          `/v1/constituents/filter/suggestions?field=${encodeURIComponent(fieldName)}`,
+          `${suggestionsEndpoint}?field=${encodeURIComponent(fieldName)}`,
         );
         if (!cancelled) setAsyncOptions((res.data ?? []).map((v) => ({ value: v, label: v })));
       } catch {
@@ -165,7 +188,7 @@ export function FilterCondition({
     return () => {
       cancelled = true;
     };
-  }, [selectedField?.asyncSuggestions, selectedField?.name]);
+  }, [selectedField?.asyncSuggestions, selectedField?.name, suggestionsEndpoint]);
 
   // Resolve the option list for a field: fetched suggestions for async fields,
   // otherwise the static picklist. Async option labels are the raw value.
@@ -467,7 +490,10 @@ export function FilterCondition({
             {categoryEntries.map(([category, fields]) => (
               <div key={category}>
                 <div className="px-2 py-1.5 text-sm font-semibold text-on-surface-variant">
-                  {t(`categories.${category}`)}
+                  {/* Dynamic: the category set differs per domain namespace
+                      (constituents vs donations), so this can't narrow to the
+                      strict key union — same papercut as field labels. */}
+                  {trDynamic(t, `categories.${category}`)}
                 </div>
                 {fields.map((field) => (
                   <SelectItem key={field.name} value={field.name}>

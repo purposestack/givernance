@@ -1245,6 +1245,34 @@ describe("Advanced Constituent Filters", () => {
       expect(body.errors.some((e: string) => e.includes("Unknown field"))).toBe(true);
     });
 
+    it("rejects unknown fields nested inside subConditions with 400 (never silently dropped)", async () => {
+      // Per-condition validation recurses into nested groups: without it a
+      // nested unknown leaf would compile to undefined and the list would
+      // run UNFILTERED while the URL claims the condition is active.
+      const response = await app.inject({
+        method: "GET",
+        url: listUrl({
+          operator: "AND",
+          conditions: [
+            {
+              field: "constituent.email",
+              operator: "contains",
+              value: "@example.com",
+              subConditions: {
+                operator: "OR",
+                conditions: [{ field: "constituent.doesNotExist", operator: "eq", value: "x" }],
+              },
+            },
+          ],
+        }),
+        headers: authHeader(token),
+      });
+
+      expect(response.statusCode).toBe(400);
+      const body = response.json();
+      expect(body.errors.some((e: string) => e.includes("Unknown field"))).toBe(true);
+    });
+
     it("404s the filters param when the advanced_filters flag is off — but leaves the plain list untouched", async () => {
       await db
         .update(featureFlags)

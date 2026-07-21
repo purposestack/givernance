@@ -102,6 +102,40 @@ describe("DataTable — entrance choreography (ADR-035)", () => {
     }
   });
 
+  it("renders the emptyState in a full-width cell with vertical breathing room", () => {
+    // Regression: the empty cell only had `px-5`, so the empty state sat
+    // flush against the thead border above and the container edge below
+    // (the pagination footer is hidden when there are no rows). The fix
+    // is `py-5` on the shared cell — one place for every consumer.
+    const { container, getByText } = render(
+      <DataTable columns={columns} data={[]} emptyState={<div>No results here</div>} />,
+    );
+    expect(getByText("No results here")).toBeTruthy();
+    const cell = container.querySelector<HTMLTableCellElement>("tbody td");
+    expect(cell).not.toBeNull();
+    expect(cell?.colSpan).toBe(columns.length);
+    expect(cell?.classList.contains("px-5")).toBe(true);
+    expect(cell?.classList.contains("py-5")).toBe(true);
+  });
+
+  it("never animates the empty-state row, even with animateEntrance (ADR-035)", () => {
+    // Only DATA rows join the `.row-reveal` cascade — the empty row is
+    // not an interactive target and must not fade in behind the shell.
+    const { container } = render(
+      <DataTable
+        columns={columns}
+        data={[]}
+        animateEntrance
+        entranceCascadeOffset={1}
+        emptyState={<div>No results here</div>}
+      />,
+    );
+    const emptyRow = bodyRows(container)[0];
+    expect(emptyRow).toBeTruthy();
+    expect(emptyRow?.classList.contains("row-reveal")).toBe(false);
+    expect(emptyRow?.style.getPropertyValue("--cascade-i")).toBe("");
+  });
+
   it("drops the entrance classes when a sortable header is clicked (sort gate, rule B12)", () => {
     // Uncontrolled sorting reorders rows locally WITHOUT changing the
     // `data` reference — without the sorting gate the entrance would

@@ -1,9 +1,9 @@
 # ADR-033: Advanced Constituent Filter Architecture
 
-**Status**: Accepted  
-**Date**: 2026-05-22  
+**Status**: Accepted — extended to a second domain (donations), see Addendum  
+**Date**: 2026-05-22 (addendum 2026-07-21)  
 **Deciders**: MVP Engineer Team  
-**Epic**: #418
+**Epic**: #418 (constituents) · donations follow-up (flag `donations.advanced_filters`)
 
 ## Context
 
@@ -98,6 +98,50 @@ We will implement a **client-side filter builder** with **server-side query exec
 - Natural language queries via LLM
 - Predictive analytics
 - API access for external tools
+
+## Addendum (2026-07-21) — second domain instance validates the architecture
+
+This ADR was written for a single domain (constituents), and some of its
+framing was constituent-specific. The donations list has since received the
+same treatment ([`docs/30-advanced-filters.md`](../30-advanced-filters.md) §9,
+flag `donations.advanced_filters`), and the port is the empirical test of the
+decision. What we learned:
+
+**What transposed unchanged** — the domain-agnostic core:
+
+- The JSON query DSL (`FilterQuery` / `FilterCondition`, AND/OR + nested
+  groups) and its complexity caps (≤10 conditions, depth ≤3).
+- The server-side **field registry** pattern: the wire carries DSL names only,
+  column resolution happens against a per-domain registry. Standing up a new
+  domain = writing a new registry (`modules/donations/filters/field-registry.ts`),
+  not touching the engine.
+- The generic operator switch, value normalization (EUR→cents, end-of-day
+  upper bounds), ILIKE escaping, and the whole `validateQuery` block —
+  consumed by the donations module **as imports from
+  `modules/constituents/filters/`, with zero modifications** to the
+  constituents engine (its test suites run untouched).
+- The API posture: catalog + debounced count-preview endpoints, shareable
+  `?filters=` URL param on the list route, flag-gated 404-when-off.
+
+**What is constituent-specific, not architectural** (a new domain must decide
+these per-domain rather than inherit them):
+
+- The **aggregate lane and pattern detection** (LYBUNT/SYBUNT/…) summarize a
+  donor's giving — they exist because constituents are the *person* grain.
+  Donations are the *row* grain, so the donations instance has no aggregates
+  and rejects `patterns` with 400. Per-row `EXISTS` lanes (fund allocation,
+  receipt state, pledge linkage) took their place.
+- The **materialized-view strategy** (constituent metrics) is an optimization
+  for the aggregate lane, not part of the core architecture; the donations
+  instance ships without one.
+- **Preset templates** are a product decision per domain — the donations v1
+  deliberately ships none.
+
+**Consequence for future domains** (campaigns, communications, …): treat
+`modules/constituents/filters/` as the de-facto shared engine consumed via
+imports. If a third domain instance appears, extract the generic core
+(types, operator switch, validation) into `packages/shared` or a common API
+lib at that point — two consumers did not yet justify the churn, three would.
 
 ## References
 

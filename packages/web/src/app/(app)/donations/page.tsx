@@ -13,7 +13,12 @@ import { Button } from "@/components/ui/button";
 import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
 import { hasPermission, requireAuth } from "@/lib/auth/guards";
-import type { DonationListResponse, DonationSortField, DonationSortOrder } from "@/models/donation";
+import type {
+  DonationListQuery,
+  DonationListResponse,
+  DonationSortField,
+  DonationSortOrder,
+} from "@/models/donation";
 import { DonationService } from "@/services/DonationService";
 import { FeatureFlagsService, isFlagEnabled } from "@/services/FeatureFlagsService";
 
@@ -74,6 +79,58 @@ function parseUuid(value: string | string[] | undefined): string | undefined {
   return raw && raw.length > 0 ? raw : undefined;
 }
 
+/**
+ * donations.advanced_filters — pre-parse the shareable `?filters=` DSL param
+ * defensively: a hand-mangled URL with unparseable JSON is treated as "no
+ * filter" here AND in the table (both sides run the same JSON.parse guard),
+ * so server and client agree the filter is absent.
+ */
+function parseFiltersJson(value: string | string[] | undefined): string | undefined {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (!raw) return undefined;
+  try {
+    JSON.parse(raw);
+    return raw;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Fetch the list slice with the two guarded fallbacks:
+ *  - 401/403 → empty page (session issue, the shell still renders);
+ *  - 400 while an advanced `?filters=` was forwarded → the server rejected
+ *    the DSL (hand-edited or stale shared link): refetch unfiltered and
+ *    surface `advancedFilterInvalid` so the table shows an inline notice
+ *    instead of silently pretending the filter applied.
+ */
+async function fetchDonationList(
+  client: Awaited<ReturnType<typeof createServerApiClient>>,
+  listQuery: DonationListQuery,
+): Promise<{ result: DonationListResponse; advancedFilterInvalid: boolean }> {
+  try {
+    return {
+      result: await DonationService.listDonations(client, listQuery),
+      advancedFilterInvalid: false,
+    };
+  } catch (err) {
+    if (err instanceof ApiProblem && (err.status === 401 || err.status === 403)) {
+      const { page = 1, perPage = DEFAULT_PER_PAGE } = listQuery;
+      return {
+        result: { data: [], pagination: { page, perPage, total: 0, totalPages: 0 } },
+        advancedFilterInvalid: false,
+      };
+    }
+    if (listQuery.filters && err instanceof ApiProblem && err.status === 400) {
+      return {
+        result: await DonationService.listDonations(client, { ...listQuery, filters: undefined }),
+        advancedFilterInvalid: true,
+      };
+    }
+    throw err;
+  }
+}
+
 export default async function DonationsPage({ searchParams }: DonationsPageProps) {
   const auth = await requireAuth();
   const canWrite = hasPermission(auth, "write");
@@ -98,6 +155,8 @@ export default async function DonationsPage({ searchParams }: DonationsPageProps
   const sort = parseSortField(params.sort);
   const order = parseSortOrder(params.order);
 
+  const filtersParam = parseFiltersJson(params.filters);
+
   const client = await createServerApiClient();
 
   // Epic #539 — donation-domain custom columns (`row.custom`) + the donor
@@ -105,13 +164,20 @@ export default async function DonationsPage({ searchParams }: DonationsPageProps
   // no defs ⇒ both column sets completely absent.
   let donationCustomEnabled = false;
   let constituentCustomEnabled = false;
+  // donations.advanced_filters — with the flag off, the FilterBuilder entry
+  // point, the chip strip and the `?filters=` passthrough are all absent;
+  // the page behaves byte-for-byte like today (basic date dialog only). A
+  // network failure defaults to OFF (safest posture).
+  let advancedFiltersEnabled = false;
   try {
     const flags = await FeatureFlagsService.listPublic(client);
     donationCustomEnabled = isFlagEnabled(flags, FEATURE_FLAG_KEYS.DONATIONS_CUSTOM_FIELDS);
     constituentCustomEnabled = isFlagEnabled(flags, FEATURE_FLAG_KEYS.CONSTITUENTS_CUSTOM_FIELDS);
+    advancedFiltersEnabled = isFlagEnabled(flags, FEATURE_FLAG_KEYS.DONATIONS_ADVANCED_FILTERS);
   } catch {
     donationCustomEnabled = false;
     constituentCustomEnabled = false;
+    advancedFiltersEnabled = false;
   }
   const [donationDefs, constituentDefs] = await Promise.all([
     fetchCustomFieldDefinitionsOrEmpty(client, "donation", donationCustomEnabled),
@@ -119,30 +185,26 @@ export default async function DonationsPage({ searchParams }: DonationsPageProps
   ]);
   const donorDefs = projectableDefinitions(constituentDefs);
 
-  let result: DonationListResponse;
-  try {
-    result = await DonationService.listDonations(client, {
-      page,
-      perPage,
-      search: searchValue,
-      dateFrom,
-      dateTo,
-      campaignId,
-      constituentId,
-      receiptStatus: receiptStatusValue,
-      sort,
-      order,
-    });
-  } catch (err) {
-    if (err instanceof ApiProblem && (err.status === 401 || err.status === 403)) {
-      result = {
-        data: [],
-        pagination: { page, perPage, total: 0, totalPages: 0 },
-      };
-    } else {
-      throw err;
-    }
-  }
+  // Only forward the DSL when the flag is on — the API 404s the param
+  // otherwise. A shared filter URL opened by a flag-off tenant degrades to
+  // the unfiltered list with no filter affordances (surface fully absent).
+  const effectiveFilters = advancedFiltersEnabled ? filtersParam : undefined;
+
+  const listQuery: DonationListQuery = {
+    page,
+    perPage,
+    search: searchValue,
+    dateFrom,
+    dateTo,
+    campaignId,
+    constituentId,
+    receiptStatus: receiptStatusValue,
+    sort,
+    order,
+    filters: effectiveFilters,
+  };
+
+  const { result, advancedFilterInvalid } = await fetchDonationList(client, listQuery);
 
   const hasAny = result.pagination.total > 0;
   // The date-range filter now lives INSIDE the table's search row (the
@@ -151,7 +213,13 @@ export default async function DonationsPage({ searchParams }: DonationsPageProps
   // would swap in the page-level empty state and take the only way to
   // clear the filter with it.
   const filtersActive = Boolean(
-    searchValue || dateFrom || dateTo || receiptStatusValue || campaignId || constituentId,
+    searchValue ||
+      dateFrom ||
+      dateTo ||
+      receiptStatusValue ||
+      campaignId ||
+      constituentId ||
+      effectiveFilters,
   );
 
   // ADR-035 rule A1 — the page header and the search row inside
@@ -195,6 +263,8 @@ export default async function DonationsPage({ searchParams }: DonationsPageProps
             dateTo={dateTo ?? ""}
             customFieldDefs={donationDefs}
             donorCustomDefs={donorDefs}
+            advancedFiltersEnabled={advancedFiltersEnabled}
+            advancedFilterInvalid={advancedFilterInvalid}
           />
         ) : (
           <div className="reveal-item rounded-2xl bg-surface-container-lowest border border-border-brand">

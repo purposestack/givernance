@@ -110,12 +110,21 @@ export interface FilterField {
   label: string;
   /**
    * How `label` (and option labels) must be rendered (Epic #539):
-   * - `"i18n"` (default when absent) — a next-intl key under
-   *   `constituents.filters.*`, resolved through the translator.
+   * - `"i18n"` (default when absent) — a next-intl key under the render
+   *   site's filter namespace (e.g. `constituents.filters.*`), resolved
+   *   through the translator.
    * - `"literal"` — operator-authored tenant data (custom-field labels),
    *   rendered verbatim, never through `t()`.
    */
   labelKind?: "literal" | "i18n";
+  /**
+   * Option-label rendering when it DIFFERS from `labelKind` (donations
+   * catalog): `donation.campaign` / `donation.fund` have an i18n FIELD label
+   * (`fields.donation.campaign`) but tenant-authored ENTITY option labels
+   * (campaign/fund names) that must render literally. Defaults to
+   * `labelKind` when absent, so every existing field is unaffected.
+   */
+  optionLabelKind?: "literal" | "i18n";
   type: FilterFieldType;
   category: FilterCategory;
   operators: FilterOperator[];
@@ -139,8 +148,22 @@ export interface FilterField {
  * categories actually backed by data — the former `donation_patterns`,
  * `engagement` and `calculated` groups were removed because every field in them
  * referenced a column that doesn't exist and 400'd on use.
+ *
+ * The union spans BOTH domains that reuse this builder stack:
+ *  - constituents (Epic #418): identity / demographics / donation_history / custom
+ *  - donations (donations.advanced_filters): donation / payment / attribution / receipt
+ * Each domain's message namespace carries `categories.<value>` for exactly the
+ * subset its catalog uses.
  */
-export type FilterCategory = "identity" | "demographics" | "donation_history" | "custom";
+export type FilterCategory =
+  | "identity"
+  | "demographics"
+  | "donation_history"
+  | "custom"
+  | "donation"
+  | "payment"
+  | "attribution"
+  | "receipt";
 
 export interface FilterPreviewResponse {
   count: number;

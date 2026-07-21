@@ -332,11 +332,8 @@ export function getOperatorLabel(operator: FilterOperator): string {
  * `useTranslations("constituents.filters")(getCategoryLabel(cat))`.
  */
 export function getCategoryLabel(category: FilterCategory): string {
-  const keys: Record<FilterCategory, string> = {
-    identity: "categories.identity",
-    demographics: "categories.demographics",
-    donation_history: "categories.donation_history",
-    custom: "categories.custom",
-  };
-  return keys[category] || category;
+  // Every category key follows the same `categories.<value>` shape in both
+  // domain namespaces (constituents.filters / donations.filters), so this is
+  // a pure template — no per-domain map to keep in sync.
+  return `categories.${category}`;
 }

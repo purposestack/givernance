@@ -16,6 +16,16 @@ import {
 interface FilterPreviewProps {
   query: FilterQuery;
   onPreview?: (response: FilterPreviewResponse) => void;
+  /**
+   * Preview endpoint to POST `{ query }` to. Defaults to the constituents
+   * endpoint; the donations builder passes `/v1/donations/filter/preview`.
+   */
+  endpoint?: string;
+  /**
+   * next-intl namespace for the preview strings (`<ns>.preview.*` layout in
+   * both domains). Defaults to the constituents namespace.
+   */
+  namespace?: string;
 }
 
 /**
@@ -95,8 +105,15 @@ function isEmptyQuery(query: FilterQuery): boolean {
 /**
  * Real-time preview of constituent count for current filter configuration.
  */
-export function FilterPreview({ query, onPreview }: FilterPreviewProps) {
-  const t = useTranslations("constituents.filters.preview");
+export function FilterPreview({
+  query,
+  onPreview,
+  endpoint = "/v1/constituents/filter/preview",
+  namespace = "constituents.filters",
+}: FilterPreviewProps) {
+  // Both filter namespaces expose the same `preview.*` key layout — the
+  // constituents typing is the shared contract (see FilterCondition).
+  const t = useTranslations(`${namespace}.preview` as "constituents.filters.preview");
   const [preview, setPreview] = useState<FilterPreviewResponse | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -116,7 +133,7 @@ export function FilterPreview({ query, onPreview }: FilterPreviewProps) {
       try {
         const client = createClientApiClient();
         const response = await client.post<PreviewApiResponse>(
-          "/v1/constituents/filter/preview",
+          endpoint,
           { query },
           { signal: controller.signal },
         );
@@ -141,7 +158,7 @@ export function FilterPreview({ query, onPreview }: FilterPreviewProps) {
       clearTimeout(timeoutId);
       controller.abort();
     };
-  }, [query, t, onPreview]);
+  }, [query, t, onPreview, endpoint]);
 
   if (!preview && !loading) {
     return null;

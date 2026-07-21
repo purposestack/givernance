@@ -193,6 +193,36 @@ The Givernance brand mark is **three interlocking isometric cubes** rendered in 
 - Empty states tell a story: "No donors yet — your first campaign starts here." with a gentle call to action
 - Error states: calm, constructive, never accusatory ("Something went wrong. We've been notified — try again in a moment.")
 
+**List pages distinguish two empty states — this is a binding contract, not a styling choice:**
+
+| State | Condition | Rendering |
+|---|---|---|
+| **No data** | The org has zero records of this type AND no search/filter is active | Full-page illustrated `EmptyState` (icon + title + seed-hint CTA) **replaces** the table entirely |
+| **No results** | Any search/filter/DSL param is active but matched zero rows | The table chrome — search input, filter chips, status selects, column headers — **stays mounted**; the `EmptyState` renders *inside* the table body (the shared `DataTable` `emptyState` slot) |
+
+The rationale is mechanical, not aesthetic: on our list pages the search and
+filter controls live **inside** the table's filter row. Swapping the whole
+table for a page-level empty state on zero results would unmount the only
+controls that let the operator clear the over-restrictive filter — a dead
+end. The page-level state is therefore reserved for a *truly* empty org,
+where a seed CTA ("create your first campaign") is the honest next step.
+
+Implementation notes:
+
+- The gate is `hasAny || filtersActive` at the page level (`hasAny` from the
+  **unfiltered** total; `filtersActive` from the presence of any search/filter
+  param). Reference implementations: the constituents, donations, and
+  campaigns list pages (`packages/web/src/app/(app)/{constituents,donations,campaigns}/page.tsx`).
+- The in-table empty-state cell carries its own vertical padding (`px-5 py-5`),
+  fixed **once** in the shared `DataTable`
+  (`packages/web/src/components/ui/data-table.tsx`) for every consumer — data
+  rows get their rhythm from `rowPadding`, but the empty-state cell hosts a
+  block component and would otherwise sit flush against the header border and
+  container edge. Never re-add per-page padding around the `emptyState` slot.
+- Any new list page (or a new filter surface on an existing one, e.g. an
+  advanced-filter `?filters=` param) MUST feed its params into `filtersActive`
+  so a shared zero-result link never collapses into the seed-hint state.
+
 ### 2.6 Motion & animation
 
 | Token | Duration | Usage |

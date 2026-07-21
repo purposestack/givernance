@@ -18,6 +18,12 @@ interface FilterChipProps {
    * static core catalog.
    */
   fields?: FilterField[];
+  /**
+   * next-intl namespace the chip's dynamic keys (field labels, operator
+   * labels, option labels) resolve under. Defaults to the constituents
+   * namespace; the donations chip strip passes `donations.filters`.
+   */
+  namespace?: string;
 }
 
 /**
@@ -43,14 +49,14 @@ interface FilterChipProps {
  * try/catch is belt-and-suspenders for any other resolution throw.
  */
 type StrictTranslator = ReturnType<typeof useTranslations>;
-function trDynamicWithFallback(t: StrictTranslator, key: string): string {
+function trDynamicWithFallback(t: StrictTranslator, namespace: string, key: string): string {
   try {
     const has = (t as unknown as { has?: (k: string) => boolean }).has;
     // Unknown key (or a pre-resolved literal label) → render it verbatim.
     if (typeof has === "function" && !has(key)) return key;
     const resolved = (t as unknown as (k: string) => string)(key);
     // Defensive: if a version still returns the namespaced path, unwrap it.
-    if (resolved === `constituents.filters.${key}` || resolved === key) return key;
+    if (resolved === `${namespace}.${key}` || resolved === key) return key;
     return resolved;
   } catch {
     // A missing/​unresolvable message in next-intl 4.x throws here — fall
@@ -82,9 +88,10 @@ export function resolveValueToken(
     const meta = catalog.find((f) => f.name === field);
     const optionLabel = meta?.options?.find((o) => o.value === v)?.label;
     if (optionLabel) {
-      // Custom-field option labels are operator data — literal by contract
+      // Custom-field option labels — and donations entity options
+      // (campaign / fund names) — are operator data: literal by contract
       // (Epic #539), never routed through the translator.
-      if (meta?.labelKind === "literal") return optionLabel;
+      if ((meta?.optionLabelKind ?? meta?.labelKind) === "literal") return optionLabel;
       const resolved = translate(optionLabel);
       // `translate` falls back to the key itself for unknown messages — only
       // use it when it actually resolved to something other than the key.
@@ -120,8 +127,13 @@ function formatArrayValue(
  * tell at a glance "this came from a quick template, not a hand-built
  * condition". Conditions render unchanged.
  */
-export function FilterChip({ filter, onRemove, fields }: FilterChipProps) {
-  const t = useTranslations("constituents.filters");
+export function FilterChip({
+  filter,
+  onRemove,
+  fields,
+  namespace = "constituents.filters",
+}: FilterChipProps) {
+  const t = useTranslations(namespace);
   const catalog = fields ?? filterFields;
   const isPattern = filter.kind === "pattern";
   // `filter.label` and `filter.field` are both candidates: callers either
@@ -130,7 +142,7 @@ export function FilterChip({ filter, onRemove, fields }: FilterChipProps) {
   // fallback helper resolves keys when known and otherwise passes the raw
   // string through.
   const rawLabel = filter.label || filter.field;
-  const displayLabel = trDynamicWithFallback(t, rawLabel);
+  const displayLabel = trDynamicWithFallback(t, namespace, rawLabel);
 
   if (isPattern) {
     return (
@@ -158,7 +170,7 @@ export function FilterChip({ filter, onRemove, fields }: FilterChipProps) {
     );
   }
 
-  const translateToken = (key: string) => trDynamicWithFallback(t, key);
+  const translateToken = (key: string) => trDynamicWithFallback(t, namespace, key);
 
   const formatValue = (value: unknown): string => {
     if (Array.isArray(value)) {
@@ -185,7 +197,7 @@ export function FilterChip({ filter, onRemove, fields }: FilterChipProps) {
     return resolveValueToken(filter.field, value, translateToken, catalog);
   };
 
-  const operatorLabel = trDynamicWithFallback(t, getOperatorLabel(filter.operator));
+  const operatorLabel = trDynamicWithFallback(t, namespace, getOperatorLabel(filter.operator));
   const valueLabel = formatValue(filter.value);
 
   return (

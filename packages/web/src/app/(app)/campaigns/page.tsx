@@ -117,6 +117,14 @@ export default async function CampaignsPage({ searchParams }: CampaignsPageProps
     })),
   );
   const hasAny = result.pagination.total > 0;
+  // The search input and status select live INSIDE the table's filter row
+  // (the constituents/donations grammar). Keep the table mounted whenever
+  // any filter is active, even with zero results — otherwise an
+  // over-restrictive search/status filter would swap in the page-level
+  // "seed your first campaign" empty state and take the only way to clear
+  // the filter with it. The page-level empty stays reserved for a truly
+  // empty org (no campaigns AND no filters).
+  const filtersActive = Boolean(searchValue || statusValue);
 
   // ADR-035 rule A1 — the page header and search/filter row (inside
   // CampaignsTable) are static shell: no entrance animation, instantly
@@ -142,7 +150,7 @@ export default async function CampaignsPage({ searchParams }: CampaignsPageProps
         }
       />
 
-      {hasAny ? (
+      {hasAny || filtersActive ? (
         <CampaignsTable
           campaigns={campaignsWithStats}
           pagination={result.pagination}

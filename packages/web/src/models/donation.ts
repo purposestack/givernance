@@ -77,6 +77,13 @@ export interface DonationListQuery {
   receiptStatus?: "pending" | "generated" | "failed";
   sort?: DonationSortField;
   order?: DonationSortOrder;
+  /**
+   * Advanced-filter DSL as a JSON string (flag `donations.advanced_filters`).
+   * Forwarded verbatim as the `?filters=` query param — the API 404s it when
+   * the flag is off, so callers must only set it when the SSR-fetched flag
+   * is on.
+   */
+  filters?: string;
 }
 
 export interface DonationAllocation {

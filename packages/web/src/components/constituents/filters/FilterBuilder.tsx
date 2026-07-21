@@ -59,6 +59,30 @@ interface FilterBuilderProps {
    * wins because it reflects what the BE registry will actually accept.
    */
   customFilterFields?: FilterField[];
+  /**
+   * Full catalog override (donations reuse, flag `donations.advanced_filters`).
+   * When provided, the builder renders exactly these fields and SKIPS the
+   * constituents-specific catalog pipeline (static core + custom-field
+   * fetch/merge) entirely — the caller owns fetching/merging its own catalog.
+   */
+  fields?: FilterField[];
+  /**
+   * next-intl namespace for every string in the builder stack (chrome, field
+   * labels, operators, categories, preview). Defaults to the constituents
+   * namespace so existing call sites are byte-for-byte unchanged; the
+   * donations list passes `donations.filters`.
+   */
+  namespace?: string;
+  /** Preview endpoint (POST `{ query }`). Defaults to the constituents one. */
+  previewEndpoint?: string;
+  /** Async option-suggestions endpoint. Defaults to the constituents one. */
+  suggestionsEndpoint?: string;
+  /**
+   * Whether to render the "Step 1 — quick templates" section. The presets are
+   * constituent-grain (LYBUNT & co) — the donations builder passes `false`
+   * (no donation presets in v1) and the condition editor becomes step one.
+   */
+  showPresets?: boolean;
 }
 
 /**
@@ -70,17 +94,24 @@ export function FilterBuilder({
   onApply,
   initialQuery,
   customFilterFields,
+  fields: fieldsOverride,
+  namespace = "constituents.filters",
+  previewEndpoint = "/v1/constituents/filter/preview",
+  suggestionsEndpoint = "/v1/constituents/filter/suggestions",
+  showPresets = true,
 }: FilterBuilderProps) {
-  const t = useTranslations("constituents.filters");
+  const t = useTranslations(namespace);
   useFocusReturn(open);
 
   // Epic #539 — custom fields from the enriched /filter/fields catalog,
   // fetched once per dialog opening. `null` = not (yet) available → fall
   // back to the caller-provided projection, then to static-only. Core
-  // filtering must never break because this fetch failed.
+  // filtering must never break because this fetch failed. Skipped entirely
+  // when the caller passes a full `fields` override (donations reuse — that
+  // catalog pipeline lives with the caller).
   const [fetchedCustomFields, setFetchedCustomFields] = useState<FilterField[] | null>(null);
   useEffect(() => {
-    if (!open) return;
+    if (!open || fieldsOverride) return;
     let cancelled = false;
     void (async () => {
       const fetched = await fetchCustomFilterFields(createClientApiClient());
@@ -89,11 +120,13 @@ export function FilterBuilder({
     return () => {
       cancelled = true;
     };
-  }, [open]);
+  }, [open, fieldsOverride]);
 
   const fields = useMemo(
-    () => mergeFilterCatalog(filterFields, fetchedCustomFields ?? customFilterFields ?? []),
-    [fetchedCustomFields, customFilterFields],
+    () =>
+      fieldsOverride ??
+      mergeFilterCatalog(filterFields, fetchedCustomFields ?? customFilterFields ?? []),
+    [fieldsOverride, fetchedCustomFields, customFilterFields],
   );
 
   const [query, setQuery] = useState<FilterQuery>(
@@ -298,16 +331,21 @@ export function FilterBuilder({
 
           <div className="flex-1 overflow-y-auto px-1">
             <div className="space-y-6 py-4">
-              {/* Step 1 — Preset Templates */}
-              <div className="space-y-2">
-                <div>
-                  <h3 className="text-sm font-semibold text-on-surface">{t("stepPresets")}</h3>
-                  <p className="text-xs text-on-surface-variant">{t("stepPresetsHint")}</p>
-                </div>
-                <FilterPresets onSelect={handlePresetSelect} activePresetId={activePresetId} />
-              </div>
+              {/* Step 1 — Preset Templates (constituents only; the donations
+                  builder has no presets in v1 and starts at the rules step) */}
+              {showPresets ? (
+                <>
+                  <div className="space-y-2">
+                    <div>
+                      <h3 className="text-sm font-semibold text-on-surface">{t("stepPresets")}</h3>
+                      <p className="text-xs text-on-surface-variant">{t("stepPresetsHint")}</p>
+                    </div>
+                    <FilterPresets onSelect={handlePresetSelect} activePresetId={activePresetId} />
+                  </div>
 
-              <Separator />
+                  <Separator />
+                </>
+              ) : null}
 
               {/* Step 2 — Custom Filters */}
               <div className="space-y-4">
@@ -371,6 +409,8 @@ export function FilterBuilder({
                           onChange={(updated) => handleUpdateCondition(index, updated)}
                           onRemove={() => handleRemoveCondition(index)}
                           fields={fields}
+                          namespace={namespace}
+                          suggestionsEndpoint={suggestionsEndpoint}
                         />
                       </div>
                     ))}
@@ -406,6 +446,7 @@ export function FilterBuilder({
                           key={filter.id}
                           filter={filter}
                           fields={fields}
+                          namespace={namespace}
                           onRemove={(id) => {
                             const index = query.conditions.findIndex((c) => c.id === id);
                             if (index >= 0) handleRemoveCondition(index);
@@ -427,6 +468,8 @@ export function FilterBuilder({
                 </div>
                 <FilterPreview
                   query={query}
+                  endpoint={previewEndpoint}
+                  namespace={namespace}
                   onPreview={(response) => setPreviewCount(response.count)}
                 />
               </div>
