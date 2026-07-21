@@ -16,14 +16,46 @@ Overrides only ever **raise**: a row below the plan quota is ignored (`Math.max`
 
 ## Procedure
 
+Steps 2–5 run inside **one transaction**: the audit row (step 3) is **mandatory and written BEFORE the override row** — an override with no `audit_logs` trail is a review-blocking gap (every endpoint-written mutation gets one automatically; this runbook is the endpoint's stand-in until it ships, so it must produce the same trail). If you cannot write the audit row, do not write the override.
+
 1. SSH the environment host and open a psql session **as the owner role** (`givernance`, not `givernance_app`) — see `docs/dev/staging-secrets-setup.md` for connection material.
-2. Insert the override (example: raise constituent fields to 40 for one year):
+2. Open the transaction and mint the override row's id up front (the audit row references it):
+
+   ```sql
+   BEGIN;
+   SELECT gen_random_uuid() AS override_id \gset
+   ```
+
+3. **REQUIRED — write the audit row first.** Metadata only: quota key, numeric limit, domain, expiry, ticket reference. Counts/ids/keys only — never tenant field labels or stored custom values:
+
+   ```sql
+   INSERT INTO audit_logs
+     (org_id, user_id, actor_id, action, resource_type, resource_id, new_values)
+   VALUES
+     ('<org-uuid>',
+      '<your keycloak sub>',
+      '<your keycloak sub>',
+      'custom_field.quota_override_set',
+      'customization_quota_override',
+      :'override_id',
+      jsonb_build_object(
+        'quotaKey',  'fields_per_domain',
+        'domain',    'constituent',          -- or NULL for an all-domain raise
+        'value',     40,
+        'expiresAt', (now() + interval '1 year')::text,
+        'ticketRef', '<ticket/CRM ref>'
+      )
+     );
+   ```
+
+4. Insert the override under the same pre-minted id (example: raise constituent fields to 40 for one year):
 
    ```sql
    INSERT INTO customization_quota_overrides
-     (org_id, domain, quota_key, value, reason, set_by, expires_at)
+     (id, org_id, domain, quota_key, value, reason, set_by, expires_at)
    VALUES
-     ('<org-uuid>',
+     (:'override_id',
+      '<org-uuid>',
       'constituent',            -- or NULL for an all-domain raise
       'fields_per_domain',
       40,
@@ -33,12 +65,24 @@ Overrides only ever **raise**: a row below the plan quota is ignored (`Math.max`
      );
    ```
 
-3. Verify the effective quota took: as the tenant admin (or via impersonation), open `/settings/custom-fields` — the quota meter reflects the raise on the next request (`getEffectiveQuotas` reads live; no cache to flush).
-4. Record the grant in the sales ticket with the row's `id`.
+5. `COMMIT;` — the transaction guarantees override and audit row land together or not at all.
+6. Verify the effective quota took: as the tenant admin (or via impersonation), open `/settings/custom-fields` — the quota meter reflects the raise on the next request (`getEffectiveQuotas` reads live; no cache to flush).
+7. Record the grant in the sales ticket with the override id (`:override_id`).
 
 ## Revoking
 
-`DELETE FROM customization_quota_overrides WHERE id = '<row-uuid>';` — or let `expires_at` lapse. Existing definitions above the restored quota are **not** deleted; the tenant simply can't create more until back under the limit (the same rule as archived-field restores).
+Same discipline — audit row first, in the same transaction:
+
+```sql
+BEGIN;
+INSERT INTO audit_logs (org_id, user_id, actor_id, action, resource_type, resource_id)
+VALUES ('<org-uuid>', '<your keycloak sub>', '<your keycloak sub>',
+        'custom_field.quota_override_revoked', 'customization_quota_override', '<row-uuid>');
+DELETE FROM customization_quota_overrides WHERE id = '<row-uuid>';
+COMMIT;
+```
+
+— or let `expires_at` lapse (no audit row needed; the grant's own audit row already records the expiry). Existing definitions above the restored quota are **not** deleted; the tenant simply can't create more until back under the limit (the same rule as archived-field restores).
 
 ## Post-mortem note
 

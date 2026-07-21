@@ -5,40 +5,43 @@
  * onto `CUSTOM_FIELDS_QUEUE`. The worker:
  *   1. Re-checks the domain feature flag for the tenant (defence in
  *      depth — a flag flip can race an already-enqueued relay tick).
- *   2. Loads the definition and idempotently marks the source option
- *      `{ active: false, mergedInto: target }` BEFORE any rewrite, so
- *      new API writes reject the merged id while the backfill runs.
+ *   2. Loads the definition and verifies the source option still carries
+ *      THIS job's merge marker (`mergeId` + `mergedInto`) — the API
+ *      stamped it in the SAME transaction that emitted the outbox row,
+ *      so its absence means an undo (or a subsequent merge) intervened
+ *      between emit and pickup and the job must be skipped. The worker
+ *      NEVER (re-)marks the option itself: only the API writes merge
+ *      markers, so an undo can never be silently reversed.
  *   3. Rewrites stored values chunk by chunk: each chunk is one
- *      RLS-scoped transaction that inserts the `custom_field_merge_undo`
- *      rows (pre-merge value of the touched key only) and applies the
- *      `jsonb_set` rewrite atomically. Rewritten rows stop matching the
- *      `@>` containment predicate, so a crashed/retried job resumes
- *      exactly where it left off and never duplicates undo rows.
+ *      RLS-scoped transaction that takes the per-org custom-field VALUES
+ *      advisory lock (serialising against GDPR erasure), applies the
+ *      `jsonb_set` rewrite under a re-checked containment predicate, and
+ *      inserts the `custom_field_merge_undo` row (pre-merge value of the
+ *      touched key only) ONLY for rows the guarded rewrite touched.
+ *      Rewritten rows stop matching the `@>` containment predicate, so a
+ *      crashed/retried job resumes exactly where it left off and never
+ *      duplicates undo rows — and an erasure that lands mid-backfill can
+ *      neither be overwritten nor leak pre-erasure values into the undo
+ *      store.
  *   4. Writes ONE `audit_logs` row with counts + ids only — per-row
  *      pre-merge snapshots never enter long-retention audit storage
  *      (Epic #539 anti-goal #7; undo lives in the TTL'd table).
- *
- * The definition mutation invalidates the API's Redis catalog cache
- * directly (same Redis instance) so forms stop offering the merged
- * option within the request that follows, not a TTL window later.
  */
 
 import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
 import {
-  CUSTOM_FIELD_DOMAIN_VALUES,
   CUSTOM_FIELD_MERGE_UNDO_TTL_DAYS,
   type CustomFieldDomain,
   type CustomFieldOption,
-  customFieldsCacheKey,
 } from "@givernance/shared/custom-fields";
 import type { CustomFieldOptionMergeJob } from "@givernance/shared/jobs";
 import { auditLogs, customFieldDefinitions, customFieldMergeUndo } from "@givernance/shared/schema";
 import type { Job } from "bullmq";
 import { and, eq, sql } from "drizzle-orm";
+import { acquireCustomFieldValuesLock } from "../lib/custom-field-locks.js";
 import { withWorkerContext } from "../lib/db.js";
 import { isFlagEnabledForTenant } from "../lib/flags.js";
 import { jobLogger } from "../lib/logger.js";
-import { redis } from "../lib/redis.js";
 import { extractTraceId } from "../lib/trace-context.js";
 
 const CHUNK_SIZE = 500;
@@ -75,15 +78,6 @@ type OptionMergeResult =
   | { status: "completed"; rewrittenRows: number; chunks: number }
   | { status: "skipped"; reason: string };
 
-async function invalidateCatalogCache(orgId: string): Promise<void> {
-  const keys = CUSTOM_FIELD_DOMAIN_VALUES.map((domain) => customFieldsCacheKey(orgId, domain));
-  try {
-    await redis.unlink(...keys);
-  } catch {
-    // Best-effort — the API's 60 s TTL is the staleness backstop.
-  }
-}
-
 /**
  * Compute the post-merge value of the touched key. Scalar picklists
  * become the target id; multi-picklists replace source with target and
@@ -112,12 +106,28 @@ interface ChunkParams {
   isMulti: boolean;
 }
 
+interface ChunkOutcome {
+  /** Rows the scan returned — the loop's progress signal. */
+  scanned: number;
+  /** Rows actually rewritten (scanned minus erased/changed-since-scan skips). */
+  rewritten: number;
+}
+
 /**
  * One chunk = one RLS transaction: scan up to CHUNK_SIZE matching rows,
- * write their undo rows, rewrite them. Returns the number of rows
- * rewritten (0 ⇒ the backfill is complete).
+ * rewrite each one under a re-checked predicate, and only then write its
+ * undo row. `scanned === 0` ⇒ the backfill is complete.
+ *
+ * Erasure-race hardening (PR #550 MAJOR-2): the chunk transaction takes
+ * the per-org custom-field VALUES advisory lock — the same lock the GDPR
+ * erasure transaction holds — so a chunk can never interleave with an
+ * erasure. Belt-and-braces on top of the lock, the per-row UPDATE
+ * re-checks the containment predicate (and `deleted_at IS NULL` for
+ * constituents) so a row whose blob was wiped/changed between scan and
+ * rewrite is skipped, and its undo row (which would retain pre-erasure
+ * values for 30 days) is never inserted.
  */
-async function rewriteChunk(params: ChunkParams): Promise<number> {
+async function rewriteChunk(params: ChunkParams): Promise<ChunkOutcome> {
   const { orgId, key, sourceOptionId, targetOptionId } = params;
   const { table, softDelete } = DOMAIN_TABLES[params.domain];
   const containment = JSON.stringify({
@@ -126,6 +136,7 @@ async function rewriteChunk(params: ChunkParams): Promise<number> {
   const expiresAt = new Date(Date.now() + CUSTOM_FIELD_MERGE_UNDO_TTL_DAYS * 24 * 60 * 60 * 1000);
 
   return withWorkerContext(orgId, async (tx) => {
+    await acquireCustomFieldValuesLock(tx, orgId);
     const scanned = await tx.execute(sql`
       SELECT id, custom -> ${key}::text AS value
       FROM ${sql.raw(table)}
@@ -136,9 +147,25 @@ async function rewriteChunk(params: ChunkParams): Promise<number> {
       LIMIT ${CHUNK_SIZE}
     `);
     const rows = scanned.rows as Array<{ id: string; value: unknown }>;
-    if (rows.length === 0) return 0;
+    if (rows.length === 0) return { scanned: 0, rewritten: 0 };
 
+    let rewritten = 0;
     for (const row of rows) {
+      const nextValue = JSON.stringify(rewriteValue(row.value, sourceOptionId, targetOptionId));
+      const updated = await tx.execute(sql`
+        UPDATE ${sql.raw(table)}
+        SET custom = jsonb_set(custom, ARRAY[${key}::text], ${nextValue}::jsonb),
+            updated_at = now()
+        WHERE id = ${row.id} AND org_id = ${orgId}
+          AND custom @> ${containment}::jsonb
+          ${softDelete ? sql`AND deleted_at IS NULL` : sql``}
+        RETURNING id
+      `);
+      // Re-check failed ⇒ the row was erased (or its value changed) since
+      // the scan — skip it AND its undo row: pre-erasure values must not
+      // outlive the erasure inside the 30-day undo store.
+      if (updated.rows.length === 0) continue;
+
       await tx.insert(customFieldMergeUndo).values({
         orgId,
         definitionId: params.definitionId,
@@ -149,16 +176,9 @@ async function rewriteChunk(params: ChunkParams): Promise<number> {
         previousValue: row.value,
         expiresAt,
       });
-
-      const nextValue = JSON.stringify(rewriteValue(row.value, sourceOptionId, targetOptionId));
-      await tx.execute(sql`
-        UPDATE ${sql.raw(table)}
-        SET custom = jsonb_set(custom, ARRAY[${key}::text], ${nextValue}::jsonb),
-            updated_at = now()
-        WHERE id = ${row.id} AND org_id = ${orgId}
-      `);
+      rewritten += 1;
     }
-    return rows.length;
+    return { scanned: rows.length, rewritten };
   });
 }
 
@@ -222,27 +242,28 @@ export async function processCustomFieldOptionMerge(
     return { status: "skipped", reason: "option_not_found" };
   }
 
-  // 3. Idempotently mark the source option merged BEFORE rewriting, so
-  //    concurrent API writes reject the merged id (inactive_option) while
-  //    chunks are in flight.
-  if (source.active || source.mergedInto !== data.targetOptionId) {
-    const nextOptions = options.map((option) =>
-      option.id === data.sourceOptionId
-        ? { ...option, active: false, mergedInto: data.targetOptionId }
-        : option,
+  // 3. Verify the API's merge marker is still in place. `mergeOption`
+  //    stamped `{ active: false, mergedInto, mergeId, mergedAt }` on the
+  //    source option in the SAME transaction that emitted this job's
+  //    outbox row, so if the option no longer carries THIS job's mergeId
+  //    pointing at THIS job's target, an undo (or a subsequent merge)
+  //    intervened between emit and pickup. Running the backfill anyway
+  //    would rewrite freshly-restored values and re-deactivate the
+  //    option WITHOUT a merge handle — a state with no API recovery path
+  //    (reactivate → 422 option_merged, re-merge → 422, undo → 422
+  //    merge_not_undoable). Skip; never re-mark from the worker.
+  if (source.mergeId !== data.mergeId || source.mergedInto !== data.targetOptionId) {
+    log.warn(
+      {
+        definitionId: definition.id,
+        mergeId: data.mergeId,
+        sourceOptionId: data.sourceOptionId,
+        currentMergeId: source.mergeId ?? null,
+        currentMergedInto: source.mergedInto ?? null,
+      },
+      "Option merge: source option no longer carries this job's merge marker (undo or re-merge intervened) — skipping",
     );
-    await withWorkerContext(data.orgId, async (tx) => {
-      await tx
-        .update(customFieldDefinitions)
-        .set({ options: nextOptions, updatedAt: new Date() })
-        .where(
-          and(
-            eq(customFieldDefinitions.id, data.definitionId),
-            eq(customFieldDefinitions.orgId, data.orgId),
-          ),
-        );
-    });
-    await invalidateCatalogCache(data.orgId);
+    return { status: "skipped", reason: "merge_marker_missing" };
   }
 
   // 4. Chunked rewrite.
@@ -258,12 +279,12 @@ export async function processCustomFieldOptionMerge(
     isMulti: definition.type === "multi_picklist",
   };
   while (counters.chunks < MAX_CHUNKS) {
-    const rewritten = await rewriteChunk(chunkParams);
-    if (rewritten === 0) break;
+    const outcome = await rewriteChunk(chunkParams);
+    if (outcome.scanned === 0) break;
     counters.chunks += 1;
-    counters.rewrittenRows += rewritten;
+    counters.rewrittenRows += outcome.rewritten;
     log.info(
-      { mergeId: data.mergeId, chunk: counters.chunks, rewritten },
+      { mergeId: data.mergeId, chunk: counters.chunks, rewritten: outcome.rewritten },
       "Option merge: chunk rewritten",
     );
   }

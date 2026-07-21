@@ -6,7 +6,12 @@
  * 422 matrix via `customFieldsProblem`.
  */
 
-import type { CustomFieldValueError } from "@givernance/shared/custom-fields";
+import type {
+  CustomFieldPatch,
+  CustomFieldValueError,
+  CustomFieldValues,
+  CustomValidator,
+} from "@givernance/shared/custom-fields";
 import { problemDetail } from "./schemas.js";
 
 export class CustomFieldValidationError extends Error {
@@ -14,6 +19,28 @@ export class CustomFieldValidationError extends Error {
     super("Custom field validation failed");
     this.name = "CustomFieldValidationError";
   }
+}
+
+/**
+ * Validate + merge a `custom` merge-patch over the CURRENT blob — called
+ * by the domain services INSIDE their update transaction, on the row
+ * they just read `FOR UPDATE`, so concurrent patches serialise instead
+ * of silently dropping each other's keys. Returns `undefined` (leave the
+ * column untouched) when there is no patch or no validator; throws
+ * `CustomFieldValidationError` (route maps to the 422 matrix) on
+ * validation failure. `required` is never enforced on updates.
+ */
+export function applyCustomPatchInTx(
+  existing: unknown,
+  patch: CustomFieldPatch | undefined,
+  validator: CustomValidator | null | undefined,
+): CustomFieldValues | undefined {
+  if (patch === undefined || !validator) return undefined;
+  const result = validator.validatePatch((existing ?? {}) as CustomFieldValues, patch);
+  if (!result.ok) {
+    throw new CustomFieldValidationError(result.errors);
+  }
+  return result.merged;
 }
 
 /**

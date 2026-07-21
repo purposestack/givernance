@@ -170,6 +170,22 @@ describe("flag OFF — custom affordance absent", () => {
     expect(res.json().title).toBe("custom_fields_disabled");
   });
 
+  it("accepts an empty custom object on create AND update (uniform gate — only actual values are rejected)", async () => {
+    const created = await createViaApi({ custom: {} });
+    expect(created.status).toBe(201);
+    expect(created.body.data).not.toHaveProperty("custom");
+
+    const res = await app.inject({
+      method: "PUT",
+      url: `/v1/constituents/${created.body.data?.id}`,
+      headers: authHeader(token),
+      payload: { firstName: "StillWorks", custom: {} },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.firstName).toBe("StillWorks");
+    expect(res.json().data).not.toHaveProperty("custom");
+  });
+
   it("omits the custom key from responses even when the DB blob has values", async () => {
     const created = await createViaApi({});
     const id = created.body.data?.id as string;
@@ -321,7 +337,7 @@ describe("flag ON — merge-patch semantics + serializer firewall", () => {
     expect(detail.json().data.custom).toEqual({ member_note: "keep me", score: 9 });
   });
 
-  it("never serializes keys without an active definition (stray/archived values stay in the DB only)", async () => {
+  it("never serializes keys without a definition (stray values stay in the DB only; archived defs DO serialize on detail + export — covered below)", async () => {
     const created = await createViaApi({ custom: { member_note: "visible" } });
     const id = created.body.data?.id as string;
     await db
@@ -559,5 +575,212 @@ describe("flag ON — CSV export", () => {
   it("401s without auth (flag on — requireFlag first, then requireAuth)", async () => {
     const res = await app.inject({ method: "GET", url: "/v1/constituents/export.csv" });
     expect(res.statusCode).toBe(401);
+  });
+});
+
+describe("flag ON — archived-definition readability (detail + export)", () => {
+  const archivedEmail = `cfv-archived-${Date.now()}@example.org`;
+  let defId: string;
+  let rowId: string;
+  const createdDefIds: string[] = [];
+
+  beforeAll(async () => {
+    await setFlag(FEATURE_FLAG_KEYS.CONSTITUENTS_CUSTOM_FIELDS, true);
+    // Definition + value created through the API (org_admin token), so the
+    // archive below exercises the real route-side lifecycle.
+    const def = await app.inject({
+      method: "POST",
+      url: "/v1/custom-fields",
+      headers: authHeader(token),
+      payload: { domain: "constituent", key: "legacy_status", label: "Legacy V1", type: "text" },
+    });
+    expect(def.statusCode).toBe(201);
+    defId = def.json().data.id;
+    createdDefIds.push(defId);
+
+    const created = await createViaApi({
+      firstName: "ArchivedReadable",
+      email: archivedEmail,
+      custom: { legacy_status: "retired" },
+    });
+    expect(created.status).toBe(201);
+    rowId = created.body.data?.id as string;
+  });
+
+  afterAll(async () => {
+    for (const id of createdDefIds) {
+      await db.delete(customFieldDefinitions).where(eq(customFieldDefinitions.id, id));
+    }
+    await invalidateDefinitionsCache(ORG_A);
+  });
+
+  it("keeps the archived definition's value readable on detail, out of list rows, and in the export with an '(archived)' header", async () => {
+    const archived = await app.inject({
+      method: "DELETE",
+      url: `/v1/custom-fields/${defId}`,
+      headers: authHeader(token),
+    });
+    expect(archived.statusCode).toBe(200);
+
+    // Detail serializes active + archived definitions (docs/35 §4).
+    const detail = await app.inject({
+      method: "GET",
+      url: `/v1/constituents/${rowId}`,
+      headers: authHeader(token),
+    });
+    expect(detail.statusCode).toBe(200);
+    expect(detail.json().data.custom).toMatchObject({ legacy_status: "retired" });
+
+    // List rows stay active-only.
+    const list = await app.inject({
+      method: "GET",
+      url: "/v1/constituents?search=ArchivedReadable",
+      headers: authHeader(token),
+    });
+    const row = list.json().data.find((r: { id: string }) => r.id === rowId);
+    expect(row?.custom).not.toHaveProperty("legacy_status");
+
+    // Export keeps the column, suffixed '(archived)', value included.
+    const csv = await app.inject({
+      method: "GET",
+      url: "/v1/constituents/export.csv",
+      headers: authHeader(token),
+    });
+    expect(csv.statusCode).toBe(200);
+    const [headerLine] = csv.body.split("\r\n");
+    expect(headerLine).toContain("Legacy V1 (archived)");
+    const dataRow = csv.body.split("\r\n").find((line: string) => line.includes(archivedEmail));
+    expect(dataRow).toContain("retired");
+  });
+
+  it("archived-then-recreated same key: the active definition wins — the value serializes once, no duplicate export column", async () => {
+    // Recreate the archived key as a new active definition (the documented
+    // type-change path — archive + recreate).
+    const recreated = await app.inject({
+      method: "POST",
+      url: "/v1/custom-fields",
+      headers: authHeader(token),
+      payload: { domain: "constituent", key: "legacy_status", label: "Legacy V2", type: "number" },
+    });
+    expect(recreated.statusCode).toBe(201);
+    createdDefIds.push(recreated.json().data.id);
+
+    const detail = await app.inject({
+      method: "GET",
+      url: `/v1/constituents/${rowId}`,
+      headers: authHeader(token),
+    });
+    expect(detail.statusCode).toBe(200);
+    // The blob holds one value per key; the active twin owns it.
+    expect(detail.json().data.custom.legacy_status).toBe("retired");
+
+    const csv = await app.inject({
+      method: "GET",
+      url: "/v1/constituents/export.csv",
+      headers: authHeader(token),
+    });
+    const [headerLine] = csv.body.split("\r\n");
+    // Exactly ONE column for the key: the active V2 — the archived V1 twin
+    // is deduped out of the readable catalog.
+    expect(headerLine).toContain("Legacy V2");
+    expect(headerLine).not.toContain("Legacy V1");
+    expect(headerLine?.match(/Legacy/g)).toHaveLength(1);
+  });
+});
+
+describe("flag ON — definition mutations invalidate the value-path catalog cache", () => {
+  const cacheEmail = `cfv-cache-${Date.now()}@example.org`;
+  let defId: string;
+  let rowId: string;
+
+  beforeAll(async () => {
+    await setFlag(FEATURE_FLAG_KEYS.CONSTITUENTS_CUSTOM_FIELDS, true);
+  });
+
+  afterAll(async () => {
+    if (defId) {
+      await db.delete(customFieldDefinitions).where(eq(customFieldDefinitions.id, defId));
+    }
+    await invalidateDefinitionsCache(ORG_A);
+  });
+
+  it("a definition created through the API is usable on the value path within the same second (no 60 s staleness)", async () => {
+    // Warm the (org × constituent) catalog cache through a real value read
+    // BEFORE the definition exists — a dropped invalidateDefinitionsCache
+    // call in the create path would leave this stale set cached for 60 s.
+    const warm = await app.inject({
+      method: "GET",
+      url: "/v1/constituents?page=1&limit=1",
+      headers: authHeader(token),
+    });
+    expect(warm.statusCode).toBe(200);
+
+    const def = await app.inject({
+      method: "POST",
+      url: "/v1/custom-fields",
+      headers: authHeader(token),
+      payload: { domain: "constituent", key: "cache_probe", label: "Cache probe", type: "text" },
+    });
+    expect(def.statusCode).toBe(201);
+    defId = def.json().data.id;
+
+    // Immediately write a value on the new key: validation reads the active
+    // catalog — a stale cache answers 422 unknown_key and fails this test.
+    const created = await createViaApi({
+      firstName: "CacheProbe",
+      email: cacheEmail,
+      custom: { cache_probe: "fresh" },
+    });
+    expect(created.status).toBe(201);
+    rowId = created.body.data?.id as string;
+    expect(created.body.data?.custom).toMatchObject({ cache_probe: "fresh" });
+  });
+
+  it("an archive through the API drops the key from list serialization immediately; a restore re-admits writes immediately", async () => {
+    // List read re-warms the cache with the def ACTIVE.
+    const before = await app.inject({
+      method: "GET",
+      url: "/v1/constituents?search=CacheProbe",
+      headers: authHeader(token),
+    });
+    expect(before.json().data.find((r: { id: string }) => r.id === rowId)?.custom).toMatchObject({
+      cache_probe: "fresh",
+    });
+
+    const archived = await app.inject({
+      method: "DELETE",
+      url: `/v1/custom-fields/${defId}`,
+      headers: authHeader(token),
+    });
+    expect(archived.statusCode).toBe(200);
+
+    // Immediately: list rows serialize active-only — a stale cached catalog
+    // would still carry the def and leave the key on the wire.
+    const after = await app.inject({
+      method: "GET",
+      url: "/v1/constituents?search=CacheProbe",
+      headers: authHeader(token),
+    });
+    const row = after.json().data.find((r: { id: string }) => r.id === rowId);
+    expect(row).toBeDefined();
+    expect(row?.custom).not.toHaveProperty("cache_probe");
+
+    const restored = await app.inject({
+      method: "POST",
+      url: `/v1/custom-fields/${defId}/restore`,
+      headers: authHeader(token),
+    });
+    expect(restored.statusCode).toBe(200);
+
+    // Immediately: the write path validates against the restored catalog —
+    // a stale post-archive cache answers 422 unknown_key.
+    const write = await app.inject({
+      method: "PUT",
+      url: `/v1/constituents/${rowId}`,
+      headers: authHeader(token),
+      payload: { custom: { cache_probe: "restored" } },
+    });
+    expect(write.statusCode).toBe(200);
+    expect(write.json().data.custom).toMatchObject({ cache_probe: "restored" });
   });
 });

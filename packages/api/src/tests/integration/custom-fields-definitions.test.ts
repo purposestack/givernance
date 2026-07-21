@@ -311,6 +311,57 @@ describe("fields-per-domain quota", () => {
       sql`DELETE FROM custom_field_definitions WHERE org_id = ${ORG_A} AND domain = 'campaign'`,
     );
   });
+
+  it("ignores an EXPIRED override (base limit applies) while a live one still raises", async () => {
+    // Fresh campaign-domain slate (the previous test cleans up after itself,
+    // but stay order-independent).
+    await db.execute(
+      sql`DELETE FROM customization_quota_overrides WHERE org_id = ${ORG_A} AND domain = 'campaign'`,
+    );
+    await db.execute(
+      sql`DELETE FROM custom_field_definitions WHERE org_id = ${ORG_A} AND domain = 'campaign'`,
+    );
+    try {
+      for (let i = 0; i < 10; i++) {
+        const res = await createField({ domain: "campaign", key: `camp_exp_${i}`, label: `E${i}` });
+        expect(res.status).toBe(201);
+      }
+
+      // An override whose expires_at has lapsed must be inert — the base
+      // starter limit (10) applies and is the one named in the 422.
+      await db.execute(sql`
+        INSERT INTO customization_quota_overrides
+          (org_id, domain, quota_key, value, reason, set_by, expires_at)
+        VALUES (${ORG_A}, 'campaign', 'fields_per_domain', 20, 'expired raise', 'test-admin',
+                now() - interval '1 day')
+      `);
+      const blocked = await createField({ domain: "campaign", key: "camp_exp_over", label: "X" });
+      expect(blocked.status).toBe(422);
+      expect(blocked.body.title).toBe("quota_exceeded");
+      expect(blocked.body.limit).toBe(10);
+
+      // The SAME row with a live (future) expires_at raises, and its limit
+      // is the one named once exhausted — proof the 422 above came from the
+      // expiry predicate, not from the row being unreadable.
+      await db.execute(sql`
+        UPDATE customization_quota_overrides
+        SET value = 11, expires_at = now() + interval '1 day'
+        WHERE org_id = ${ORG_A} AND domain = 'campaign' AND quota_key = 'fields_per_domain'
+      `);
+      const eleventh = await createField({ domain: "campaign", key: "camp_exp_10", label: "E10" });
+      expect(eleventh.status).toBe(201);
+      const twelfth = await createField({ domain: "campaign", key: "camp_exp_11", label: "E11" });
+      expect(twelfth.status).toBe(422);
+      expect(twelfth.body.limit).toBe(11);
+    } finally {
+      await db.execute(
+        sql`DELETE FROM customization_quota_overrides WHERE org_id = ${ORG_A} AND domain = 'campaign'`,
+      );
+      await db.execute(
+        sql`DELETE FROM custom_field_definitions WHERE org_id = ${ORG_A} AND domain = 'campaign'`,
+      );
+    }
+  });
 });
 
 describe("update / archive / restore / reorder", () => {

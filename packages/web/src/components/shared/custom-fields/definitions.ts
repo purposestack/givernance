@@ -49,6 +49,19 @@ interface RawDefinition {
   showOnRelated?: unknown;
   sensitive?: unknown;
   purposeText?: unknown;
+  archivedAt?: unknown;
+}
+
+/**
+ * A definition as rendered on DETAIL pages: archived definitions ride along
+ * (`archivedAt` set) so values already entered stay visible, per the
+ * operator-facing archive contract ("values stay visible on detail pages
+ * and in exports"). Forms / filters / columns keep using the active-only
+ * `CustomFieldDefinition` catalog.
+ */
+export interface DetailCustomFieldDefinition extends CustomFieldDefinition {
+  /** ISO timestamp when the definition was archived — `null` when active. */
+  archivedAt: string | null;
 }
 
 function mapOption(raw: RawOption): CustomFieldOption | null {
@@ -99,6 +112,18 @@ function mapDefinition(raw: RawDefinition): CustomFieldDefinition | null {
   };
 }
 
+/** Unwrap the `{data: [...]}` / `{data: {definitions: [...]}}` envelope variants. */
+function unwrapDefinitionList(payload: unknown): RawDefinition[] {
+  const list = Array.isArray(payload)
+    ? payload
+    : payload &&
+        typeof payload === "object" &&
+        Array.isArray((payload as { definitions?: unknown }).definitions)
+      ? (payload as { definitions: unknown[] }).definitions
+      : [];
+  return list as RawDefinition[];
+}
+
 /**
  * Fetch the active (non-archived) definitions for one domain from
  * `GET /v1/custom-fields?domain=`. Accepts either `{data: [...]}` or
@@ -112,18 +137,42 @@ export async function fetchCustomFieldDefinitions(
   const response = await client.get<{ data: unknown }>("/v1/custom-fields", {
     params: { domain },
   });
-  const payload = response.data;
-  const list = Array.isArray(payload)
-    ? payload
-    : payload &&
-        typeof payload === "object" &&
-        Array.isArray((payload as { definitions?: unknown }).definitions)
-      ? (payload as { definitions: unknown[] }).definitions
-      : [];
-  return (list as RawDefinition[])
+  return unwrapDefinitionList(response.data)
     .map(mapDefinition)
     .filter((d): d is CustomFieldDefinition => d !== null && d.domain === domain)
     .sort((a, b) => a.sortOrder - b.sortOrder);
+}
+
+/**
+ * Detail-page catalog for one domain: `GET /v1/custom-fields?domain=&includeArchived=true`.
+ * Active definitions come first (sortOrder-ordered) followed by archived ones
+ * (sortOrder-ordered), matching the API's detail serializers which emit
+ * archived keys too. Never used for forms, filters or columns — those stay
+ * on the active-only catalog.
+ */
+export async function fetchDetailCustomFieldDefinitions(
+  client: ApiClient,
+  domain: CustomFieldDomain,
+): Promise<DetailCustomFieldDefinition[]> {
+  const response = await client.get<{ data: unknown }>("/v1/custom-fields", {
+    params: { domain, includeArchived: true },
+  });
+  const mapped = unwrapDefinitionList(response.data)
+    .map((raw): DetailCustomFieldDefinition | null => {
+      const definition = mapDefinition(raw);
+      if (definition === null) return null;
+      return {
+        ...definition,
+        archivedAt:
+          typeof raw.archivedAt === "string" && raw.archivedAt !== "" ? raw.archivedAt : null,
+      };
+    })
+    .filter((d): d is DetailCustomFieldDefinition => d !== null && d.domain === domain);
+  const active = mapped.filter((d) => d.archivedAt === null);
+  const archived = mapped.filter((d) => d.archivedAt !== null);
+  active.sort((a, b) => a.sortOrder - b.sortOrder);
+  archived.sort((a, b) => a.sortOrder - b.sortOrder);
+  return [...active, ...archived];
 }
 
 /**
@@ -142,6 +191,48 @@ export async function fetchCustomFieldDefinitionsOrEmpty(
   } catch {
     return [];
   }
+}
+
+/**
+ * Detail-page variant of {@link fetchCustomFieldDefinitionsOrEmpty}: archived
+ * definitions ride along so their stored values keep rendering (read-only,
+ * "archived"-badged) on the three domain detail pages.
+ */
+export async function fetchDetailCustomFieldDefinitionsOrEmpty(
+  client: ApiClient,
+  domain: CustomFieldDomain,
+  enabled: boolean,
+): Promise<DetailCustomFieldDefinition[]> {
+  if (!enabled) return [];
+  try {
+    return await fetchDetailCustomFieldDefinitions(client, domain);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Which detail-page rows actually render: every active definition (empty
+ * values show an em-dash), but archived definitions only when this record
+ * still holds a value — an archived field with nothing entered adds no row.
+ *
+ * Archive-and-recreate dedupe: when a key was archived and then recreated
+ * (the documented type-change flow), the catalog carries BOTH definitions
+ * for the same key. Both would read `values[key]`, rendering the same
+ * stored value twice — once through the STALE archived definition's
+ * type/options. The active definition wins and the archived twin is
+ * dropped, mirroring the server-side serializer contract ("active
+ * definition wins — the value serializes once").
+ */
+export function visibleDetailCustomFieldDefinitions<
+  T extends CustomFieldDefinition & { archivedAt?: string | null },
+>(defs: readonly T[], values: CustomFieldValues | null | undefined): T[] {
+  const activeKeys = new Set(defs.filter((d) => !d.archivedAt).map((d) => d.key));
+  return defs.filter((d) => {
+    if (!d.archivedAt) return true;
+    if (activeKeys.has(d.key)) return false;
+    return !isEmptyCustomValue(values?.[d.key]);
+  });
 }
 
 /**

@@ -9,6 +9,7 @@ import {
   missingRequiredCustomKeys,
   projectableDefinitions,
   sanitizeCustomValues,
+  visibleDetailCustomFieldDefinitions,
 } from "./definitions";
 
 function def(partial: Partial<CustomFieldDefinition> & { key: string }): CustomFieldDefinition {
@@ -68,6 +69,61 @@ describe("buildCustomFieldPatch", () => {
   it("includes set values", () => {
     const patch = buildCustomFieldPatch({}, { notes: "hello" }, defs);
     expect(patch).toEqual({ notes: "hello" });
+  });
+});
+
+describe("visibleDetailCustomFieldDefinitions", () => {
+  // PR #550 MAJOR-6 regression: archived definitions' stored values must
+  // stay visible on detail pages (per the operator-facing archive copy),
+  // while archived fields with nothing entered add no row.
+  const active = { ...def({ key: "segment" }), archivedAt: null };
+  const archivedWithValue = {
+    ...def({ key: "legacy_score" }),
+    archivedAt: "2026-07-01T00:00:00.000Z",
+  };
+  const archivedEmpty = { ...def({ key: "old_notes" }), archivedAt: "2026-07-01T00:00:00.000Z" };
+
+  it("keeps active definitions even when the record holds no value", () => {
+    expect(visibleDetailCustomFieldDefinitions([active], {})).toEqual([active]);
+  });
+
+  it("keeps archived definitions only when the record still holds a value", () => {
+    const visible = visibleDetailCustomFieldDefinitions(
+      [active, archivedWithValue, archivedEmpty],
+      { legacy_score: "high" },
+    );
+    expect(visible.map((d) => d.key)).toEqual(["segment", "legacy_score"]);
+  });
+
+  it("drops archived definitions whose value is empty-equivalent", () => {
+    const visible = visibleDetailCustomFieldDefinitions([archivedWithValue], {
+      legacy_score: "  ",
+    });
+    expect(visible).toEqual([]);
+  });
+
+  it("treats definitions without an archivedAt marker as active (donorCustom path)", () => {
+    expect(visibleDetailCustomFieldDefinitions([def({ key: "plain" })], undefined)).toHaveLength(1);
+  });
+
+  it("drops an archived definition whose key was recreated as an active one (no duplicate row)", () => {
+    // Archive-and-recreate (the documented type-change flow): the
+    // includeArchived catalog carries BOTH definitions for `score`. Only
+    // the ACTIVE one may render — the archived twin would re-interpret
+    // the same stored value through its stale type/options, mirroring the
+    // API's recreate-dedupe contract ("active definition wins — the value
+    // serializes once").
+    const recreatedActive = { ...def({ key: "score", type: "number" as const }), archivedAt: null };
+    const archivedTwin = {
+      ...def({ key: "score" }),
+      id: "id-score-archived",
+      archivedAt: "2026-06-01T00:00:00.000Z",
+    };
+    const visible = visibleDetailCustomFieldDefinitions(
+      [recreatedActive, archivedWithValue, archivedTwin],
+      { score: 7, legacy_score: "high" },
+    );
+    expect(visible.map((d) => d.id)).toEqual([recreatedActive.id, archivedWithValue.id]);
   });
 });
 

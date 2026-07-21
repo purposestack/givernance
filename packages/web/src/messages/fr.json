@@ -17,7 +17,8 @@
     },
     "detail": {
       "sectionTitle": "Champs personnalisés",
-      "donorSectionTitle": "Détails du donateur"
+      "donorSectionTitle": "Détails du donateur",
+      "archivedBadge": "Archivé"
     }
   },
   "common": {

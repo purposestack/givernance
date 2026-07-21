@@ -1,5 +1,5 @@
 import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
-import type { CustomFieldDefinition, CustomFieldValues } from "@givernance/shared/custom-fields";
+import type { CustomFieldValues } from "@givernance/shared/custom-fields";
 import { ArrowLeft, Pencil } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -10,8 +10,11 @@ import { ReceiptPreviewButton } from "@/components/donations/receipt-preview-but
 import { RefundDonationButton } from "@/components/donations/refund-donation-button";
 import {
   CustomFieldDetailRows,
+  type DetailRowDefinition,
   fetchCustomFieldDefinitionsOrEmpty,
+  fetchDetailCustomFieldDefinitionsOrEmpty,
   projectableDefinitions,
+  visibleDetailCustomFieldDefinitions,
 } from "@/components/shared/custom-fields";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
@@ -70,8 +73,12 @@ export default async function DonationDetailPage({ params }: DonationDetailPageP
     donationCustomEnabled = false;
     constituentCustomEnabled = false;
   }
+  // Donation-domain fields use the detail catalog (includeArchived) so
+  // archived definitions' stored values stay visible on this page; the
+  // constituent catalog stays active-only — archived fields leave the
+  // donorCustom projection entirely (archive contract).
   const [donationDefs, constituentDefs] = await Promise.all([
-    fetchCustomFieldDefinitionsOrEmpty(client, "donation", donationCustomEnabled),
+    fetchDetailCustomFieldDefinitionsOrEmpty(client, "donation", donationCustomEnabled),
     fetchCustomFieldDefinitionsOrEmpty(client, "constituent", constituentCustomEnabled),
   ]);
   // Server re-enforces eligibility per request; this filter only picks which
@@ -161,6 +168,7 @@ export default async function DonationDetailPage({ params }: DonationDetailPageP
           values={donation.custom}
           locale={locale}
           booleanLabels={{ yes: tCustom("boolean.yes"), no: tCustom("boolean.no") }}
+          archivedLabel={tCustom("detail.archivedBadge")}
         />
         {/* Epic #539 §6 — the donor's projected (showOnRelated ∧ ¬sensitive)
             fields. Values come from the API's per-request serializer
@@ -183,22 +191,29 @@ function CustomFieldsCard({
   values,
   locale,
   booleanLabels,
+  archivedLabel,
 }: {
   title: string;
-  definitions: CustomFieldDefinition[];
+  definitions: DetailRowDefinition[];
   values: CustomFieldValues | undefined;
   locale: string;
   booleanLabels: { yes: string; no: string };
+  /** Provided when the catalog may carry archived definitions. */
+  archivedLabel?: string;
 }) {
-  if (definitions.length === 0) return null;
+  // Active defs always render (em-dash when empty); archived defs only
+  // when this record still holds a value.
+  const visible = visibleDetailCustomFieldDefinitions(definitions, values);
+  if (visible.length === 0) return null;
   return (
     <Card className="p-6">
       <h2 className="mb-4 font-heading text-xl text-on-surface">{title}</h2>
       <CustomFieldDetailRows
-        definitions={definitions}
+        definitions={visible}
         values={values}
         locale={locale}
         booleanLabels={booleanLabels}
+        archivedLabel={archivedLabel}
       />
     </Card>
   );

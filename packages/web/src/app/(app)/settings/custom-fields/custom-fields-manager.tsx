@@ -1,6 +1,13 @@
 "use client";
 
-import { ArchiveRestore, GripVertical, Plus, SlidersHorizontal } from "lucide-react";
+import {
+  ArchiveRestore,
+  ArrowDown,
+  ArrowUp,
+  GripVertical,
+  Plus,
+  SlidersHorizontal,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -446,15 +453,29 @@ function FieldRow({
             <span className="cursor-grab text-on-surface-variant opacity-60" aria-hidden="true">
               <GripVertical size={16} />
             </span>
-            {/* Keyboard-accessible fallback for the pointer-only drag. */}
-            <span className="sr-only">
-              <button type="button" onClick={onMoveUp} disabled={isFirst}>
-                {t("actions.moveUp", { label: definition.label })}
-              </button>
-              <button type="button" onClick={onMoveDown} disabled={isLast}>
-                {t("actions.moveDown", { label: definition.label })}
-              </button>
-            </span>
+            {/* Keyboard-accessible fallback for the pointer-only drag —
+                visually quiet by default, revealed on hover and on keyboard
+                focus so the focused control is visible (WCAG 2.4.7,
+                PR #550 m14). Same arrow pattern as the option reorder in
+                custom-field-dialog.tsx. */}
+            <button
+              type="button"
+              onClick={onMoveUp}
+              disabled={isFirst}
+              aria-label={t("actions.moveUp", { label: definition.label })}
+              className="text-on-surface-variant opacity-0 transition-opacity hover:opacity-100 focus-visible:opacity-100 disabled:pointer-events-none disabled:opacity-0"
+            >
+              <ArrowUp size={12} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              onClick={onMoveDown}
+              disabled={isLast}
+              aria-label={t("actions.moveDown", { label: definition.label })}
+              className="text-on-surface-variant opacity-0 transition-opacity hover:opacity-100 focus-visible:opacity-100 disabled:pointer-events-none disabled:opacity-0"
+            >
+              <ArrowDown size={12} aria-hidden="true" />
+            </button>
           </span>
         ) : null}
       </td>

@@ -1,7 +1,12 @@
 /** Campaign routes — full CRUD, stats, ROI, document generation, and eligible funds */
 
 import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
-import { buildCustomValidator, type CustomFieldValues } from "@givernance/shared/custom-fields";
+import {
+  buildCustomValidator,
+  type CustomFieldPatch,
+  type CustomFieldValues,
+  type CustomValidator,
+} from "@givernance/shared/custom-fields";
 import {
   CAMPAIGN_STATUS_VALUES,
   CAMPAIGN_TYPE_VALUES,
@@ -10,7 +15,7 @@ import {
 import { MULTI_CURRENCY_VALUES } from "@givernance/shared/validators";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import { customFieldsProblem } from "../../lib/custom-field-values.js";
+import { CustomFieldValidationError, customFieldsProblem } from "../../lib/custom-field-values.js";
 import { flagService as defaultFlagService } from "../../lib/flags/flag-service.js";
 import { requireAuth, requireOrgAdmin, requireWrite } from "../../lib/guards.js";
 import {
@@ -36,7 +41,6 @@ import {
   closeCampaign,
   createCampaign,
   getCampaign,
-  getCampaignCustom,
   getCampaignRoi,
   getCampaignStats,
   listCampaignFunds,
@@ -143,19 +147,24 @@ const customValidationProblem = customFieldsProblem;
 type CampaignCustomWrite =
   | {
       ok: true;
+      /** Create path only: pre-merged blob (there is no existing row to race). */
       merged: CustomFieldValues | undefined;
+      /** Update path only: raw patch + validator — merged INSIDE the update tx. */
+      patch: CustomFieldPatch | undefined;
+      validator: CustomValidator | null;
       serializer: CampaignCustomSerializer | null;
     }
-  | { ok: false; kind: "unprocessable"; problem: ReturnType<typeof problemDetail> }
-  | { ok: false; kind: "not_found" };
+  | { ok: false; kind: "unprocessable"; problem: ReturnType<typeof problemDetail> };
 
 /**
  * Resolves the `custom` merge-patch of a campaign write. Flag off + values
  * in the payload → 422 (multi-type precedent, issue #465: the core route
  * always works, the gated affordance is rejected loudly, never silently
- * dropped). Flag on → validate against the org registry; `campaignId`
- * present = update path (patch over the current blob, `required` never
- * enforced), absent = create path (`required` enforced on new writes only).
+ * dropped). Flag on → create path (`campaignId` absent) validates + merges
+ * here against `{}` with `required` enforced; update path hands the raw
+ * patch + validator down to the service, which merges over the FOR
+ * UPDATE-locked current blob INSIDE the update transaction — reading the
+ * blob here would let concurrent patches drop each other's keys.
  */
 async function resolveCampaignCustomWrite(
   request: FastifyRequest,
@@ -169,31 +178,28 @@ async function resolveCampaignCustomWrite(
     if (patch && Object.keys(patch).length > 0) {
       return { ok: false, kind: "unprocessable", problem: customFieldsDisabledProblem() };
     }
-    return { ok: true, merged: undefined, serializer: null };
+    return { ok: true, merged: undefined, patch: undefined, validator: null, serializer: null };
   }
 
   const defs = await getActiveDefinitions(orgId, "campaign");
   const serializer = buildCustomSerializer(defs);
+  const validator = buildCustomValidator(defs);
 
-  let existing: CustomFieldValues = {};
   if (campaignId !== undefined) {
-    if (patch === undefined) {
-      return { ok: true, merged: undefined, serializer };
-    }
-    const current = await getCampaignCustom(orgId, campaignId);
-    if (current === null) {
-      return { ok: false, kind: "not_found" };
-    }
-    existing = current;
+    return {
+      ok: true,
+      merged: undefined,
+      patch: patch as CustomFieldPatch | undefined,
+      validator,
+      serializer,
+    };
   }
 
-  const result = buildCustomValidator(defs).validatePatch(existing, patch ?? {}, {
-    enforceRequired: campaignId === undefined,
-  });
+  const result = validator.validatePatch({}, patch ?? {}, { enforceRequired: true });
   if (!result.ok) {
     return { ok: false, kind: "unprocessable", problem: customValidationProblem(result.errors) };
   }
-  return { ok: true, merged: result.merged, serializer };
+  return { ok: true, merged: result.merged, patch: undefined, validator, serializer };
 }
 
 /**
@@ -414,11 +420,7 @@ export async function campaignRoutes(app: FastifyInstance) {
 
       const customWrite = await resolveCampaignCustomWrite(request, orgId, body.custom);
       if (!customWrite.ok) {
-        // `not_found` is unreachable on the create path — the union just
-        // keeps the discriminant exhaustive.
-        return customWrite.kind === "unprocessable"
-          ? reply.status(422).send(customWrite.problem)
-          : reply.status(404).send(problemDetail(404, "Not Found", "Campaign not found"));
+        return reply.status(422).send(customWrite.problem);
       }
 
       try {
@@ -538,16 +540,16 @@ export async function campaignRoutes(app: FastifyInstance) {
 
       const customWrite = await resolveCampaignCustomWrite(request, orgId, body.custom, id);
       if (!customWrite.ok) {
-        return customWrite.kind === "unprocessable"
-          ? reply.status(422).send(customWrite.problem)
-          : reply.status(404).send(problemDetail(404, "Not Found", "Campaign not found"));
+        return reply.status(422).send(customWrite.problem);
       }
 
       try {
+        // The service validates + merges the patch over the FOR UPDATE-locked
+        // current blob inside its transaction (concurrent-patch safety).
         const updated = await updateCampaign(
           orgId,
           id,
-          { ...body, custom: customWrite.merged },
+          { ...body, custom: customWrite.patch, customValidator: customWrite.validator },
           userId,
         );
 
@@ -557,6 +559,9 @@ export async function campaignRoutes(app: FastifyInstance) {
 
         return { data: shapeCampaignCustom(updated, customWrite.serializer) };
       } catch (err) {
+        if (err instanceof CustomFieldValidationError) {
+          return reply.status(422).send(customValidationProblem(err.errors));
+        }
         if (err instanceof CampaignValidationError) {
           return reply.status(400).send(problemDetail(400, "Bad Request", err.message));
         }

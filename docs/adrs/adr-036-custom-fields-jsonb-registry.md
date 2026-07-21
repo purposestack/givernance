@@ -66,6 +66,7 @@ We store custom-field **values** in **one JSONB column per domain table** (`cons
 - **Range queries are unindexed** until a per-field expression index is deliberately added; a pathological tenant could breach the filter p95 budget.
 - **Typed access is mediated**: everything reading `custom` must go through the validator/serializer seam — a raw `SELECT custom` is easy to write and wrong.
 - **JSONB blobs bloat rows** if quotas were ever removed — the quota ceilings are load-bearing for storage, not just UX.
+- **Cache-key deviation from the epic** (Epic #539 § 4): the epic specified `catalog_version`-keyed cache entries (per-org monotonic counter in the key); shipped instead as fixed per-domain keys (`customfields:{orgId}:{domain}`) + explicit `UNLINK` on every definition mutation + a 60 s TTL backstop. Behaviourally equivalent (worst-case staleness = one TTL window; zero when invalidation fires) with no version counter to persist — but anyone extending the cache must keep calling `invalidateDefinitionsCache` on every mutation path, since there is no version bump to save them. The invalidation contract is pinned by an integration test (docs/35 § 3).
 
 ### Mitigation
 

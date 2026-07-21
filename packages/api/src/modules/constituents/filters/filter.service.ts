@@ -26,7 +26,12 @@ import type { FastifyBaseLogger } from "fastify";
 import { withTenantContext } from "../../../lib/db.js";
 import type { FieldRegistryBundle } from "./field-registry.js";
 import { PatternDetector } from "./pattern-detector.js";
-import { FilterQueryBuilder } from "./query-builder.js";
+import {
+  customBooleanExpr,
+  customDateExpr,
+  customNumericExpr,
+  FilterQueryBuilder,
+} from "./query-builder.js";
 import type {
   FieldMetadata,
   FilterCondition,
@@ -525,23 +530,25 @@ export class FilterService {
     const key = meta.jsonKey;
     if (!key || !CUSTOM_FIELD_KEY_PATTERN.test(key)) return undefined;
 
-    const text = sql`${constituents.custom} ->> ${key}`;
+    // Cast lanes reuse the guarded expressions (review MAJOR-3): stale
+    // old-typed values left behind by an archive-and-recreate type change
+    // sort as NULL (with the empties) instead of 22P02-aborting the query.
     let expr: SQL;
     switch (meta.customType) {
       case "number":
       case "currency":
-        expr = sql`(${text})::numeric`;
+        expr = customNumericExpr(key);
         break;
       case "date":
-        expr = sql`(${text})::date`;
+        expr = customDateExpr(key);
         break;
       case "boolean":
-        expr = sql`(${text})::boolean`;
+        expr = customBooleanExpr(key);
         break;
       case "text":
       case "long_text":
       case "picklist":
-        expr = text;
+        expr = sql`${constituents.custom} ->> ${key}`;
         break;
       default:
         // multi_picklist has no meaningful scalar order — fall back.

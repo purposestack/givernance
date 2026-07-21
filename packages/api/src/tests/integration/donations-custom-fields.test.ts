@@ -341,6 +341,57 @@ describe("donations custom fields — value writes (flag ON)", () => {
     });
   });
 
+  it("merges the patch INSIDE the update tx — a concurrent writer's keys survive (row-lock regression)", async () => {
+    const created = await createDonation({ custom: { notes: "original" } });
+    expect(created.statusCode).toBe(201);
+    const donationId = created.json<{ data: { id: string } }>().data.id;
+
+    // Hold the row lock from the harness, fire the PATCH (it must block
+    // on the service's FOR UPDATE read), rewrite the blob, commit. If
+    // the route read the blob BEFORE the update transaction (the old
+    // behaviour), the PATCH would merge over the stale pre-lock read and
+    // silently revert the concurrent write of `notes`.
+    let inFlight: Promise<Awaited<ReturnType<typeof app.inject>>> | undefined;
+    let settledEarly = false;
+    await db.transaction(async (tx) => {
+      await tx
+        .select({ id: donations.id })
+        .from(donations)
+        .where(and(eq(donations.id, donationId), eq(donations.orgId, ORG_A)))
+        .for("update");
+
+      inFlight = app
+        .inject({
+          method: "PATCH",
+          url: `/v1/donations/${donationId}`,
+          headers: authHeader(signToken(app)),
+          payload: { constituentId: donorId, amountCents: 5000, custom: { matched: true } },
+        })
+        .then((res) => {
+          settledEarly = true;
+          return res;
+        });
+
+      // Give the request time to reach the locked row…
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      // …and prove it is genuinely serialised behind our lock.
+      expect(settledEarly).toBe(false);
+
+      await tx
+        .update(donations)
+        .set({ custom: { notes: "concurrent" } })
+        .where(and(eq(donations.id, donationId), eq(donations.orgId, ORG_A)));
+    });
+
+    const res = await inFlight!;
+    expect(res.statusCode).toBe(200);
+    // The patch merged over the COMMITTED concurrent blob: both writes win.
+    expect(res.json<{ data: { custom: Record<string, unknown> } }>().data.custom).toEqual({
+      notes: "concurrent",
+      matched: true,
+    });
+  });
+
   it("never serialises stored keys that have no active definition (response firewall)", async () => {
     const created = await createDonation({ custom: { matched: true } });
     const donationId = created.json<{ data: { id: string } }>().data.id;

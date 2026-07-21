@@ -12,6 +12,7 @@ import {
   customImportAlias,
   customTemplateHeader,
   customTemplateSampleValue,
+  findDuplicateCustomHeaderKeys,
   parseCustomImportCell,
 } from "./import";
 import type { CustomFieldDefinition, CustomFieldType } from "./types";
@@ -103,6 +104,26 @@ describe("customTemplateHeader", () => {
     expect(customTemplateHeader(impostor, [segmentDef, impostor], () => false)).toBe(
       "cf_other_field",
     );
+  });
+});
+
+describe("findDuplicateCustomHeaderKeys (review m12)", () => {
+  it("flags a definition addressed by two columns (label + alias both resolved to cf_<key>)", () => {
+    expect(
+      findDuplicateCustomHeaderKeys(["firstName", "cf_donor_segment", "cf_donor_segment"]),
+    ).toEqual(["donor_segment"]);
+  });
+
+  it("reports each duplicated definition once, in first-seen order", () => {
+    expect(findDuplicateCustomHeaderKeys(["cf_a", "cf_b", "cf_a", "cf_b", "cf_a", "cf_c"])).toEqual(
+      ["a", "b"],
+    );
+  });
+
+  it("ignores core headers, dropped (null) columns, and unique custom columns", () => {
+    expect(
+      findDuplicateCustomHeaderKeys(["firstName", "firstName", null, "cf_unique", null]),
+    ).toEqual([]);
   });
 });
 

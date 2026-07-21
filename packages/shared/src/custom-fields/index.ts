@@ -30,6 +30,7 @@ export {
   customImportAlias,
   customTemplateHeader,
   customTemplateSampleValue,
+  findDuplicateCustomHeaderKeys,
   normaliseImportHeader,
   parseCustomImportCell,
 } from "./import";

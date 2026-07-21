@@ -257,11 +257,16 @@ export const FEATURE_FLAG_KEYS = {
    * Surfaces gated by this key:
    *   - API: `/v1/custom-fields*` routes for `domain='donation'`;
    *     `custom` payload on donation create/update.
-   *   - API: `donorCustom` projection on donation list/detail rides the
-   *     CONSTITUENT defs (`show_on_related`) but renders on donation
-   *     surfaces — it hides when THIS flag is off for the tenant.
    *   - Web: donations tab of /settings/custom-fields, form section,
    *     detail rows, list columns.
+   *
+   * NOT gated by this key: the `donorCustom` projection on donation
+   * list/detail. It rides the CONSTITUENT defs (`show_on_related`) and
+   * renders on donation surfaces, but it is gated by
+   * `CONSTITUENTS_CUSTOM_FIELDS` (epic #539 §6 — projection follows the
+   * source domain's flag, so turning donation-own fields off never hides
+   * the donor's opted-in fields). Off-state QA of THIS flag must expect
+   * `donorCustom` to remain when the constituent flag is still on.
    */
   DONATIONS_CUSTOM_FIELDS: "donations.custom_fields",
 

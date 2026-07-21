@@ -13,8 +13,11 @@ import { QrTrackingCard } from "@/components/campaigns/qr-tracking-card";
 import { CountUp } from "@/components/shared/count-up";
 import {
   CustomFieldDetailRows,
+  type DetailCustomFieldDefinition,
   fetchCustomFieldDefinitionsOrEmpty,
+  fetchDetailCustomFieldDefinitionsOrEmpty,
   projectableDefinitions,
+  visibleDetailCustomFieldDefinitions,
 } from "@/components/shared/custom-fields";
 import { EmptyState } from "@/components/shared/empty-state";
 import { InfoTooltipButton } from "@/components/shared/info-tooltip-button";
@@ -254,8 +257,12 @@ export default async function CampaignDetailPage({
     campaignCustomEnabled = false;
     constituentCustomEnabled = false;
   }
+  // Campaign-domain fields use the detail catalog (includeArchived) so
+  // archived definitions' stored values stay visible on this page; the
+  // constituent catalog stays active-only — archived fields leave the
+  // donorCustom projection entirely (archive contract).
   const [campaignDefs, constituentDefs] = await Promise.all([
-    fetchCustomFieldDefinitionsOrEmpty(client, "campaign", campaignCustomEnabled),
+    fetchDetailCustomFieldDefinitionsOrEmpty(client, "campaign", campaignCustomEnabled),
     fetchCustomFieldDefinitionsOrEmpty(client, "constituent", constituentCustomEnabled),
   ]);
   // Server re-enforces projection eligibility per request; this filter only
@@ -766,18 +773,20 @@ async function DonationBreakdownCard({
 /**
  * "Custom fields" card on the campaign detail page (Epic #539). Every active
  * campaign-domain definition renders a row — empty values as an em-dash — so
- * operators see the full configured surface.
+ * operators see the full configured surface; archived definitions render only
+ * when this campaign still holds a value — muted, with an "archived" badge.
  */
 async function CampaignCustomFieldsCard({
   definitions,
   values,
   locale,
 }: {
-  definitions: CustomFieldDefinition[];
+  definitions: DetailCustomFieldDefinition[];
   values: CustomFieldValues | undefined;
   locale: string;
 }) {
-  if (definitions.length === 0) return null;
+  const visible = visibleDetailCustomFieldDefinitions(definitions, values);
+  if (visible.length === 0) return null;
   const tCustom = await getTranslations("customFields");
   return (
     <Card>
@@ -786,10 +795,11 @@ async function CampaignCustomFieldsCard({
       </CardHeader>
       <CardContent>
         <CustomFieldDetailRows
-          definitions={definitions}
+          definitions={visible}
           values={values}
           locale={locale}
           booleanLabels={{ yes: tCustom("boolean.yes"), no: tCustom("boolean.no") }}
+          archivedLabel={tCustom("detail.archivedBadge")}
         />
       </CardContent>
     </Card>

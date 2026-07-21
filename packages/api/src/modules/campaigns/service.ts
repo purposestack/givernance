@@ -1,6 +1,10 @@
 /** Campaigns service — business logic for postal campaign operations */
 
-import type { CustomFieldValues } from "@givernance/shared/custom-fields";
+import type {
+  CustomFieldPatch,
+  CustomFieldValues,
+  CustomValidator,
+} from "@givernance/shared/custom-fields";
 import {
   bankAccounts,
   campaignDocuments,
@@ -13,6 +17,7 @@ import {
 } from "@givernance/shared/schema";
 import type { Pagination } from "@givernance/shared/types";
 import { and, asc, desc, eq, ilike, inArray, type SQL, sql } from "drizzle-orm";
+import { applyCustomPatchInTx } from "../../lib/custom-field-values.js";
 import { withTenantContext } from "../../lib/db.js";
 
 /**
@@ -123,8 +128,16 @@ export interface UpdateCampaignInput {
   fundIds?: string[];
   bankAccountId?: string | null;
   qrReferenceMode?: "auto" | "qrr" | "scor";
-  /** See `CreateCampaignInput.custom` — validated + merged upstream; `undefined` = no change. */
-  custom?: CustomFieldValues;
+  /**
+   * RAW `custom` merge-patch (Epic #539). Unlike the create path, the
+   * update path validates + merges INSIDE the update transaction over the
+   * FOR UPDATE-locked current blob — reading the blob route-side would let
+   * concurrent patches silently drop each other's keys. `undefined` = no
+   * change. Requires `customValidator` when set.
+   */
+  custom?: CustomFieldPatch;
+  /** Validator built from the org's active campaign catalog by the route. */
+  customValidator?: CustomValidator | null;
 }
 
 export interface ListCampaignsQuery {
@@ -413,26 +426,6 @@ export async function getCampaign(orgId: string, id: string) {
 }
 
 /**
- * Current custom blob of one campaign — the read the update route needs
- * to apply a merge-patch over. Returns null when the campaign doesn't
- * exist in this tenant (route maps to 404, indistinguishable from a
- * cross-tenant id per ADR-019).
- */
-export async function getCampaignCustom(
-  orgId: string,
-  id: string,
-): Promise<CustomFieldValues | null> {
-  return withTenantContext(orgId, async (tx) => {
-    const [row] = await tx
-      .select({ custom: campaigns.custom })
-      .from(campaigns)
-      .where(and(eq(campaigns.id, id), eq(campaigns.orgId, orgId)));
-
-    return row ? (row.custom ?? {}) : null;
-  });
-}
-
-/**
  * Detect cycles in the campaign parent hierarchy using a recursive CTE.
  * Returns true if setting `campaignId.parentId = newParentId` would create a cycle.
  */
@@ -526,12 +519,22 @@ export async function updateCampaign(
   userId: string,
 ) {
   return withTenantContext(orgId, async (tx) => {
+    // FOR UPDATE: the `custom` merge-patch below is read-modify-write, so
+    // a concurrent update of the same campaign must block until this tx
+    // commits and then re-read the fresh blob — otherwise the two patches
+    // silently drop each other's keys.
     const [existing] = await tx
       .select()
       .from(campaigns)
-      .where(and(eq(campaigns.id, id), eq(campaigns.orgId, orgId)));
+      .where(and(eq(campaigns.id, id), eq(campaigns.orgId, orgId)))
+      .for("update");
 
     if (!existing) return null;
+
+    // Merge the `custom` patch over the locked current blob — inside the
+    // transaction, so concurrent patches serialise instead of overwriting
+    // each other (same pattern as constituents/donations).
+    const customColumn = applyCustomPatchInTx(existing.custom, input.custom, input.customValidator);
 
     // Validate parentId: must not be self, must exist, must belong to same org, must not create cycle
     if (input.parentId !== undefined && input.parentId !== null) {
@@ -566,17 +569,17 @@ export async function updateCampaign(
         // mode switch. `undefined` = no change; `null` = unlink.
         bankAccountId: input.bankAccountId,
         qrReferenceMode: input.qrReferenceMode,
-        // Full replacement blob — the route already merge-patched it over
-        // the existing values. `undefined` leaves the column untouched.
-        custom: input.custom,
+        // Merged in-transaction above. `undefined` leaves the column untouched.
+        custom: customColumn,
         updatedAt: new Date(),
       })
       .where(and(eq(campaigns.id, id), eq(campaigns.orgId, orgId)))
       .returning({ id: campaigns.id });
 
     // Custom values are unredactable PII — the event records only THAT
-    // they changed, never the blob itself (docs/35 GDPR posture).
-    const { custom: customChange, ...loggableChanges } = input;
+    // they changed, never the blob itself (docs/35 GDPR posture). The
+    // validator is request plumbing, never event payload.
+    const { custom: customChange, customValidator: _validator, ...loggableChanges } = input;
     await tx.insert(outboxEvents).values({
       tenantId: orgId,
       type: "campaign.updated",

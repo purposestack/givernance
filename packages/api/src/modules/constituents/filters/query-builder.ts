@@ -35,6 +35,42 @@ import type {
 } from "./types.js";
 import { FIELD_REGISTRY } from "./types.js";
 
+/**
+ * Guarded JSONB cast lanes (review MAJOR-3). The documented type-change
+ * flow — archive a definition, re-create the same key with a new type —
+ * leaves the OLD-typed values in stored blobs (nothing rewrites rows on
+ * recreate). An unguarded `::numeric` / `::date` / `::boolean` cast then
+ * aborts the WHOLE statement with 22P02 → 500 on the constituent list,
+ * filter execute/preview, custom sort, and CSV export. Each cast lane is
+ * therefore fenced so a stale, uncastable value evaluates to SQL NULL —
+ * "empty never matches" (filters) / "sorts with the empties" (ORDER BY) —
+ * instead of erroring. The GIN containment lanes (picklist /
+ * multi_picklist / boolean equality) stay untouched: `@>` never casts.
+ *
+ * Shared by the filter lanes here and the custom ORDER BY lane in
+ * `filter.service.ts`. Keys MUST be registry-resolved and
+ * `CUSTOM_FIELD_KEY_PATTERN`-checked by the caller before reaching these.
+ */
+export function customNumericExpr(key: string): SQL {
+  const custom = constituents.custom;
+  return sql`CASE WHEN jsonb_typeof(${custom} -> ${key}) = 'number' THEN (${custom} ->> ${key})::numeric END`;
+}
+
+/**
+ * Strict `YYYY-MM-DD` shape gate plus `pg_input_is_valid` (PG 16+, and this
+ * repo pins PG 17) so a shape-valid but impossible calendar day
+ * (`2026-02-30`) is also fenced to NULL instead of raising 22008.
+ */
+export function customDateExpr(key: string): SQL {
+  const custom = constituents.custom;
+  return sql`CASE WHEN (${custom} ->> ${key}) ~ '^\\d{4}-\\d{2}-\\d{2}$' AND pg_input_is_valid(${custom} ->> ${key}, 'date') THEN (${custom} ->> ${key})::date END`;
+}
+
+export function customBooleanExpr(key: string): SQL {
+  const custom = constituents.custom;
+  return sql`CASE WHEN jsonb_typeof(${custom} -> ${key}) = 'boolean' THEN (${custom} ->> ${key})::boolean END`;
+}
+
 export class FilterQueryBuilder {
   private orgId: string;
   private registry: Record<string, FieldMetadata>;
@@ -208,6 +244,21 @@ export class FilterQueryBuilder {
     return next;
   }
 
+  /**
+   * Custom-date values bind the raw `YYYY-MM-DD` STRING (review m4). The
+   * shared `normalizeValue` round-trips through a JS Date, which the pg
+   * driver serializes in PROCESS-LOCAL time: west of UTC, the UTC-midnight
+   * Date becomes the previous local day and every custom-date eq/bound is
+   * off by one. Custom dates compare at `::date` granularity, so the core
+   * end-of-day upper-bound convention is a no-op here
+   * (`…T23:59:59.999`::date is the same day) — the bare day string is bound
+   * untouched; ISO timestamp strings are truncated to their calendar day.
+   */
+  private normalizeCustomDateValue(value: unknown): unknown {
+    const toDay = (v: unknown) => (typeof v === "string" ? v.slice(0, 10) : v);
+    return Array.isArray(value) ? value.map(toDay) : toDay(value);
+  }
+
   /** Append an end-of-day time to a bare `YYYY-MM-DD` string; pass through the rest. */
   private endOfDay(value: unknown): unknown {
     if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
@@ -315,9 +366,21 @@ export class FilterQueryBuilder {
     if (operator === "isNull") return sql`NOT ${present}`;
     if (operator === "isNotNull") return present;
 
+    // Custom dates bypass the shared normalization: comparison happens at
+    // `::date` granularity, so the core end-of-day upper-bound convention is
+    // a no-op here, and the value MUST stay a string — see
+    // normalizeCustomDateValue (review m4).
+    if (fieldMeta.customType === "date") {
+      return this.buildCustomComparableCondition(
+        customDateExpr(key),
+        operator,
+        this.normalizeCustomDateValue(rawValue),
+        (v) => sql`(${v})::date`,
+      );
+    }
+
     // Reuses the shared normalization verbatim: currency (valueUnit "cents")
-    // gets the EUR → cents ×100, date operators get end-of-day upper bounds
-    // and string → Date coercion.
+    // gets the EUR → cents ×100.
     const value = this.normalizeValue(fieldMeta, operator, rawValue);
 
     switch (fieldMeta.customType) {
@@ -327,25 +390,7 @@ export class FilterQueryBuilder {
 
       case "number":
       case "currency":
-        return this.buildCustomComparableCondition(
-          sql`(${custom} ->> ${key})::numeric`,
-          operator,
-          value,
-        );
-
-      case "date":
-        // Values are stored as 'YYYY-MM-DD'; the bound side arrives as a Date
-        // (normalizeValue) and is truncated back to a calendar day so the
-        // end-of-day upper-bound convention maps onto date semantics:
-        // `lte`/`between`-upper/`gt` were bumped to 23:59:59 and now cast to
-        // the same day, keeping the boundary day inclusive/exclusive exactly
-        // like the core date fields.
-        return this.buildCustomComparableCondition(
-          sql`(${custom} ->> ${key})::date`,
-          operator,
-          value,
-          (v) => sql`(${v})::date`,
-        );
+        return this.buildCustomComparableCondition(customNumericExpr(key), operator, value);
 
       case "boolean": {
         if (typeof value !== "boolean") return undefined;
