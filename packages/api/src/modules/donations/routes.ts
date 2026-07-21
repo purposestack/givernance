@@ -26,6 +26,7 @@ import {
   SortOrderSchema,
   UuidSchema,
 } from "../../lib/schemas.js";
+import type { FilterQuery } from "../constituents/filters/types.js";
 import {
   buildCustomSerializer,
   getActiveDefinitions,
@@ -33,6 +34,10 @@ import {
   getReadableDefinitions,
 } from "../customization/lib/value-service.js";
 import { getStripe } from "../payments/service.js";
+import type { DonationFieldRegistryBundle } from "./filters/field-registry.js";
+import { getDonationFieldRegistryBundle } from "./filters/field-registry.js";
+import { registerDonationFilterRoutes } from "./filters/filter.routes.js";
+import { DonationFilterService } from "./filters/filter.service.js";
 import {
   AllocationSumMismatchError,
   CrossTenantReferenceError,
@@ -244,8 +249,111 @@ const ListQuery = Type.Intersect([
     receiptStatus: Type.Optional(ReceiptStatusSchema),
     sort: Type.Optional(DonationSortFieldSchema),
     order: Type.Optional(SortOrderSchema),
+    /**
+     * Advanced-filter DSL (flag `donations.advanced_filters`) — a
+     * JSON-encoded FilterQuery, shareable via the page URL. With the
+     * flag off the param "does not exist": requests carrying it 404.
+     */
+    filters: Type.Optional(Type.String({ maxLength: 8192 })),
   }),
 ]);
+
+type DonationFiltersParamResult =
+  | { ok: true; filter: FilterQuery | undefined; registryBundle?: DonationFieldRegistryBundle }
+  | { ok: false; status: 400 | 404; problem: ReturnType<typeof problemDetail> };
+
+/**
+ * `?filters=` DSL handling for the donations list (mirror of the
+ * constituents `parseFiltersParam`, Epic #418 / ADR-033 posture). With
+ * `donations.advanced_filters` off the param does not exist, so a request
+ * carrying it 404s exactly like the gated `/donations/filter/*` routes do
+ * (`requireFlag` posture — never silently return an UNFILTERED result an
+ * operator believes is filtered, and never disclose the feature to a
+ * scanner via a 400/403).
+ */
+async function parseDonationFiltersParam(
+  request: FastifyRequest,
+  orgId: string,
+  filters: string | undefined,
+): Promise<DonationFiltersParamResult> {
+  if (filters === undefined) {
+    return { ok: true, filter: undefined };
+  }
+
+  const flags = request.flagService ?? defaultFlagService;
+  const enabled = await flags.isEnabled(FEATURE_FLAG_KEYS.DONATIONS_ADVANCED_FILTERS, { orgId });
+  if (!enabled) {
+    request.log.info(
+      {
+        event: "flag.route_gated",
+        flagKey: FEATURE_FLAG_KEYS.DONATIONS_ADVANCED_FILTERS,
+        path: request.routeOptions.url ?? request.url,
+        method: request.method,
+      },
+      "Donations list filters param gated off — feature flag disabled",
+    );
+    return { ok: false, status: 404, problem: problemDetail(404, "Not Found", "Route not found") };
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(filters);
+  } catch {
+    return {
+      ok: false,
+      status: 400,
+      problem: problemDetail(
+        400,
+        "Invalid filter query",
+        "The filters parameter is not valid JSON",
+      ),
+    };
+  }
+
+  // `validateQuery` expects an object — reject scalars/null/arrays here
+  // so a hand-edited URL can't crash it with a property access on null.
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    return {
+      ok: false,
+      status: 400,
+      problem: problemDetail(
+        400,
+        "Invalid filter query",
+        "The filters parameter must be a JSON object",
+      ),
+    };
+  }
+
+  const registryBundle = await getDonationFieldRegistryBundle(orgId);
+  const filterService = new DonationFilterService(orgId, request.log, registryBundle);
+  const validation = filterService.validateQuery(parsed as FilterQuery);
+  if (!validation.valid) {
+    // Archived donation-domain custom field (Epic #539): the persisted
+    // `?filters=` link must fail with the NAMED problem — same contract as
+    // the constituents list route — never a generic error or a silent drop.
+    if (validation.archivedFields.length > 0) {
+      return {
+        ok: false,
+        status: 400,
+        problem: problemDetail(
+          400,
+          "custom_field_archived",
+          "The filter references archived custom fields",
+          { errors: validation.errors, archived_fields: validation.archivedFields },
+        ),
+      };
+    }
+    return {
+      ok: false,
+      status: 400,
+      problem: problemDetail(400, "Invalid filter query", "The filter query contains errors", {
+        errors: validation.errors,
+      }),
+    };
+  }
+
+  return { ok: true, filter: parsed as FilterQuery, registryBundle };
+}
 
 const AllocationSchema = Type.Object({
   fundId: UuidSchema,
@@ -460,7 +568,13 @@ export async function donationRoutes(app: FastifyInstance) {
         receiptStatus?: "pending" | "generated" | "failed";
         sort?: (typeof DONATION_SORT_FIELDS)[number];
         order?: "asc" | "desc";
+        filters?: string;
       };
+
+      const filtersResult = await parseDonationFiltersParam(request, orgId, query.filters);
+      if (!filtersResult.ok) {
+        return reply.status(filtersResult.status).send(filtersResult.problem);
+      }
 
       // Serializers are built ONCE per request (definitions are one cached
       // catalog read, not per-row lookups) and applied over the join the
@@ -479,6 +593,8 @@ export async function donationRoutes(app: FastifyInstance) {
           receiptStatus: query.receiptStatus,
           sort: query.sort,
           order: query.order,
+          advancedFilter: filtersResult.filter,
+          registryBundle: filtersResult.registryBundle,
         }),
         buildDonationSerializers(request, orgId),
       ]);
@@ -1042,4 +1158,8 @@ export async function donationRoutes(app: FastifyInstance) {
       return reply.send(body);
     },
   );
+
+  // Advanced-filter surfaces (flag `donations.advanced_filters`):
+  // /donations/filter/{fields,preview,suggestions}.
+  await registerDonationFilterRoutes(app);
 }

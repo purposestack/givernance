@@ -83,8 +83,12 @@ export function DonationsFiltersButton({ dateFrom, dateTo }: DonationsFiltersBut
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{t("title")}</DialogTitle>
-            <DialogDescription>{t("description")}</DialogDescription>
+            {/* `basicTitle`/`basicDescription`: the bare `title`/`description`
+                keys now belong to the advanced FilterBuilder chrome (flag
+                `donations.advanced_filters`), which shares the
+                `donations.filters` namespace. Values are unchanged. */}
+            <DialogTitle>{t("basicTitle")}</DialogTitle>
+            <DialogDescription>{t("basicDescription")}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-3 sm:grid-cols-2">
             <div>

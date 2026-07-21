@@ -347,7 +347,15 @@ export function DataTable<TData>({
               ))
             ) : (
               <tr>
-                <td colSpan={columns.length} className="px-5">
+                {/*
+                 * Empty-state cell: data rows get their vertical rhythm from
+                 * `rowPadding`, but this cell hosts a block component, so it
+                 * needs its own `py-5` — without it the empty state sits
+                 * flush against the thead border above and the container
+                 * edge below (the pagination footer is hidden when
+                 * `!hasRows`). Fixed here once for every DataTable consumer.
+                 */}
+                <td colSpan={columns.length} className="px-5 py-5">
                   {emptyState}
                 </td>
               </tr>

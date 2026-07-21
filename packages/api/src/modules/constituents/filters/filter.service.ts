@@ -596,11 +596,23 @@ export class FilterService {
       errors.push("At least one condition or pattern is required");
     }
 
-    // Validate each condition
-    conditionsArray.forEach((condition, index) => {
-      const conditionErrors = this.validateSingleCondition(condition, index);
-      errors.push(...conditionErrors);
-    });
+    // Validate each condition — recursing into nested groups. A leaf inside
+    // `subConditions` is just as reachable via a hand-edited `?filters=` URL
+    // as a top-level one; without recursion an unknown nested field would be
+    // silently dropped at build time (the list runs UNFILTERED while the UI
+    // shows the condition as active) and a bad nested value would reach SQL
+    // and 500 (NaN on a numeric column, ILIKE on an enum) instead of 400.
+    const validateConditionTree = (conditions: FilterCondition[]) => {
+      conditions.forEach((condition, index) => {
+        const conditionErrors = this.validateSingleCondition(condition, index);
+        errors.push(...conditionErrors);
+        if (condition.subConditions) {
+          const nested = condition.subConditions.conditions;
+          validateConditionTree(Array.isArray(nested) ? nested : []);
+        }
+      });
+    };
+    validateConditionTree(conditionsArray);
 
     // Validate patterns
     if (query.patterns) {
@@ -632,9 +644,10 @@ export class FilterService {
     };
     collectArchived(conditionsArray);
     const archivedFields = [...archivedSet];
-    // Nested archived references get no per-condition error above (the
-    // per-condition validation only walks the top level) — force invalid
-    // so the query can never execute with the reference silently dropped.
+    // Belt-and-braces: the per-condition tree walk above already errors on
+    // archived references at any depth, but an archived reference must NEVER
+    // execute with the condition silently dropped — force invalid even if a
+    // future refactor drops the per-condition error.
     if (archivedFields.length > 0 && errors.length === 0) {
       errors.push(`Archived custom field referenced: ${archivedFields.join(", ")}`);
     }

@@ -25,7 +25,7 @@ import {
   type SQL,
   sql,
 } from "drizzle-orm";
-import type { PgTableWithColumns } from "drizzle-orm/pg-core";
+import type { PgColumn, PgTableWithColumns } from "drizzle-orm/pg-core";
 import type {
   FieldMetadata,
   FilterCondition,
@@ -50,10 +50,14 @@ import { FIELD_REGISTRY } from "./types.js";
  * Shared by the filter lanes here and the custom ORDER BY lane in
  * `filter.service.ts`. Keys MUST be registry-resolved and
  * `CUSTOM_FIELD_KEY_PATTERN`-checked by the caller before reaching these.
+ *
+ * `column` is the domain's `custom` JSONB column — defaults to
+ * `constituents.custom` so every existing call site is byte-for-byte
+ * unchanged; the donations engine passes `donations.custom` (Epic #539
+ * donation-domain fast-follow).
  */
-export function customNumericExpr(key: string): SQL {
-  const custom = constituents.custom;
-  return sql`CASE WHEN jsonb_typeof(${custom} -> ${key}) = 'number' THEN (${custom} ->> ${key})::numeric END`;
+export function customNumericExpr(key: string, column: PgColumn = constituents.custom): SQL {
+  return sql`CASE WHEN jsonb_typeof(${column} -> ${key}) = 'number' THEN (${column} ->> ${key})::numeric END`;
 }
 
 /**
@@ -61,29 +65,39 @@ export function customNumericExpr(key: string): SQL {
  * repo pins PG 17) so a shape-valid but impossible calendar day
  * (`2026-02-30`) is also fenced to NULL instead of raising 22008.
  */
-export function customDateExpr(key: string): SQL {
-  const custom = constituents.custom;
-  return sql`CASE WHEN (${custom} ->> ${key}) ~ '^\\d{4}-\\d{2}-\\d{2}$' AND pg_input_is_valid(${custom} ->> ${key}, 'date') THEN (${custom} ->> ${key})::date END`;
+export function customDateExpr(key: string, column: PgColumn = constituents.custom): SQL {
+  return sql`CASE WHEN (${column} ->> ${key}) ~ '^\\d{4}-\\d{2}-\\d{2}$' AND pg_input_is_valid(${column} ->> ${key}, 'date') THEN (${column} ->> ${key})::date END`;
 }
 
-export function customBooleanExpr(key: string): SQL {
-  const custom = constituents.custom;
-  return sql`CASE WHEN jsonb_typeof(${custom} -> ${key}) = 'boolean' THEN (${custom} ->> ${key})::boolean END`;
+export function customBooleanExpr(key: string, column: PgColumn = constituents.custom): SQL {
+  return sql`CASE WHEN jsonb_typeof(${column} -> ${key}) = 'boolean' THEN (${column} ->> ${key})::boolean END`;
 }
 
 export class FilterQueryBuilder {
   private orgId: string;
   private registry: Record<string, FieldMetadata>;
+  /** The domain's `custom` JSONB column every custom lane targets. */
+  private customColumn: PgColumn;
 
   /**
    * `registry` is the per-request merged field map (static core registry ∪
    * the org's filterable custom-field definitions) resolved by
    * `getFieldRegistryBundle`. Defaults to the static core registry so
    * callers without custom-field support keep today's behaviour.
+   *
+   * `customColumn` is the JSONB blob the custom-field lanes compile
+   * against. Defaults to `constituents.custom` (identical behaviour for
+   * every existing caller); the donations engine passes `donations.custom`
+   * so the guarded-cast / containment SQL is reused, not duplicated.
    */
-  constructor(orgId: string, registry: Record<string, FieldMetadata> = FIELD_REGISTRY) {
+  constructor(
+    orgId: string,
+    registry: Record<string, FieldMetadata> = FIELD_REGISTRY,
+    customColumn: PgColumn = constituents.custom,
+  ) {
     this.orgId = orgId;
     this.registry = registry;
+    this.customColumn = customColumn;
   }
 
   /**
@@ -358,7 +372,7 @@ export class FilterQueryBuilder {
     // string reaches JSONB path expressions — re-verify before emitting SQL.
     if (!key || !CUSTOM_FIELD_KEY_PATTERN.test(key)) return undefined;
 
-    const custom = constituents.custom;
+    const custom = this.customColumn;
     // "Has a value" ≡ key present AND not a stored JSON null. The validator
     // never persists nulls, but imported / legacy blobs must still read as
     // empty rather than as a value.
@@ -372,7 +386,7 @@ export class FilterQueryBuilder {
     // normalizeCustomDateValue (review m4).
     if (fieldMeta.customType === "date") {
       return this.buildCustomComparableCondition(
-        customDateExpr(key),
+        customDateExpr(key, custom),
         operator,
         this.normalizeCustomDateValue(rawValue),
         (v) => sql`(${v})::date`,
@@ -390,7 +404,7 @@ export class FilterQueryBuilder {
 
       case "number":
       case "currency":
-        return this.buildCustomComparableCondition(customNumericExpr(key), operator, value);
+        return this.buildCustomComparableCondition(customNumericExpr(key, custom), operator, value);
 
       case "boolean": {
         if (typeof value !== "boolean") return undefined;
@@ -424,7 +438,7 @@ export class FilterQueryBuilder {
     if (operator === "neq" && typeof value === "string") {
       // `->>` yields SQL NULL for absent keys, so empty values are
       // excluded from neq — same semantics as `ne()` on a core column.
-      return sql`${constituents.custom} ->> ${key} <> ${value}`;
+      return sql`${this.customColumn} ->> ${key} <> ${value}`;
     }
     if (operator === "in" && Array.isArray(value)) {
       const clauses = value
@@ -460,7 +474,7 @@ export class FilterQueryBuilder {
 
   /** `custom @> '{"<key>": <value>}'` — the GIN-served equality probe. */
   private customContainment(key: string, value: unknown): SQL {
-    return sql`${constituents.custom} @> ${JSON.stringify({ [key]: value })}::jsonb`;
+    return sql`${this.customColumn} @> ${JSON.stringify({ [key]: value })}::jsonb`;
   }
 
   private buildCustomTextCondition(
@@ -468,7 +482,7 @@ export class FilterQueryBuilder {
     operator: FilterOperator,
     value: unknown,
   ): SQL | undefined {
-    const text = sql`${constituents.custom} ->> ${key}`;
+    const text = sql`${this.customColumn} ->> ${key}`;
     const escaped = () => String(value).replace(/[\\_%]/g, "\\$&");
     switch (operator) {
       case "eq":

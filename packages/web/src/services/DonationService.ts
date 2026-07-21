@@ -37,6 +37,7 @@ export const DonationService = {
       receiptStatus: query.receiptStatus,
       sort: query.sort,
       order: query.order,
+      filters: query.filters,
     };
 
     const response = await client.get<DonationListResponse>("/v1/donations", { params });

@@ -271,6 +271,42 @@ export const FEATURE_FLAG_KEYS = {
   DONATIONS_CUSTOM_FIELDS: "donations.custom_fields",
 
   /**
+   * Gates advanced filtering on the donations list (follow-up to Epic
+   * #418 / ADR-033, which shipped the constituent engine under the
+   * legacy-flat `advanced_filters` key — this one follows the dotted
+   * `<domain>.<feature>` convention).
+   *
+   * The donation engine reuses the constituents DSL + validation +
+   * operator machinery but ships its own donation-grain field catalog
+   * (amounts, dates, status/payment enums, campaign/fund attribution,
+   * receipt state, donor name via the existing list join). No
+   * aggregates, no LYBUNT-style patterns — donations are the row grain.
+   * Filtering donations by DONOR custom fields is explicitly vetoed
+   * (Epic #539 §6); donation-own custom fields in this engine are a
+   * fast-follow once the registry merge is parameterised by domain.
+   *
+   * `scope='tenant'` + `tenant_override_allowed=false` for the initial
+   * rollout: staff-enabled per tenant while query-performance impact is
+   * monitored (same posture as the constituents engine's early rollout;
+   * graduation to org-admin self-service once proven).
+   *
+   * `public=true`: the donations page SSR-fetches `/v1/feature-flags`
+   * to decide whether to render the filter-builder entry point.
+   *
+   * Surfaces gated by this key:
+   *   - API: the `?filters=` DSL param on GET /v1/donations (param
+   *     present + flag off → 404, `requireFlag` posture — never a
+   *     silently-unfiltered result).
+   *   - API: GET /v1/donations/filter/fields, POST
+   *     /v1/donations/filter/preview, GET /v1/donations/filter/
+   *     suggestions (requireFlag FIRST preHandler, 404 when off).
+   *   - Web: the FilterBuilder button + chips on the donations page.
+   *
+   * Emergency rollback: see `docs/runbooks/feature-flag-rollback.md`.
+   */
+  DONATIONS_ADVANCED_FILTERS: "donations.advanced_filters",
+
+  /**
    * Gates custom fields on the campaign domain (Epic #539). See
    * `CONSTITUENTS_CUSTOM_FIELDS` for the per-domain kill-switch
    * rationale and rollout posture (same: tenant scope, staff-enabled,
@@ -406,6 +442,16 @@ export const FEATURE_FLAG_REGISTRY: ReadonlyArray<{
     label: "Custom fields on donations",
     description:
       "Lets your organisation define its own typed fields on donation records — for example an internal reference or a thematic classification — then fill and export them like any built-in field. Off by default: Givernance staff turn it on for your organisation during the initial rollout.",
+    scope: "tenant",
+    tenantOverrideAllowed: false,
+    public: true,
+  },
+  {
+    key: FEATURE_FLAG_KEYS.DONATIONS_ADVANCED_FILTERS,
+    defaultEnabled: false,
+    label: "Advanced donation filtering",
+    description:
+      "Enables powerful filtering on the donations list — combine conditions on amounts, dates, payment details, campaigns, funds, receipt status, and donor names, with shareable filter links. Off by default: Givernance staff turn it on for your organisation while query performance is monitored.",
     scope: "tenant",
     tenantOverrideAllowed: false,
     public: true,

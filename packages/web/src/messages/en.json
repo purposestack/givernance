@@ -2197,10 +2197,146 @@
       "receiptLabel": "Receipts",
       "allReceipts": "All receipts",
       "moreLabel": "More filters",
-      "title": "More filters",
-      "description": "Narrow the list by donation period.",
+      "basicTitle": "More filters",
+      "basicDescription": "Narrow the list by donation period.",
       "apply": "Apply",
-      "clear": "Clear filters"
+      "clear": "Clear filters",
+      "builderLabel": "Advanced filters",
+      "title": "Advanced Filters",
+      "description": "Combine rules on amounts, dates, payments, campaigns and donors, then preview the count before applying.",
+      "customFilters": "Add filter rules",
+      "customFiltersHint": "Combine fields like amount, gift date, status, campaign or donor. Mix with AND / OR to narrow the list.",
+      "activeFilters": "Active selection",
+      "activeFiltersHint": "Everything that will be applied. Remove a chip to drop it from the query.",
+      "previewSectionTitle": "Live preview",
+      "previewSectionHint": "Refreshes as you edit — applies what you see when you confirm.",
+      "noConditions": "No conditions defined. Start by adding a filter condition.",
+      "addCondition": "Add condition",
+      "addFirstCondition": "Add your first filter condition",
+      "addAnotherCondition": "Add another filter condition",
+      "selectField": "Select field",
+      "selectOperator": "Select comparison operator",
+      "selectValue": "Select value",
+      "selectValues": "Select values",
+      "selectValuesCount": "{count} selected",
+      "selectValueFor": "Select value for {field}",
+      "selectValuesFor": "Select values for {field}",
+      "selectBooleanFor": "Select yes or no for {field}",
+      "enterValue": "Enter value",
+      "enterValueFor": "Enter value for {field}",
+      "yes": "Yes",
+      "no": "No",
+      "removeCondition": "Remove condition",
+      "cancel": "Cancel",
+      "applying": "Applying...",
+      "applyWithCount": "Apply ({count})",
+      "applyError": "Failed to apply filters",
+      "filterRemoved": "Filter removed: {field}",
+      "previewAnnouncement": "{count} donations match your filters",
+      "startDate": "Start date",
+      "endDate": "End date",
+      "rangeStart": "{field} range start",
+      "rangeEnd": "{field} range end",
+      "rangeSeparator": "to",
+      "rangeFrom": "From",
+      "rangeTo": "To",
+      "noOptions": "No options available",
+      "removeFilter": "Remove {label} filter",
+      "validation": {
+        "incomplete": "Please complete all filter conditions",
+        "noConditions": "Please add at least one filter condition"
+      },
+      "operators": {
+        "and": "Match all",
+        "or": "Match any",
+        "eq": "equals",
+        "neq": "not equals",
+        "gt": "greater than",
+        "gte": "greater than or equal",
+        "lt": "less than",
+        "lte": "less than or equal",
+        "between": "between",
+        "in": "in",
+        "contains": "contains",
+        "startsWith": "starts with",
+        "endsWith": "ends with",
+        "arrayContains": "includes all of",
+        "arrayOverlaps": "includes any of",
+        "isNull": "is empty",
+        "isNotNull": "has a value"
+      },
+      "categories": {
+        "donation": "Donation",
+        "payment": "Payment",
+        "attribution": "Attribution",
+        "receipt": "Receipts",
+        "custom": "Custom fields"
+      },
+      "placeholders": {
+        "amountEur": "Amount in €",
+        "currency": "EUR",
+        "fiscalYear": "2026"
+      },
+      "fields": {
+        "donation": {
+          "amount": "Amount",
+          "currency": "Currency",
+          "donatedAt": "Donation date",
+          "createdAt": "Recorded on",
+          "fiscalYear": "Fiscal year",
+          "status": "Status",
+          "paymentSource": "Payment source",
+          "paymentMethod": "Payment method",
+          "paymentRef": "Payment reference",
+          "refundedAt": "Refund date",
+          "campaign": "Campaign",
+          "fund": "Fund",
+          "isPledgeInstallment": "Pledge installment",
+          "receiptStatus": "Receipt status",
+          "receiptNumber": "Receipt number"
+        },
+        "donor": {
+          "name": "Donor name",
+          "email": "Donor email"
+        }
+      },
+      "options": {
+        "donation": {
+          "status": {
+            "pending": "Pending",
+            "cleared": "Cleared",
+            "refunded": "Refunded",
+            "failed": "Failed"
+          },
+          "paymentSource": {
+            "stripe": "Stripe",
+            "camt053": "Bank statement (camt.053)",
+            "manual": "Manual"
+          },
+          "receiptStatus": {
+            "pending": "Pending",
+            "generated": "Generated",
+            "failed": "Failed"
+          }
+        }
+      },
+      "preview": {
+        "loading": "Calculating matches...",
+        "count": "{count, plural, =0 {No donations match} one {# donation matches} other {# donations match}}",
+        "error": "Could not calculate preview",
+        "errors": {
+          "badRequest": "Some conditions are invalid — please review them.",
+          "unauthenticated": "Your session expired. Please sign in again.",
+          "forbidden": "You don't have permission to preview filters.",
+          "flagDisabled": "Advanced donation filters are not enabled for your organization.",
+          "rateLimit": "Too many preview requests — please wait a moment and try again."
+        }
+      },
+      "strip": {
+        "label": "Active filter",
+        "clear": "Clear filter",
+        "invalid": "The filter in this link is invalid and was ignored — the full list is shown."
+      }
     },
     "actions": {
       "new": "New donation",
@@ -2741,7 +2877,7 @@
     "swissQrBillBadge": "🇨🇭 Swiss QR-bill",
     "empty": {
       "title": "No campaigns to show",
-      "description": "Create a campaign to track outreach and donations.",
+      "description": "Try adjusting the search or status filter, or create a campaign.",
       "seedHint": "Create a campaign to track outreach and donations."
     },
     "columns": {

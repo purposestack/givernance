@@ -31,7 +31,10 @@ import {
 } from "drizzle-orm";
 import { applyCustomPatchInTx } from "../../lib/custom-field-values.js";
 import { db, withTenantContext } from "../../lib/db.js";
+import type { FilterQuery } from "../constituents/filters/types.js";
 import { ExchangeRateService } from "../finance/exchange-rate-service.js";
+import type { DonationFieldRegistryBundle } from "./filters/field-registry.js";
+import { DonationFilterQueryBuilder } from "./filters/query-builder.js";
 
 /** Thrown when allocation amounts don't sum to the donation total */
 export class AllocationSumMismatchError extends Error {
@@ -119,6 +122,14 @@ export interface ListDonationsQuery {
   receiptStatus?: "pending" | "generated" | "failed";
   sort?: string;
   order?: string;
+  /**
+   * Pre-VALIDATED advanced-filter DSL (flag `donations.advanced_filters`).
+   * The route owns flag-gating + validation via
+   * `parseDonationFiltersParam`; the service compiles and ANDs it into
+   * the predicate set. Never pass an unvalidated client payload here.
+   */
+  advancedFilter?: FilterQuery;
+  registryBundle?: DonationFieldRegistryBundle;
 }
 
 /**
@@ -363,6 +374,17 @@ function listDonationsConditions(orgId: string, query: ListDonationsQuery) {
     );
   }
 
+  // Advanced-filter DSL — ANDed with the legacy params above ("never AND
+  // invisibly" is the FE's job: it clears the legacy params on apply; the
+  // API composes whatever it receives). The clause may reference the
+  // LEFT-JOINed constituents columns (`donor.*` fields), so both the data
+  // and the count query MUST join constituents when this is present.
+  if (query.advancedFilter) {
+    const builder = new DonationFilterQueryBuilder(orgId, query.registryBundle?.registry);
+    const clause = builder.buildWhereClause(query.advancedFilter);
+    if (clause) conditions.push(clause);
+  }
+
   return and(...conditions);
 }
 
@@ -440,7 +462,21 @@ export async function listDonations(orgId: string, query: ListDonationsQuery) {
         .orderBy(...buildDonationOrderBy(sort, order))
         .limit(perPage)
         .offset(offset),
-      tx.select({ count: sql<number>`count(*)` }).from(donations).where(where),
+      // The advanced-filter clause can reference the LEFT-JOINed
+      // constituents columns (`donor.*` fields), so the count query joins
+      // them too when a DSL filter is present (1:1 by PK — a LEFT JOIN
+      // never multiplies the count; org predicate in the join clause,
+      // issue #430).
+      query.advancedFilter
+        ? tx
+            .select({ count: sql<number>`count(*)` })
+            .from(donations)
+            .leftJoin(
+              constituents,
+              and(eq(donations.constituentId, constituents.id), eq(constituents.orgId, orgId)),
+            )
+            .where(where)
+        : tx.select({ count: sql<number>`count(*)` }).from(donations).where(where),
     ]);
 
     const total = Number(countResult[0]?.count ?? 0);

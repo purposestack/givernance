@@ -13,8 +13,11 @@
  * registry is exactly the static one — custom fields disappear from
  * validation, execution, catalog, suggestions, and sort in one move.
  *
- * Scope v1: constituent-domain definitions only (donation/campaign-domain
- * fields in the filter engine are out of the epic's MVP scope).
+ * Scope: constituent-domain definitions only in THIS registry. The
+ * donations engine mirrors the merge for donation-domain definitions
+ * (`../../donations/filters/field-registry.js`, reusing
+ * `customFieldToMetadata` / `CUSTOM_FIELD_DSL_PREFIX` exported here);
+ * campaign-domain fields stay out of both filter engines.
  */
 
 import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";

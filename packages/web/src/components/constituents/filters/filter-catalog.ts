@@ -35,7 +35,12 @@ const OPERATORS_BY_CUSTOM_TYPE: Record<CustomFieldType, FilterOperator[]> = {
 
 const PRESENCE_OPERATORS: FilterOperator[] = ["isNull", "isNotNull"];
 
-const UI_TYPE_BY_CUSTOM_TYPE: Record<CustomFieldType, FilterFieldType> = {
+/**
+ * Raw definition type → FE input widget. Exported: the donations catalog
+ * (`donations/filters/donation-filter-catalog.ts`) translates its custom
+ * entries through the SAME map so the two surfaces can never drift.
+ */
+export const UI_TYPE_BY_CUSTOM_TYPE: Record<CustomFieldType, FilterFieldType> = {
   text: "text",
   long_text: "text",
   number: "number",

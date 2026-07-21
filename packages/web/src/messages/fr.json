@@ -2197,10 +2197,146 @@
       "receiptLabel": "Reçus",
       "allReceipts": "Tous les reçus",
       "moreLabel": "Plus de filtres",
-      "title": "Plus de filtres",
-      "description": "Affinez la liste par période de don.",
+      "basicTitle": "Plus de filtres",
+      "basicDescription": "Affinez la liste par période de don.",
       "apply": "Appliquer",
-      "clear": "Effacer les filtres"
+      "clear": "Effacer les filtres",
+      "builderLabel": "Filtres avancés",
+      "title": "Filtres avancés",
+      "description": "Combinez des règles sur les montants, dates, paiements, campagnes et donateurs, puis prévisualisez le compte avant d'appliquer.",
+      "customFilters": "Ajouter des règles de filtre",
+      "customFiltersHint": "Combinez des champs comme le montant, la date du don, le statut, la campagne ou le donateur. Liez-les avec ET / OU pour affiner la liste.",
+      "activeFilters": "Sélection active",
+      "activeFiltersHint": "Tout ce qui sera appliqué. Retirez un chip pour l'exclure de la requête.",
+      "previewSectionTitle": "Aperçu en direct",
+      "previewSectionHint": "Mis à jour à chaque édition — applique exactement ce que vous voyez à la confirmation.",
+      "noConditions": "Aucune condition définie. Commencez par ajouter une condition de filtre.",
+      "addCondition": "Ajouter une condition",
+      "addFirstCondition": "Ajouter votre premier filtre",
+      "addAnotherCondition": "Ajouter un autre filtre",
+      "selectField": "Sélectionner un champ",
+      "selectOperator": "Sélectionner l'opérateur de comparaison",
+      "selectValue": "Sélectionner une valeur",
+      "selectValues": "Sélectionner des valeurs",
+      "selectValuesCount": "{count} sélectionnées",
+      "selectValueFor": "Sélectionner une valeur pour {field}",
+      "selectValuesFor": "Sélectionner des valeurs pour {field}",
+      "selectBooleanFor": "Sélectionner oui ou non pour {field}",
+      "enterValue": "Entrer une valeur",
+      "enterValueFor": "Entrer une valeur pour {field}",
+      "yes": "Oui",
+      "no": "Non",
+      "removeCondition": "Supprimer la condition",
+      "cancel": "Annuler",
+      "applying": "Application...",
+      "applyWithCount": "Appliquer ({count})",
+      "applyError": "Échec de l'application des filtres",
+      "filterRemoved": "Filtre supprimé : {field}",
+      "previewAnnouncement": "{count} dons correspondent à vos filtres",
+      "startDate": "Date de début",
+      "endDate": "Date de fin",
+      "rangeStart": "Début de la plage {field}",
+      "rangeEnd": "Fin de la plage {field}",
+      "rangeSeparator": "à",
+      "rangeFrom": "De",
+      "rangeTo": "À",
+      "noOptions": "Aucune option disponible",
+      "removeFilter": "Retirer le filtre {label}",
+      "validation": {
+        "incomplete": "Veuillez compléter toutes les conditions de filtre",
+        "noConditions": "Veuillez ajouter au moins une condition de filtre"
+      },
+      "operators": {
+        "and": "Correspondre à tous",
+        "or": "Correspondre à n'importe lequel",
+        "eq": "égal à",
+        "neq": "différent de",
+        "gt": "supérieur à",
+        "gte": "supérieur ou égal à",
+        "lt": "inférieur à",
+        "lte": "inférieur ou égal à",
+        "between": "entre",
+        "in": "parmi",
+        "contains": "contient",
+        "startsWith": "commence par",
+        "endsWith": "se termine par",
+        "arrayContains": "contient tous",
+        "arrayOverlaps": "contient l'un de",
+        "isNull": "non renseigné",
+        "isNotNull": "renseigné"
+      },
+      "categories": {
+        "donation": "Don",
+        "payment": "Paiement",
+        "attribution": "Attribution",
+        "receipt": "Reçus",
+        "custom": "Champs personnalisés"
+      },
+      "placeholders": {
+        "amountEur": "Montant en €",
+        "currency": "EUR",
+        "fiscalYear": "2026"
+      },
+      "fields": {
+        "donation": {
+          "amount": "Montant",
+          "currency": "Devise",
+          "donatedAt": "Date du don",
+          "createdAt": "Enregistré le",
+          "fiscalYear": "Année fiscale",
+          "status": "Statut",
+          "paymentSource": "Source de paiement",
+          "paymentMethod": "Moyen de paiement",
+          "paymentRef": "Référence de paiement",
+          "refundedAt": "Date de remboursement",
+          "campaign": "Campagne",
+          "fund": "Fonds",
+          "isPledgeInstallment": "Échéance de promesse",
+          "receiptStatus": "Statut du reçu",
+          "receiptNumber": "Numéro de reçu"
+        },
+        "donor": {
+          "name": "Nom du donateur",
+          "email": "Email du donateur"
+        }
+      },
+      "options": {
+        "donation": {
+          "status": {
+            "pending": "En attente",
+            "cleared": "Encaissé",
+            "refunded": "Remboursé",
+            "failed": "Échoué"
+          },
+          "paymentSource": {
+            "stripe": "Stripe",
+            "camt053": "Relevé bancaire (camt.053)",
+            "manual": "Manuel"
+          },
+          "receiptStatus": {
+            "pending": "En attente",
+            "generated": "Généré",
+            "failed": "Échoué"
+          }
+        }
+      },
+      "preview": {
+        "loading": "Calcul des correspondances...",
+        "count": "{count, plural, =0 {Aucun don correspondant} one {# don correspond} other {# dons correspondent}}",
+        "error": "Impossible de calculer l'aperçu",
+        "errors": {
+          "badRequest": "Certaines conditions sont invalides — veuillez les vérifier.",
+          "unauthenticated": "Votre session a expiré. Veuillez vous reconnecter.",
+          "forbidden": "Vous n'avez pas la permission d'utiliser l'aperçu des filtres.",
+          "flagDisabled": "Les filtres avancés de dons ne sont pas activés pour votre organisation.",
+          "rateLimit": "Trop de requêtes d'aperçu — veuillez patienter avant de réessayer."
+        }
+      },
+      "strip": {
+        "label": "Filtre actif",
+        "clear": "Effacer le filtre",
+        "invalid": "Le filtre de ce lien est invalide et a été ignoré — la liste complète est affichée."
+      }
     },
     "actions": {
       "new": "Nouveau don",
@@ -2741,7 +2877,7 @@
     "swissQrBillBadge": "🇨🇭 BVR suisse",
     "empty": {
       "title": "Aucune campagne à afficher",
-      "description": "Créez une campagne pour suivre les communications et les dons.",
+      "description": "Ajustez la recherche ou le filtre de statut, ou créez une campagne.",
       "seedHint": "Créez une campagne pour suivre les communications et les dons."
     },
     "columns": {
