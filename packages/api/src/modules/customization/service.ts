@@ -111,10 +111,14 @@ async function writeAudit(
 }
 
 /**
- * Serialises quota-check → write sections per (org × scope): the
- * count-then-insert pattern is a TOCTOU race under read committed, and
- * these are rare admin-only mutations, so a transaction-scoped advisory
- * lock is the cheap fix.
+ * Serialises read-modify-write sections per (org × scope): the
+ * count-then-insert quota pattern is a TOCTOU race under read committed,
+ * and the picklist `options` array is rebuilt from a read on every
+ * option mutation (add / rename / merge / undo — an unserialised pair
+ * can strip merge markers). These are rare admin-only mutations, so a
+ * transaction-scoped advisory lock is the cheap fix. `scope` is the
+ * domain for definition-level writes and the definition id for
+ * option-level writes.
  */
 async function acquireQuotaLock(tx: Tx, orgId: string, scope: string): Promise<void> {
   await tx.execute(
@@ -917,6 +921,10 @@ export async function updateOption(
     assertOptionLabelAllowed(input.label);
   }
   const updated = await withTenantContext(orgId, async (tx) => {
+    // Same per-definition advisory lock as addOption: the options array is
+    // read-modify-write, so an unserialised rename racing a merge would
+    // rebuild the array from a stale read and strip its merge markers.
+    await acquireQuotaLock(tx, orgId, definitionId);
     const row = await getActiveRow(tx, orgId, definitionId);
     if (!row) return null;
     assertPicklistRow(row);
@@ -1035,6 +1043,11 @@ export async function mergeOption(
   options: { dryRun: boolean },
 ): Promise<MergeOptionResult | null> {
   const result = await withTenantContext(orgId, async (tx) => {
+    // Serialise against every other option mutation of this definition
+    // (add / rename / undo) — a concurrent writer rebuilding the options
+    // array from a pre-merge read would strip the merge marker stamped
+    // below, permanently orphaning the backfill job.
+    await acquireQuotaLock(tx, orgId, definitionId);
     const row = await getActiveRow(tx, orgId, definitionId);
     if (!row) return null;
     assertPicklistRow(row);
@@ -1161,6 +1174,9 @@ export async function undoOptionMerge(
   mergeId: string,
 ): Promise<UndoMergeResult | null> {
   const result = await withTenantContext(orgId, async (tx) => {
+    // Same per-definition advisory lock as addOption/mergeOption — option
+    // mutations on one definition must serialise (read-modify-write array).
+    await acquireQuotaLock(tx, orgId, definitionId);
     const row = await getActiveRow(tx, orgId, definitionId);
     if (!row) return null;
     assertPicklistRow(row);
@@ -1292,6 +1308,7 @@ async function optionCounts(
           FROM ${table}, jsonb_array_elements_text(custom->${key}) AS opt
           WHERE org_id = ${orgId}
             AND custom ? ${key}
+            AND jsonb_typeof(custom->${key}) = 'array'
             ${liveRowsClause(domain)}
           GROUP BY 1
         `);

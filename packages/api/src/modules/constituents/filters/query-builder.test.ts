@@ -1,0 +1,124 @@
+/**
+ * Unit coverage for the custom-field JSONB lanes of the query builder
+ * (review MAJOR-3 + m4). Compiles the generated SQL with PgDialect — no
+ * database needed — to pin two contracts:
+ *
+ *   - m4: custom-date comparisons bind the raw `YYYY-MM-DD` STRING, never a
+ *     JS Date. A Date round-trip serializes in PROCESS-LOCAL time, so west
+ *     of UTC the UTC-midnight Date becomes the previous local day and every
+ *     custom-date eq/bound is off by one. CI runs in UTC, which is exactly
+ *     why the binding (not just the behaviour) must be pinned here.
+ *
+ *   - MAJOR-3: every cast lane is fenced (`jsonb_typeof` for numeric /
+ *     boolean, strict shape regex + `pg_input_is_valid` for date) so stale
+ *     old-typed values left behind by an archive-and-recreate type change
+ *     compare as NULL instead of 22P02-aborting the whole statement. The
+ *     behavioural half (real Postgres, stale blobs, sort + export) lives in
+ *     `tests/integration/filters-custom-fields.test.ts`.
+ */
+
+import { PgDialect } from "drizzle-orm/pg-core";
+import { describe, expect, it } from "vitest";
+import {
+  customBooleanExpr,
+  customDateExpr,
+  customNumericExpr,
+  FilterQueryBuilder,
+} from "./query-builder.js";
+import type { FieldMetadata } from "./types.js";
+
+const ORG_ID = "00000000-0000-0000-0000-0000000000aa";
+const dialect = new PgDialect();
+
+const REGISTRY: Record<string, FieldMetadata> = {
+  "custom.last_review": {
+    name: "custom.last_review",
+    type: "date",
+    table: "constituents",
+    column: "custom",
+    operators: ["eq", "neq", "gt", "gte", "lt", "lte", "between", "isNull", "isNotNull"],
+    source: "custom",
+    customType: "date",
+    jsonKey: "last_review",
+    nullable: true,
+  },
+  "custom.score": {
+    name: "custom.score",
+    type: "number",
+    table: "constituents",
+    column: "custom",
+    operators: ["eq", "neq", "gt", "gte", "lt", "lte", "between", "isNull", "isNotNull"],
+    source: "custom",
+    customType: "number",
+    jsonKey: "score",
+    nullable: true,
+  },
+};
+
+function compile(condition: { field: string; operator: string; value?: unknown }) {
+  const builder = new FilterQueryBuilder(ORG_ID, REGISTRY);
+  const where = builder.buildWhereClause({
+    operator: "AND",
+    // biome-ignore lint/suspicious/noExplicitAny: DSL literals in a test
+    conditions: [condition as any],
+  });
+  expect(where).toBeDefined();
+  // biome-ignore lint/style/noNonNullAssertion: asserted above
+  return dialect.sqlToQuery(where!);
+}
+
+describe("custom-date value binding (review m4)", () => {
+  it("binds the raw YYYY-MM-DD string for eq — never a JS Date", () => {
+    const { params } = compile({
+      field: "custom.last_review",
+      operator: "eq",
+      value: "2026-01-15",
+    });
+    expect(params).toContain("2026-01-15");
+    expect(params.some((p) => p instanceof Date)).toBe(false);
+  });
+
+  it("binds both between bounds as raw day strings", () => {
+    const { params } = compile({
+      field: "custom.last_review",
+      operator: "between",
+      value: ["2026-01-01", "2026-01-15"],
+    });
+    expect(params).toContain("2026-01-01");
+    expect(params).toContain("2026-01-15");
+    expect(params.some((p) => p instanceof Date)).toBe(false);
+  });
+
+  it("binds the raw day string for the bumped upper-bound operators (lte / gt)", () => {
+    for (const operator of ["lte", "gt"] as const) {
+      const { params } = compile({ field: "custom.last_review", operator, value: "2026-01-15" });
+      // ::date granularity makes the core end-of-day bump a no-op — the bare
+      // day must survive untouched.
+      expect(params).toContain("2026-01-15");
+      expect(params.some((p) => p instanceof Date)).toBe(false);
+    }
+  });
+});
+
+describe("guarded cast lanes (review MAJOR-3)", () => {
+  it("numeric comparisons are fenced by jsonb_typeof", () => {
+    const { sql } = compile({ field: "custom.score", operator: "gt", value: 3 });
+    expect(sql).toContain("jsonb_typeof");
+    expect(sql).toContain("'number'");
+    expect(sql).toContain("::numeric");
+  });
+
+  it("date comparisons are fenced by the shape regex AND pg_input_is_valid", () => {
+    const { sql } = compile({ field: "custom.last_review", operator: "eq", value: "2026-01-15" });
+    expect(sql).toContain("pg_input_is_valid");
+    expect(sql).toContain("\\d{4}-\\d{2}-\\d{2}");
+  });
+
+  it("standalone lane expressions carry their guards (shared with the sort lane)", () => {
+    expect(dialect.sqlToQuery(customNumericExpr("score")).sql).toContain("jsonb_typeof");
+    expect(dialect.sqlToQuery(customDateExpr("last_review")).sql).toContain("pg_input_is_valid");
+    const bool = dialect.sqlToQuery(customBooleanExpr("board_member")).sql;
+    expect(bool).toContain("jsonb_typeof");
+    expect(bool).toContain("'boolean'");
+  });
+});

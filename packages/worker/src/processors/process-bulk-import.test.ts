@@ -11,9 +11,18 @@
  * returns before any DB dup-check, so no real Postgres is needed.
  */
 
-import { buildCustomValidator, type CustomFieldDefinition } from "@givernance/shared/custom-fields";
+import {
+  buildCustomHeaderResolver,
+  buildCustomValidator,
+  type CustomFieldDefinition,
+} from "@givernance/shared/custom-fields";
 import { describe, expect, it, vi } from "vitest";
-import { processOneRow, type RowContext } from "./process-bulk-import.js";
+import {
+  DuplicateCustomColumnError,
+  parseCsvBuffer,
+  processOneRow,
+  type RowContext,
+} from "./process-bulk-import.js";
 
 interface CapturedInsert {
   vals: Record<string, unknown>;
@@ -176,6 +185,51 @@ describe("processOneRow — custom-field cells (Epic #539)", () => {
       status: "failed",
       errorCode: "UNKNOWN_CUSTOM_OPTION",
     });
+  });
+
+  it("rejects a file carrying BOTH the label header and cf_<key> for one definition (review m12)", () => {
+    const resolver = buildCustomHeaderResolver([segmentDef]);
+    const csv = [
+      "firstName,lastName,Segment donateur,cf_donor_segment",
+      "Alice,Martin,Grand donateur,Ami",
+    ].join("\n");
+
+    // Last-non-empty-cell-wins would be silently nondeterministic — the
+    // whole file is rejected with a per-file error naming the definition.
+    let thrown: unknown;
+    try {
+      parseCsvBuffer(Buffer.from(csv), resolver);
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toBeInstanceOf(DuplicateCustomColumnError);
+    const dup = thrown as DuplicateCustomColumnError;
+    expect(dup.code).toBe("DUPLICATE_CUSTOM_COLUMN");
+    expect(dup.keys).toEqual(["donor_segment"]);
+    // Message names the definition key only — never cell content.
+    expect(dup.message).toContain("donor_segment");
+    expect(dup.message).not.toContain("Grand donateur");
+  });
+
+  it("accepts one column per definition — alias-only and label-only both parse", () => {
+    const resolver = buildCustomHeaderResolver([segmentDef]);
+    const aliasOnly = parseCsvBuffer(
+      Buffer.from("firstName,lastName,cf_donor_segment\nAlice,Martin,Ami\n"),
+      resolver,
+    );
+    expect(aliasOnly[0]?.values.cf_donor_segment).toBe("Ami");
+
+    const labelOnly = parseCsvBuffer(
+      Buffer.from("firstName,lastName,Segment donateur\nAlice,Martin,Ami\n"),
+      resolver,
+    );
+    expect(labelOnly[0]?.values.cf_donor_segment).toBe("Ami");
+  });
+
+  it("with custom fields off (null resolver), duplicate custom headers are simply dropped", () => {
+    const csv = "firstName,lastName,Segment donateur,cf_donor_segment\nAlice,Martin,X,Y\n";
+    const rows = parseCsvBuffer(Buffer.from(csv), null);
+    expect(rows[0]?.values).toEqual({ firstName: "Alice", lastName: "Martin" });
   });
 
   it("ignores cf_ cells when custom fields are off for the tenant (customFields null)", async () => {

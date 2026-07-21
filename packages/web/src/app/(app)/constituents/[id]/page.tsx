@@ -1,5 +1,5 @@
 import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
-import type { CustomFieldDefinition, CustomFieldValues } from "@givernance/shared/custom-fields";
+import type { CustomFieldValues } from "@givernance/shared/custom-fields";
 import { Download, FileText, GitMerge, Mail, Pencil, Sparkles, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -7,7 +7,9 @@ import { getLocale, getTranslations } from "next-intl/server";
 import { ConstituentTypeBadges } from "@/components/constituents/constituent-type-badge";
 import {
   CustomFieldDetailRows,
-  fetchCustomFieldDefinitionsOrEmpty,
+  type DetailCustomFieldDefinition,
+  fetchDetailCustomFieldDefinitionsOrEmpty,
+  visibleDetailCustomFieldDefinitions,
 } from "@/components/shared/custom-fields";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -121,7 +123,10 @@ export default async function ConstituentDetailPage({ params, searchParams }: De
     multiTypeEnabled = false;
     customFieldsEnabled = false;
   }
-  const customFieldDefs = await fetchCustomFieldDefinitionsOrEmpty(
+  // Detail catalog (includeArchived): archived definitions keep their stored
+  // values visible here — read-only, "archived"-badged — per the archive
+  // contract. Forms / filters / columns stay on the active-only catalog.
+  const customFieldDefs = await fetchDetailCustomFieldDefinitionsOrEmpty(
     flagClient,
     "constituent",
     customFieldsEnabled,
@@ -201,6 +206,7 @@ export default async function ConstituentDetailPage({ params, searchParams }: De
               locale={locale}
               title={tCustom("detail.sectionTitle")}
               booleanLabels={{ yes: tCustom("boolean.yes"), no: tCustom("boolean.no") }}
+              archivedLabel={tCustom("detail.archivedBadge")}
             />
           </>
         }
@@ -236,7 +242,8 @@ function resolveTypeLabel(type: string, tType: (key: KnownConstituentType) => st
 /**
  * "Custom fields" group on the Overview tab (Epic #539). Every active
  * definition renders a row (empty values as an em-dash) so operators see the
- * full configured surface, not just the filled subset.
+ * full configured surface; archived definitions render only when this record
+ * still holds a value — muted, with an "archived" badge.
  */
 function CustomFieldsCard({
   definitions,
@@ -244,14 +251,17 @@ function CustomFieldsCard({
   locale,
   title,
   booleanLabels,
+  archivedLabel,
 }: {
-  definitions: CustomFieldDefinition[];
+  definitions: DetailCustomFieldDefinition[];
   values: CustomFieldValues | undefined;
   locale: string;
   title: string;
   booleanLabels: { yes: string; no: string };
+  archivedLabel: string;
 }) {
-  if (definitions.length === 0) return null;
+  const visible = visibleDetailCustomFieldDefinitions(definitions, values);
+  if (visible.length === 0) return null;
   return (
     <section
       aria-label={title}
@@ -260,10 +270,11 @@ function CustomFieldsCard({
       <h2 className="font-heading text-xl text-on-surface">{title}</h2>
       <div className="mt-4">
         <CustomFieldDetailRows
-          definitions={definitions}
+          definitions={visible}
           values={values}
           locale={locale}
           booleanLabels={booleanLabels}
+          archivedLabel={archivedLabel}
         />
       </div>
     </section>

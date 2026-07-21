@@ -37,6 +37,7 @@ import {
   type CustomHeaderResolver,
   type CustomValidator,
   customImportAlias,
+  findDuplicateCustomHeaderKeys,
 } from "@givernance/shared/custom-fields";
 import type { ProcessBulkImportJob } from "@givernance/shared/jobs";
 import {
@@ -183,6 +184,30 @@ function resolveHeader(raw: string, customResolver: CustomHeaderResolver | null)
   return def ? customImportAlias(def.key) : null;
 }
 
+/**
+ * Thrown at header resolution when one custom definition is addressed by
+ * BOTH its label header and its `cf_<key>` alias (or a custom header is
+ * simply repeated) — review m12. The winner would otherwise be "last
+ * non-empty cell", i.e. undefined behaviour, so the whole file is
+ * rejected with a per-file error naming the duplicated definition(s).
+ * The message carries definition KEYS only — never cell content — so it
+ * is safe to surface on the operator-visible `bulk_import_jobs.error`.
+ */
+export class DuplicateCustomColumnError extends Error {
+  readonly code = "DUPLICATE_CUSTOM_COLUMN";
+  constructor(readonly keys: readonly string[]) {
+    super(
+      `Duplicate columns for custom field(s): ${keys.join(", ")} — keep either the label column or its cf_<key> column, not both`,
+    );
+    this.name = "DuplicateCustomColumnError";
+  }
+}
+
+function assertNoDuplicateCustomHeaders(headerKeys: readonly (string | null)[]): void {
+  const duplicated = findDuplicateCustomHeaderKeys(headerKeys);
+  if (duplicated.length > 0) throw new DuplicateCustomColumnError(duplicated);
+}
+
 function neutraliseFormula(value: string): string {
   if (!value) return value;
   const first = value.charCodeAt(0);
@@ -231,7 +256,12 @@ interface ParsedRow {
   parseError?: { code: string; message: string };
 }
 
-function parseCsvBuffer(buffer: Buffer, customResolver: CustomHeaderResolver | null): ParsedRow[] {
+// Exported for unit testing of the duplicate-custom-header rejection
+// (review m12) — the full processor needs S3 + Postgres.
+export function parseCsvBuffer(
+  buffer: Buffer,
+  customResolver: CustomHeaderResolver | null,
+): ParsedRow[] {
   const records = parseCsvSync(buffer, {
     bom: true,
     skip_empty_lines: true,
@@ -242,6 +272,7 @@ function parseCsvBuffer(buffer: Buffer, customResolver: CustomHeaderResolver | n
   if (records.length === 0) return [];
   const headerRow = records[0] ?? [];
   const headerKeys = headerRow.map((h) => resolveHeader(h ?? "", customResolver));
+  assertNoDuplicateCustomHeaders(headerKeys);
   const rows: ParsedRow[] = [];
   const dataRows = records.slice(1, 1 + MAX_ROWS);
   for (let i = 0; i < dataRows.length; i++) {
@@ -306,6 +337,7 @@ async function parseXlsxBuffer(
     ? (sheet.getRow(1).values as unknown[])
     : [];
   const headerKeys = extractHeaderKeysXlsx(headerVals, customResolver);
+  assertNoDuplicateCustomHeaders(headerKeys);
   const rows: ParsedRow[] = [];
   const cap = Math.min(sheet.rowCount, MAX_ROWS + 1);
   for (let r = 2; r <= cap; r++) {
@@ -871,7 +903,13 @@ export async function processBulkImport(
       { err: err instanceof Error ? err.message : String(err) },
       "Bulk import: file download / parse failed",
     );
-    await finaliseFailed(data.orgId, data.bulkImportJobId, "Failed to read uploaded file");
+    // Duplicate-custom-column rejection (review m12) is a deliberate,
+    // operator-fixable per-file error whose message names only definition
+    // keys — surface it verbatim. Everything else stays generic (never
+    // leak raw parse / S3 errors to the operator-visible column).
+    const message =
+      err instanceof DuplicateCustomColumnError ? err.message : "Failed to read uploaded file";
+    await finaliseFailed(data.orgId, data.bulkImportJobId, message);
     return { created: 0, duplicate: 0, failed: 0, totalRows: 0 };
   }
 

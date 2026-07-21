@@ -48,6 +48,7 @@ import type {
 import { CustomFieldsService } from "@/services/CustomFieldsService";
 
 import { OptionMergeDialog } from "./option-merge-dialog";
+import { planOptionMove, sortOptionsByOrder } from "./option-reorder";
 
 interface CustomFieldDialogProps {
   domain: CustomFieldDomain;
@@ -94,7 +95,11 @@ export function CustomFieldDialog({
   const [label, setLabel] = useState(definition?.label ?? "");
   const [description, setDescription] = useState(definition?.description ?? "");
   const [type, setType] = useState<CustomFieldType>(definition?.type ?? "text");
-  const [options, setOptions] = useState<CustomFieldOption[]>(definition?.options ?? []);
+  // Options render in sortOrder order everywhere — the stored array order is
+  // not authoritative (the reorder PATCHes rewrite sortOrder, not positions).
+  const [options, setOptions] = useState<CustomFieldOption[]>(() =>
+    sortOptionsByOrder(definition?.options ?? []),
+  );
   const [required, setRequired] = useState(definition?.required ?? false);
   const [filterable, setFilterable] = useState(definition?.filterable ?? true);
   const [exportable, setExportable] = useState(definition?.exportable ?? true);
@@ -103,6 +108,9 @@ export function CustomFieldDialog({
   const [purposeText, setPurposeText] = useState(definition?.purposeText ?? "");
   const [rootError, setRootError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Serialises the multi-PATCH renumber of an edit-mode option move so two
+  // overlapping moves can't interleave their sortOrder writes.
+  const [isReorderingOptions, setIsReorderingOptions] = useState(false);
   const [mergeSource, setMergeSource] = useState<CustomFieldOption | null>(null);
   // Tracks edit-mode option mutations that already hit the API, so closing
   // without saving still refreshes the parent list.
@@ -167,10 +175,10 @@ export function CustomFieldDialog({
           { label: trimmed },
         );
         changedRef.current = true;
-        setOptions(updated.options);
+        setOptions(sortOptionsByOrder(updated.options));
         toast.success(t("success.optionRenamed"));
       } catch (error) {
-        setOptions(definition.options);
+        setOptions(sortOptionsByOrder(definition.options));
         toast.error(problemMessage(error));
       }
     },
@@ -195,7 +203,7 @@ export function CustomFieldDialog({
           },
         );
         changedRef.current = true;
-        setOptions(updated.options);
+        setOptions(sortOptionsByOrder(updated.options));
         toast.success(t("success.optionAdded"));
       } catch (error) {
         setOptions((current) => current.filter((o) => o.id !== option.id));
@@ -219,7 +227,7 @@ export function CustomFieldDialog({
           { active },
         );
         changedRef.current = true;
-        setOptions(updated.options);
+        setOptions(sortOptionsByOrder(updated.options));
       } catch (error) {
         toast.error(problemMessage(error));
       }
@@ -229,30 +237,41 @@ export function CustomFieldDialog({
 
   const moveOption = useCallback(
     async (index: number, delta: -1 | 1) => {
-      const target = index + delta;
-      if (target < 0 || target >= options.length) return;
-      const next = [...options];
-      const [moved] = next.splice(index, 1);
-      if (moved === undefined) return;
-      next.splice(target, 0, moved);
-      const renumbered = next.map((o, i) => ({ ...o, sortOrder: i }));
-      setOptions(renumbered);
+      if (isReorderingOptions) return;
+      // Splice-and-renumber contract (PR #550 MAJOR-5): the API persists one
+      // option's sortOrder per PATCH without touching siblings, so the client
+      // renumbers the whole list and persists every changed option — exactly
+      // two PATCHes for an adjacent move on a clean list. On partial failure
+      // the UI shows the server's last-confirmed order (never a state the
+      // server doesn't have), and any next successful move fully repairs the
+      // list — every move renumbers it contiguously.
+      const plan = planOptionMove(options, index, delta);
+      if (plan === null) return;
+      setOptions(plan.ordered);
       if (!isEdit) return;
+      setIsReorderingOptions(true);
+      const client = createClientApiClient();
+      // Last server-confirmed option list — the rollback target on failure.
+      let latest: CustomFieldOption[] | null = null;
       try {
-        const updated = await CustomFieldsService.updateOption(
-          createClientApiClient(),
-          definition.id,
-          moved.id,
-          { sortOrder: target },
-        );
-        changedRef.current = true;
-        setOptions(updated.options);
+        for (const change of plan.changed) {
+          const updated = await CustomFieldsService.updateOption(client, definition.id, change.id, {
+            sortOrder: change.sortOrder,
+          });
+          // A PATCH already landed: the parent list must refresh on close
+          // even if a later PATCH in this renumber fails.
+          changedRef.current = true;
+          latest = updated.options;
+        }
+        if (latest !== null) setOptions(sortOptionsByOrder(latest));
       } catch (error) {
-        setOptions(options);
+        setOptions(latest !== null ? sortOptionsByOrder(latest) : options);
         toast.error(problemMessage(error));
+      } finally {
+        setIsReorderingOptions(false);
       }
     },
-    [definition, isEdit, options, problemMessage],
+    [definition, isEdit, isReorderingOptions, options, problemMessage],
   );
 
   const removeDraftOption = useCallback((optionId: string) => {
@@ -487,7 +506,7 @@ export function CustomFieldDialog({
                         type="button"
                         className="text-on-surface-variant opacity-60 hover:opacity-100 disabled:opacity-20"
                         onClick={() => void moveOption(index, -1)}
-                        disabled={index === 0}
+                        disabled={index === 0 || isReorderingOptions}
                         aria-label={t("form.optionMoveUp", { label: option.label })}
                       >
                         <ArrowUp size={12} aria-hidden="true" />
@@ -496,7 +515,7 @@ export function CustomFieldDialog({
                         type="button"
                         className="text-on-surface-variant opacity-60 hover:opacity-100 disabled:opacity-20"
                         onClick={() => void moveOption(index, 1)}
-                        disabled={index === options.length - 1}
+                        disabled={index === options.length - 1 || isReorderingOptions}
                         aria-label={t("form.optionMoveDown", { label: option.label })}
                       >
                         <ArrowDown size={12} aria-hidden="true" />
@@ -525,13 +544,19 @@ export function CustomFieldDialog({
                     </span>
                     {option.active ? (
                       <>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => void setOptionActive(option, false)}
-                        >
-                          {t("form.optionDeactivate")}
-                        </Button>
+                        {/* Create mode has no deactivate: the server mints
+                            every option active, so a draft deactivation would
+                            be silently discarded — drafts are removed instead
+                            (PR #550 m13). */}
+                        {isEdit ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => void setOptionActive(option, false)}
+                          >
+                            {t("form.optionDeactivate")}
+                          </Button>
+                        ) : null}
                         {isEdit && activeOptions.length > 1 ? (
                           <Button
                             variant="ghost"

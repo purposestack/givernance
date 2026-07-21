@@ -190,6 +190,49 @@ describe("option lifecycle", () => {
     expect(missing.statusCode).toBe(404);
   });
 
+  it("persists an option sortOrder PATCH verbatim without renumbering siblings", async () => {
+    const token = signToken(app);
+    const created = await createField({
+      key: "priority_lane",
+      label: "Priorité",
+      options: [{ label: "Un" }, { label: "Deux" }, { label: "Trois" }],
+    });
+    expect(created.status).toBe(201);
+    const id = created.body.data.id;
+    const [first, second, third] = created.body.data.options;
+
+    // The FE's splice-and-renumber reorder (PR #550 MAJOR-5) PATCHes each
+    // changed option's sortOrder individually and relies on the server
+    // persisting the value VERBATIM. A server that clamped, renumbered,
+    // or rejected the write would silently break option reordering while
+    // only FE unit tests pin the contract — this is the API-side pin.
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/v1/custom-fields/${id}/options/${third?.id}`,
+      headers: authHeader(token),
+      payload: { sortOrder: 0 },
+    });
+    expect(res.statusCode).toBe(200);
+    const options = res.json<{ data: DefinitionData }>().data.options;
+    expect(options.find((o) => o.id === third?.id)?.sortOrder).toBe(0);
+    // Siblings are untouched — renumbering is the CLIENT's job, one
+    // PATCH per changed option.
+    expect(options.find((o) => o.id === first?.id)?.sortOrder).toBe(0);
+    expect(options.find((o) => o.id === second?.id)?.sortOrder).toBe(1);
+
+    // And the persisted order survives a fresh catalog read.
+    const list = await app.inject({
+      method: "GET",
+      url: "/v1/custom-fields?domain=constituent",
+      headers: authHeader(token),
+    });
+    const persisted = list
+      .json<{ data: DefinitionData[] }>()
+      .data.find((d) => d.id === id)
+      ?.options.find((o) => o.id === third?.id);
+    expect(persisted?.sortOrder).toBe(0);
+  });
+
   it("422s option routes on non-picklist definitions", async () => {
     const created = await createField({ key: "plain_text", label: "Texte", type: "text" });
     const res = await app.inject({
@@ -330,6 +373,39 @@ describe("usage report", () => {
     const region = domainReport?.fields.find((f) => f.key === "region");
     expect(region?.filled).toBe("0");
     expect(region?.fillRatePercent).toBe(0);
+  });
+
+  it("survives a stale scalar under a multi_picklist key (archive-and-recreate residue)", async () => {
+    // docs/35 §4: archiving a key and recreating it with a new type
+    // leaves old-typed values in stored blobs. A scalar under a
+    // now-multi_picklist key must not abort the per-option aggregation —
+    // unguarded, `jsonb_array_elements_text` raises 22023 on the scalar
+    // and the WHOLE usage report 500s for every admin of the org until
+    // the stale rows are hand-cleaned.
+    await seedConstituent({ interests: "opt_stalescal" });
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/custom-fields/usage?domain=constituent",
+      headers: authHeader(signToken(app)),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{
+      data: {
+        domain: string;
+        fields: { key: string; filled: string; options: { id: string; count: string }[] }[];
+      }[];
+    }>();
+    const interests = body.data
+      .find((d) => d.domain === "constituent")
+      ?.fields.find((f) => f.key === "interests");
+    // The stale row still counts as filled (the key IS present)…
+    expect(interests?.filled).toBe("7");
+    // …but per-option counts aggregate array-typed rows only: 6 sport
+    // holders (exact) and 1 culture holder (k-masked), same as before
+    // the stale scalar landed.
+    const counts = (interests?.options ?? []).map((o) => o.count).sort();
+    expect(counts).toEqual(["6", "< 5"].sort());
   });
 
   it("is org_admin-only", async () => {

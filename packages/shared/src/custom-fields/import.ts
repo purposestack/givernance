@@ -95,6 +95,30 @@ export function customTemplateHeader(
   return def.label;
 }
 
+/**
+ * Definition keys claimed by MORE THAN ONE column of the same file —
+ * i.e. the label header AND the `cf_<key>` alias both present, or the
+ * same custom header simply repeated (review m12). Letting both through
+ * would make the winner "last non-empty cell" — silently
+ * nondeterministic — so callers MUST reject the whole file with a
+ * per-file error naming these keys. Operates on RESOLVED header keys
+ * (the parser's post-`resolveHeader` array): core columns are out of
+ * scope by construction (only `cf_`-prefixed keys are inspected), and
+ * `null` (dropped) columns are ignored.
+ */
+export function findDuplicateCustomHeaderKeys(
+  resolvedHeaderKeys: readonly (string | null)[],
+): string[] {
+  const seen = new Set<string>();
+  const duplicated = new Set<string>();
+  for (const key of resolvedHeaderKeys) {
+    if (!key || !key.startsWith(CUSTOM_FIELDS_IMPORT_HEADER_PREFIX)) continue;
+    if (seen.has(key)) duplicated.add(key.slice(CUSTOM_FIELDS_IMPORT_HEADER_PREFIX.length));
+    seen.add(key);
+  }
+  return [...duplicated];
+}
+
 /** Stable per-row error codes surfaced in `bulk_import_results.error_code`. */
 export type CustomImportCellErrorCode =
   | "INVALID_CUSTOM_NUMBER"

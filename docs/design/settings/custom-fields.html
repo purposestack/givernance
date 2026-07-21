@@ -64,8 +64,15 @@
     .toggle-row .toggle-text b { display: block; font-size: var(--text-sm); color: var(--color-on-surface); font-weight: var(--weight-medium); }
     .toggle-row .toggle-text span { font-size: var(--text-xs); color: var(--color-on-surface-variant); }
 
-    /* Option manager (inside the edit dialog, picklist types only) */
+    /* Option manager (inside the edit dialog, picklist types only).
+       Reorder is arrow buttons (not drag handles): fully keyboard-operable,
+       visible focus — matches custom-field-dialog.tsx (moveOption). */
     .option-list { border: 1px solid var(--color-outline-variant); border-radius: var(--radius-md); divide-y: 1px; margin-top: var(--space-2); }
+    .option-arrows { display: inline-flex; flex-direction: column; }
+    .option-arrow { background: none; border: none; padding: 0; cursor: pointer; color: var(--color-on-surface-variant); opacity: .6; display: inline-flex; }
+    .option-arrow:hover, .option-arrow:focus-visible { opacity: 1; }
+    .option-arrow[disabled] { opacity: .2; cursor: default; }
+    .option-arrow .material-symbols-outlined { font-size: 14px; }
     .option-row { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--color-outline-variant); }
     .option-row:last-child { border-bottom: none; }
     .option-row .form-input { flex: 1; padding: var(--space-1) var(--space-2); font-size: var(--text-sm); }
@@ -144,12 +151,9 @@
             <h1 class="page-title">Champs personnalisés</h1>
             <p class="page-subtitle">Ajoutez vos propres champs typés aux constituants, dons et campagnes — sans consultant, sans ticket. Les listes de choix évoluent sans casse : renommer est gratuit, fusionner est prévisualisé, rien n'est jamais supprimé silencieusement.</p>
           </div>
-          <div class="page-header-actions">
-            <button type="button" class="btn btn-primary">
-              <span class="material-symbols-outlined">add</span>
-              Nouveau champ
-            </button>
-          </div>
+          <!-- « Nouveau champ » lives in the quota card below (next to the
+               meter it consumes), not in the page header — mirrors
+               custom-fields-manager.tsx. -->
         </div>
 
         <!-- Settings sub-nav (mirrors components/settings/settings-navigation.tsx;
@@ -172,12 +176,18 @@
           <a href="#" class="domain-tab">Campagnes <span class="count">0</span></a>
         </nav>
 
-        <!-- Quota meter — always visible, archived fields don't count -->
+        <!-- Quota meter — always visible, archived fields don't count.
+             The « Nouveau champ » CTA sits here, next to the quota it
+             consumes (custom-fields-manager.tsx). -->
         <section class="quota-card" aria-label="Quota de champs">
           <span class="quota-count">5 / 25 <small>champs sur ce domaine</small></span>
           <div class="quota-bar">
             <div class="progress"><div class="progress-fill" style="width: 20%;"></div></div>
           </div>
+          <button type="button" class="btn btn-primary btn-sm">
+            <span class="material-symbols-outlined">add</span>
+            Nouveau champ
+          </button>
           <p class="quota-hint">Votre offre inclut 25 champs par domaine. Les champs archivés ne comptent pas. Besoin de plus&nbsp;? Contactez-nous — les extensions de quota sont tracées et motivées.</p>
         </section>
 
@@ -353,28 +363,41 @@
           </div>
 
           <!-- Option manager — picklist / multi_picklist only.
-               Inline rename is free (values store stable opt_ ids, never labels);
-               deactivation hides from new writes without touching stored data;
-               merge opens the dedicated dialog below. -->
+               Reorder is up/down arrow buttons (keyboard-operable, visible
+               focus — a11y over drag handles, matches moveOption in
+               custom-field-dialog.tsx); inline rename is free (values store
+               stable opt_ ids, never labels); deactivation hides from new
+               writes without touching stored data (edit mode only — a draft
+               option is simply removed); merge opens the dedicated dialog
+               below. -->
           <div class="form-group">
             <span class="form-label">Options</span>
             <div class="option-list">
               <div class="option-row">
-                <span class="drag-handle material-symbols-outlined" aria-hidden="true">drag_indicator</span>
+                <span class="option-arrows">
+                  <button type="button" class="option-arrow" disabled aria-label="Monter l'option Grand donateur"><span class="material-symbols-outlined" aria-hidden="true">arrow_upward</span></button>
+                  <button type="button" class="option-arrow" aria-label="Descendre l'option Grand donateur"><span class="material-symbols-outlined" aria-hidden="true">arrow_downward</span></button>
+                </span>
                 <input class="form-input" type="text" value="Grand donateur" aria-label="Renommer l'option Grand donateur">
                 <span class="option-id">opt_Xk2fRp9a</span>
                 <button type="button" class="btn btn-ghost btn-sm">Désactiver</button>
                 <button type="button" class="btn btn-ghost btn-sm">Fusionner…</button>
               </div>
               <div class="option-row">
-                <span class="drag-handle material-symbols-outlined" aria-hidden="true">drag_indicator</span>
+                <span class="option-arrows">
+                  <button type="button" class="option-arrow" aria-label="Monter l'option Ami"><span class="material-symbols-outlined" aria-hidden="true">arrow_upward</span></button>
+                  <button type="button" class="option-arrow" aria-label="Descendre l'option Ami"><span class="material-symbols-outlined" aria-hidden="true">arrow_downward</span></button>
+                </span>
                 <input class="form-input" type="text" value="Ami" aria-label="Renommer l'option Ami">
                 <span class="option-id">opt_x7uJq2Lw</span>
                 <button type="button" class="btn btn-ghost btn-sm">Désactiver</button>
                 <button type="button" class="btn btn-ghost btn-sm">Fusionner…</button>
               </div>
               <div class="option-row inactive">
-                <span class="drag-handle material-symbols-outlined" aria-hidden="true">drag_indicator</span>
+                <span class="option-arrows">
+                  <button type="button" class="option-arrow" aria-label="Monter l'option Prospect froid"><span class="material-symbols-outlined" aria-hidden="true">arrow_upward</span></button>
+                  <button type="button" class="option-arrow" disabled aria-label="Descendre l'option Prospect froid"><span class="material-symbols-outlined" aria-hidden="true">arrow_downward</span></button>
+                </span>
                 <input class="form-input" type="text" value="Prospect froid" aria-label="Renommer l'option Prospect froid">
                 <span class="option-id">opt_XJ40Tz_m</span>
                 <span class="badge badge-neutral">Désactivée</span>

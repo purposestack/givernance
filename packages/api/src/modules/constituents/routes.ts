@@ -891,21 +891,30 @@ export async function constituentRoutes(app: FastifyInstance) {
         return reply.status(422).send(multiTypeError);
       }
 
-      const customEnabled = await isCustomFieldsEnabled(request, orgId);
-      if (!customEnabled && body.custom !== undefined) {
-        return reply
-          .status(422)
-          .send(customFieldsDisabledProblem(FEATURE_FLAG_KEYS.CONSTITUENTS_CUSTOM_FIELDS));
+      // Same gate as the create route (and the donation/campaign writes):
+      // an empty `custom: {}` passes with the flag off — only actual gated
+      // values are rejected. Uniform contract across all custom-carrying
+      // write routes.
+      const customGate = await resolveCustomGate(request, orgId, body.custom);
+      if (customGate.problem) {
+        return reply.status(422).send(customGate.problem);
       }
 
       try {
-        const updated = await updateConstituent(orgId, id, body, userId);
+        const updated = await updateConstituent(
+          orgId,
+          id,
+          // Flag off → strip the (necessarily empty) patch so the service
+          // never touches the column.
+          customGate.enabled ? body : { ...body, custom: undefined },
+          userId,
+        );
 
         if (!updated) {
           return reply.status(404).send(problemDetail(404, "Not Found", "Constituent not found"));
         }
 
-        await projectCustomOnRows(orgId, customEnabled, [
+        await projectCustomOnRows(orgId, customGate.enabled, [
           updated as unknown as Record<string, unknown>,
         ]);
 

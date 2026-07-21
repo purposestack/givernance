@@ -1,6 +1,10 @@
 /** Donations service — business logic for donation operations */
 
-import type { CustomFieldValues } from "@givernance/shared/custom-fields";
+import type {
+  CustomFieldPatch,
+  CustomFieldValues,
+  CustomValidator,
+} from "@givernance/shared/custom-fields";
 import {
   campaigns,
   constituents,
@@ -25,6 +29,7 @@ import {
   or,
   sql,
 } from "drizzle-orm";
+import { applyCustomPatchInTx } from "../../lib/custom-field-values.js";
 import { db, withTenantContext } from "../../lib/db.js";
 import { ExchangeRateService } from "../finance/exchange-rate-service.js";
 
@@ -213,8 +218,16 @@ export interface DonationUpdateInput {
   donatedAt?: string;
   fiscalYear?: number | null;
   allocations?: { fundId: string; amountCents: number }[];
-  /** See `DonationInput.custom` — validated + merged upstream; `undefined` = no change. */
-  custom?: CustomFieldValues;
+  /**
+   * RAW `custom` merge-patch (Epic #539). Unlike the create path, the
+   * update path validates + merges INSIDE the update transaction over the
+   * FOR UPDATE-locked current blob — reading the blob route-side would let
+   * concurrent patches silently drop each other's keys. `undefined` = no
+   * change. Requires `customValidator` when set.
+   */
+  custom?: CustomFieldPatch;
+  /** Validator built from the org's active donation catalog by the route. */
+  customValidator?: CustomValidator | null;
 }
 
 function normalizeNullableString(value: string | null | undefined) {
@@ -236,17 +249,29 @@ async function loadDonationUpdateContext(
   donationId: string,
   constituentId: string,
 ) {
-  const [existing, constituent, tenant] = await Promise.all([
-    tx
-      .select({ id: donations.id })
-      .from(donations)
-      .where(and(eq(donations.id, donationId), eq(donations.orgId, orgId))),
-    tx
-      .select({ id: constituents.id })
-      .from(constituents)
-      .where(and(eq(constituents.id, constituentId), eq(constituents.orgId, orgId))),
-    tx.select({ baseCurrency: tenants.baseCurrency }).from(tenants).where(eq(tenants.id, orgId)),
-  ]);
+  // Sequential awaits, deliberately: a transaction runs on ONE pg client,
+  // and the FOR UPDATE read below can block on a concurrent writer —
+  // issuing the sibling selects concurrently (Promise.all) would queue
+  // query() calls on the busy client, a pattern pg deprecates and pg@9
+  // removes.
+  //
+  // FOR UPDATE: the `custom` merge-patch is read-modify-write, so a
+  // concurrent update of the same donation must block until this tx
+  // commits and then re-read the fresh blob — otherwise the two patches
+  // silently drop each other's keys.
+  const existing = await tx
+    .select({ id: donations.id, custom: donations.custom })
+    .from(donations)
+    .where(and(eq(donations.id, donationId), eq(donations.orgId, orgId)))
+    .for("update");
+  const constituent = await tx
+    .select({ id: constituents.id })
+    .from(constituents)
+    .where(and(eq(constituents.id, constituentId), eq(constituents.orgId, orgId)));
+  const tenant = await tx
+    .select({ baseCurrency: tenants.baseCurrency })
+    .from(tenants)
+    .where(eq(tenants.id, orgId));
 
   return { existing: existing[0] ?? null, constituent: constituent[0] ?? null, tenant: tenant[0] };
 }
@@ -507,26 +532,6 @@ export async function getDonation(orgId: string, id: string) {
   });
 }
 
-/**
- * Current custom blob of one donation — the read the update route needs
- * to apply a merge-patch over. Returns null when the donation doesn't
- * exist in this tenant (route maps to 404, indistinguishable from a
- * cross-tenant id per ADR-019).
- */
-export async function getDonationCustom(
-  orgId: string,
-  id: string,
-): Promise<CustomFieldValues | null> {
-  return withTenantContext(orgId, async (tx) => {
-    const [row] = await tx
-      .select({ custom: donations.custom })
-      .from(donations)
-      .where(and(eq(donations.id, id), eq(donations.orgId, orgId)));
-
-    return row ? (row.custom ?? {}) : null;
-  });
-}
-
 /** Get the generated receipt for a donation */
 export async function getReceiptByDonation(orgId: string, donationId: string) {
   return withTenantContext(orgId, async (tx) => {
@@ -654,6 +659,11 @@ export async function updateDonation(orgId: string, id: string, input: DonationU
     await assertCampaignBelongsToOrg(tx, orgId, input.campaignId ?? null);
     await assertFundsBelongToOrg(tx, orgId, input.allocations);
 
+    // Merge the `custom` patch over the FOR UPDATE-locked current blob —
+    // inside the transaction, so concurrent patches serialise instead of
+    // overwriting each other (same pattern as constituents).
+    const customColumn = applyCustomPatchInTx(existing.custom, input.custom, input.customValidator);
+
     const currency = (input.currency ?? "EUR").toUpperCase();
     const baseCurrency = (tenant?.baseCurrency ?? "EUR").toUpperCase();
     const exchangeRateService = new ExchangeRateService({ dbClient: tx });
@@ -676,9 +686,8 @@ export async function updateDonation(orgId: string, id: string, input: DonationU
         paymentRef: normalizeNullableString(input.paymentRef) ?? null,
         donatedAt: input.donatedAt ? new Date(input.donatedAt) : undefined,
         fiscalYear: input.fiscalYear === undefined ? undefined : input.fiscalYear,
-        // Full replacement blob — the route already merge-patched it over
-        // the existing values. `undefined` leaves the column untouched.
-        custom: input.custom,
+        // Merged in-transaction above. `undefined` leaves the column untouched.
+        custom: customColumn,
         updatedAt: new Date(),
       })
       .where(and(eq(donations.id, id), eq(donations.orgId, orgId)))

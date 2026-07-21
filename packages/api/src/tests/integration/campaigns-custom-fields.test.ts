@@ -256,6 +256,54 @@ describe("campaigns custom fields — value writes (flag ON)", () => {
     });
   });
 
+  it("merges the patch INSIDE the update tx — a concurrent writer's keys survive (row-lock regression)", async () => {
+    const created = await createCampaign({ custom: { channel: OPT_POSTAL } });
+    expect(created.statusCode).toBe(201);
+    const campaignId = created.json<{ data: { id: string } }>().data.id;
+
+    // Same choreography as the donations regression: hold the row lock,
+    // fire the PATCH (blocked on the service's FOR UPDATE read), rewrite
+    // the blob, commit. The old read-outside-tx behaviour merged over the
+    // stale pre-lock blob and dropped the concurrent write.
+    let inFlight: Promise<Awaited<ReturnType<typeof app.inject>>> | undefined;
+    let settledEarly = false;
+    await db.transaction(async (tx) => {
+      await tx
+        .select({ id: campaigns.id })
+        .from(campaigns)
+        .where(and(eq(campaigns.id, campaignId), eq(campaigns.orgId, ORG_A)))
+        .for("update");
+
+      inFlight = app
+        .inject({
+          method: "PATCH",
+          url: `/v1/campaigns/${campaignId}`,
+          headers: authHeader(signToken(app)),
+          payload: { custom: { budget_extra: 1_000 } },
+        })
+        .then((res) => {
+          settledEarly = true;
+          return res;
+        });
+
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(settledEarly).toBe(false);
+
+      await tx
+        .update(campaigns)
+        .set({ custom: { channel: OPT_POSTAL, matched_funding: true } })
+        .where(and(eq(campaigns.id, campaignId), eq(campaigns.orgId, ORG_A)));
+    });
+
+    const res = await inFlight!;
+    expect(res.statusCode).toBe(200);
+    expect(res.json<{ data: { custom: Record<string, unknown> } }>().data.custom).toEqual({
+      channel: OPT_POSTAL,
+      matched_funding: true,
+      budget_extra: 1_000,
+    });
+  });
+
   it("serialises on the list through the same definition firewall", async () => {
     const created = await createCampaign({ custom: { channel: OPT_POSTAL } });
     const campaignId = created.json<{ data: { id: string } }>().data.id;

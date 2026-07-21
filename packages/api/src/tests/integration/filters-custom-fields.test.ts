@@ -13,7 +13,7 @@ import {
   donations,
   featureFlags,
 } from "@givernance/shared/schema";
-import { eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { flagService } from "../../lib/flags/flag-service.js";
@@ -79,8 +79,11 @@ describe("Custom-field filters (Epic #539)", () => {
         type: "picklist",
         sortOrder: 0,
         options: [
-          { id: "opt_grand000", label: "Grand donateur", active: true, sortOrder: 0 },
+          // Stored-array order deliberately ≠ sortOrder order: option
+          // reorder PATCHes rewrite sortOrder without splicing the array,
+          // and the catalog must serve sortOrder order (PR #550 MAJOR-5).
           { id: "opt_regular0", label: "Régulier", active: true, sortOrder: 1 },
+          { id: "opt_grand000", label: "Grand donateur", active: true, sortOrder: 0 },
           { id: "opt_retired0", label: "Ancien segment", active: false, sortOrder: 2 },
         ],
       },
@@ -647,6 +650,14 @@ describe("Custom-field filters (Epic #539)", () => {
       // need their labels), with the active bit intact.
       expect(segment?.options).toHaveLength(3);
       expect(segment?.options?.find((o) => o.id === "opt_retired0")?.active).toBe(false);
+      // …and in sortOrder order, NOT stored-array order — the seed stores
+      // them shuffled. The FilterBuilder dropdown renders the catalog
+      // verbatim, so an operator's option reorder must reach it.
+      expect(segment?.options?.map((o) => o.id)).toEqual([
+        "opt_grand000",
+        "opt_regular0",
+        "opt_retired0",
+      ]);
 
       const capacity = fields.find((f) => f.name === "custom.capacity");
       expect(capacity).toMatchObject({ uiType: "currency", valueUnit: "cents" });
@@ -752,6 +763,44 @@ describe("Custom-field filters (Epic #539)", () => {
       expect(ids).toEqual([idGrand]);
     });
 
+    it("export headers fall back to cf_<key> when the label collides with a core import header (review m5)", async () => {
+      // "Mobile" is a core import alias for `phone` — exporting it raw would
+      // misroute the column into the core phone field on re-import. The
+      // export must emit the stable `cf_<key>` alias instead (which the
+      // import resolver checks FIRST, so the round-trip lands back on the
+      // custom field).
+      await db.insert(customFieldDefinitions).values({
+        orgId: ORG_A,
+        domain: "constituent",
+        key: "mobile_pref",
+        label: "Mobile",
+        type: "text",
+        sortOrder: 20,
+      });
+      try {
+        const response = await app.inject({
+          method: "GET",
+          url: "/v1/constituents/export.csv",
+          headers: authHeader(token),
+        });
+        expect(response.statusCode).toBe(200);
+        const headerCells = (response.body.split("\r\n")[0] ?? "").split(",");
+        expect(headerCells).toContain("cf_mobile_pref");
+        expect(headerCells).not.toContain("Mobile");
+      } finally {
+        await db
+          .delete(customFieldDefinitions)
+          .where(
+            and(
+              eq(customFieldDefinitions.orgId, ORG_A),
+              eq(customFieldDefinitions.key, "mobile_pref"),
+            ),
+          );
+        const cacheKeys = await redis.keys("customfields:*");
+        if (cacheKeys.length > 0) await redis.del(...cacheKeys);
+      }
+    });
+
     it("GET /constituents/export.csv honors a custom-field condition", async () => {
       const filters = encodeURIComponent(
         JSON.stringify({
@@ -769,6 +818,111 @@ describe("Custom-field filters (Epic #539)", () => {
       // Header + exactly the one matching row.
       expect(lines).toHaveLength(2);
       expect(lines[1]).toContain("Grand donateur");
+    });
+  });
+
+  // The documented type-change flow (docs/35: archive a definition, re-create
+  // the same key with a new type) leaves the OLD-typed values in stored
+  // blobs. Unguarded ::numeric/::date/::boolean casts would then 22P02-abort
+  // the whole query — a 500 on list, filter, sort, AND export for every user
+  // of the org (review MAJOR-3). The guarded cast lanes treat stale values
+  // as NULL: excluded by comparisons, sorted with the empties, never an
+  // error. Stale blobs are seeded through the owner pool ON PURPOSE — the
+  // validator (correctly) refuses to write them, exactly like the pre-change
+  // rows the archive-recreate flow leaves behind.
+  describe("stale old-typed values after archive-recreate (review MAJOR-3)", () => {
+    async function seedStaleBlob(blob: Record<string, string>) {
+      await db
+        .update(constituents)
+        .set({ custom: blob })
+        .where(and(eq(constituents.id, idEmpty), eq(constituents.orgId, ORG_A)));
+    }
+
+    it("number/currency filters treat a stale text value as NULL — no 500", async () => {
+      await seedStaleBlob({ score: "high", capacity: "beaucoup" });
+
+      const gt = await runFilter({
+        operator: "AND",
+        conditions: [{ field: "custom.score", operator: "gt", value: 3 }],
+      });
+      expect(gt.status).toBe(200);
+      expect(resultIds(gt.body).sort()).toEqual([idGrand, idRegular].sort());
+
+      const gte = await runFilter({
+        operator: "AND",
+        conditions: [{ field: "custom.capacity", operator: "gte", value: 50 }],
+      });
+      expect(gte.status).toBe(200);
+      expect(resultIds(gte.body).sort()).toEqual([idGrand, idRegular].sort());
+    });
+
+    it("date filters treat non-date and impossible-calendar values as NULL — no 500", async () => {
+      // Shape mismatch (regex fence).
+      await seedStaleBlob({ last_review: "not a date" });
+      const shapeMismatch = await runFilter({
+        operator: "AND",
+        conditions: [
+          { field: "custom.last_review", operator: "between", value: ["2026-01-01", "2026-01-15"] },
+        ],
+      });
+      expect(shapeMismatch.status).toBe(200);
+      expect(resultIds(shapeMismatch.body)).toEqual([idGrand]);
+
+      // Shape-valid but impossible day (pg_input_is_valid fence — a bare
+      // regex would let this one through into a 22008).
+      await seedStaleBlob({ last_review: "2026-02-30" });
+      const impossibleDay = await runFilter({
+        operator: "AND",
+        conditions: [
+          { field: "custom.last_review", operator: "between", value: ["2026-01-01", "2026-12-31"] },
+        ],
+      });
+      expect(impossibleDay.status).toBe(200);
+      expect(resultIds(impossibleDay.body)).toEqual([idGrand]);
+    });
+
+    it("custom sort lanes sort stale values with the empties — no 500", async () => {
+      await seedStaleBlob({ score: "high", last_review: "2026-02-30", board_member: "yes" });
+      const everyone = {
+        operator: "AND",
+        conditions: [{ field: "constituent.createdAt", operator: "lte", value: "2100-01-01" }],
+      };
+
+      const byScore = await runFilter(everyone, { sort: { field: "custom.score", order: "desc" } });
+      expect(byScore.status).toBe(200);
+      expect(resultIds(byScore.body)).toEqual([idGrand, idRegular, idEmpty]);
+
+      const byDate = await runFilter(everyone, {
+        sort: { field: "custom.last_review", order: "asc" },
+      });
+      expect(byDate.status).toBe(200);
+      expect(resultIds(byDate.body)).toEqual([idRegular, idGrand, idEmpty]);
+
+      const byBool = await runFilter(everyone, {
+        sort: { field: "custom.board_member", order: "asc" },
+      });
+      expect(byBool.status).toBe(200);
+      expect(resultIds(byBool.body)).toEqual([idRegular, idGrand, idEmpty]);
+    });
+
+    it("CSV export (reuses the filter SQL) excludes the stale row cleanly — no 500", async () => {
+      await seedStaleBlob({ score: "high" });
+      const filters = encodeURIComponent(
+        JSON.stringify({
+          operator: "AND",
+          conditions: [{ field: "custom.score", operator: "gt", value: 3 }],
+        }),
+      );
+      const response = await app.inject({
+        method: "GET",
+        url: `/v1/constituents/export.csv?filters=${filters}`,
+        headers: authHeader(token),
+      });
+      expect(response.statusCode).toBe(200);
+      const lines = response.body.split("\r\n").filter((line) => line.length > 0);
+      // Header + Grand (42) + Regular (7); the stale "high" row is NULL-fenced out.
+      expect(lines).toHaveLength(3);
+      expect(response.body).not.toContain("Empty");
     });
   });
 });

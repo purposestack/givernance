@@ -17,7 +17,8 @@
     },
     "detail": {
       "sectionTitle": "Custom fields",
-      "donorSectionTitle": "Donor details"
+      "donorSectionTitle": "Donor details",
+      "archivedBadge": "Archived"
     }
   },
   "common": {

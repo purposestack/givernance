@@ -106,11 +106,17 @@ export function customFieldToMetadata(def: CustomFieldDefinition): FieldMetadata
     sensitive: def.sensitive,
     ...(def.type === "picklist" || def.type === "multi_picklist"
       ? {
-          options: def.options.map((option) => ({
-            id: option.id,
-            label: option.label,
-            active: option.active,
-          })),
+          // sortOrder order, not stored-array order — option reorder
+          // PATCHes rewrite sortOrder without splicing the array, so the
+          // catalog (and the FilterBuilder dropdown built from it) must
+          // sort here to stay coherent with every other option surface.
+          options: [...def.options]
+            .sort((a, b) => a.sortOrder - b.sortOrder)
+            .map((option) => ({
+              id: option.id,
+              label: option.label,
+              active: option.active,
+            })),
         }
       : {}),
     nullable: true,

@@ -2,10 +2,14 @@
  * Constituents CSV export (Epic #539 §5, docs/35 §4).
  *
  * `GET /v1/constituents/export.csv` — canonical columns plus one column
- * per `exportable` non-archived custom-field definition (admin
- * `sort_order`), honoring the advanced-filter `?filters=` DSL. Doubles
+ * per `exportable` custom-field definition (admin `sort_order`, archived
+ * defs suffixed), honoring the advanced-filter `?filters=` DSL. Doubles
  * as the DSAR / Art. 15 vehicle: option ids resolve to their labels so
- * a data subject reads "Grand donateur", never `opt_a1b2c3d4`.
+ * a data subject reads "Grand donateur", never `opt_a1b2c3d4`. Caveat
+ * (review m3, docs/35 §6): definitions with `exportable = false` are
+ * OMITTED from this file — a complete Art. 15 answer must cover their
+ * values separately (or the operator temporarily marks them exportable
+ * and re-runs the export).
  *
  * Streaming-friendly: rows are produced by an async generator over
  * keyset-paginated batches (each batch its own tenant-context
@@ -14,10 +18,15 @@
  */
 
 import { Readable } from "node:stream";
-import type { CustomFieldDefinition, CustomFieldValue } from "@givernance/shared/custom-fields";
+import {
+  type CustomFieldDefinition,
+  type CustomFieldValue,
+  customTemplateHeader,
+} from "@givernance/shared/custom-fields";
 import { constituents } from "@givernance/shared/schema";
 import { and, asc, eq, getTableColumns, gt, isNull } from "drizzle-orm";
 import { withTenantContext } from "../../lib/db.js";
+import { isCoreImportHeader } from "./bulk-import/parser.js";
 import type { FieldRegistryBundle } from "./filters/field-registry.js";
 import { donationStatsJoin, FilterService } from "./filters/filter.service.js";
 import type { FilterQuery } from "./filters/types.js";
@@ -95,16 +104,26 @@ export function formatCustomValueForExport(def: CustomFieldDefinition, value: un
 }
 
 /**
- * Header cell for a custom column. Sensitive (Art. 9) definitions stay
- * exportable — export is the DSAR vehicle — but their headers carry the
- * flag so a recipient file is self-describing (docs/35 §6). Archived
- * definitions export read-only with an explicit suffix; the suffixed
- * header also keeps them from resolving as an import column on
- * round-trip (their label no longer matches).
+ * Header cell for a custom column. The base label reuses the import
+ * template's collision fallback (review m5): a label a core import header
+ * would claim (e.g. "Mobile" → the `phone` alias), a label shared with
+ * another definition, or a label sitting in the `cf_` alias namespace is
+ * emitted as the stable `cf_<key>` alias instead — so an export/import
+ * round-trip lands the column back on the SAME custom field, never on a
+ * core column. Sensitive (Art. 9) definitions stay exportable — export is
+ * the DSAR vehicle — but their headers carry the flag so a recipient file
+ * is self-describing (docs/35 §6). Archived definitions export read-only
+ * with an explicit suffix; the suffixed header also keeps them from
+ * resolving as an import column on round-trip (their label no longer
+ * matches).
  */
-export function customExportHeader(def: CustomFieldDefinition & { archived?: boolean }): string {
-  const base = def.sensitive ? `${def.label} (Art. 9)` : def.label;
-  return def.archived ? `${base} (archived)` : base;
+export function customExportHeader(
+  def: CustomFieldDefinition & { archived?: boolean },
+  allDefs: readonly CustomFieldDefinition[],
+): string {
+  const base = customTemplateHeader(def, allDefs, isCoreImportHeader);
+  const flagged = def.sensitive ? `${base} (Art. 9)` : base;
+  return def.archived ? `${flagged} (archived)` : flagged;
 }
 
 type ExportRow = typeof constituents.$inferSelect;
@@ -171,7 +190,10 @@ async function* generateConstituentsCsv(
   advancedFilter: FilterQuery | undefined,
   registryBundle: FieldRegistryBundle | undefined,
 ): AsyncGenerator<string> {
-  const headers = [...CONSTITUENT_EXPORT_HEADERS, ...exportableDefs.map(customExportHeader)];
+  const headers = [
+    ...CONSTITUENT_EXPORT_HEADERS,
+    ...exportableDefs.map((def) => customExportHeader(def, exportableDefs)),
+  ];
   yield `${BOM}${toCsvLine(headers)}\r\n`;
 
   let cursor: string | null = null;
