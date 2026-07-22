@@ -188,14 +188,6 @@ function renderRecipientAddressBlock(
 async function buildPostalLetterDoc(
   input: PostalLetterRenderInput,
 ): Promise<InstanceType<typeof PDFDocument>> {
-  const qrDataUrl = await QRCode.toDataURL(input.qrPayload, {
-    width: 320,
-    margin: 1,
-    errorCorrectionLevel: "M",
-  });
-  // biome-ignore lint/style/noNonNullAssertion: data URI from QRCode.toDataURL always contains a comma separator
-  const qrBuffer = Buffer.from(qrDataUrl.split(",")[1]!, "base64");
-
   const doc = new PDFDocument({
     size: "A4",
     margin: PAGE_MARGIN,
@@ -344,8 +336,24 @@ async function buildPostalLetterDoc(
   // without dead space. PDFKit auto-paginates if a particularly long
   // description pushes the panel below the bottom margin — there's no
   // overlap risk.
-  const PANEL_HEIGHT = 200;
+  //
+  // The QR raster is generated HERE — at panel-render time, after the flow
+  // content — and not up-front before the doc exists. This mirrors the
+  // worker's `renderScanQrCtaPanel` exactly: the `await` point relative to
+  // the drawing sequence changes the order in which PDFKit flushes its
+  // object table, and a mismatched await point produces byte-permuted
+  // (visually identical, hash-different) output. The ADR-025 parity test
+  // (`postal-pdf.parity.test.ts`) pins this alignment.
   const panelTopY = doc.y;
+  const qrDataUrl = await QRCode.toDataURL(input.qrPayload, {
+    width: 320,
+    margin: 1,
+    errorCorrectionLevel: "M",
+  });
+  // biome-ignore lint/style/noNonNullAssertion: data URI from QRCode.toDataURL always contains a comma separator
+  const qrBuffer = Buffer.from(qrDataUrl.split(",")[1]!, "base64");
+
+  const PANEL_HEIGHT = 200;
   const qrX = (PAGE_WIDTH - QR_SIZE) / 2;
   const qrY = panelTopY + 14;
 

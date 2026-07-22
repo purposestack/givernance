@@ -45,7 +45,8 @@ packages/
 The lockstep risk during the two-surface period (postal + receipts) is real: a contributor changes one file and forgets the other. The mitigations:
 
 - **Top-of-file banner** in each renderer flagging its lockstep counterpart and the rule.
-- **CI parity test** (deferred to a follow-up issue if not done in this Epic): a fixture-driven integration test renders a known-input PDF through both files and asserts byte-equivalence (or, more pragmatically, hash-equivalence on the rendered PDF after stripping the timestamp metadata field). Failing the test blocks the PR.
+- **CI parity test** (shipped — issue #289): `packages/api/src/modules/campaigns/postal-pdf.parity.test.ts` renders three frozen fixtures (named + logo + description / door-drop fallback copy / cross-border address) through BOTH files and asserts SHA-256 equality after masking the only legitimately-varying bytes (`/CreationDate`, `/ModDate`, and a future-proofing `/ID` mask). Object numbers, xref offsets, and stream contents are deliberately NOT stripped — a difference there is a real drift. Failing the test blocks the PR. Two self-tests guard the guard: a one-character copy change must fail, and two same-input renders through one path must hash-match (so a future PDFKit salt points at the canonicaliser, not at a phantom drift). The worker renderer is loaded via a runtime-computed dynamic import (test-only, api → worker) so the package boundary and the "worker never imports api" direction stay intact; a static cross-package import would fail `tsc --noEmit` with TS6059 by design.
+- **Await-point alignment**: byte-equivalence requires more than identical drawing calls — the *position of `await` points relative to the drawing sequence* changes the order in which PDFKit flushes image XObjects into the file. The parity test caught exactly this on day one (the API path pre-generated the QR raster before the doc existed; the worker awaits it at CTA-panel time — visually identical, byte-permuted output whenever a logo made it a two-image document). Both files now generate the QR at panel-render time. When editing either file, keep async boundaries in lockstep too, not just the layout calls.
 - **Reviewer checklist** in `CLAUDE.md`: any PR touching a postal-PDF file MUST also touch its counterpart, OR explain in the PR description why they're allowed to drift.
 
 The parity guard becomes redundant once the extraction lands; until then it's the cheapest defence.
@@ -69,7 +70,7 @@ The parity guard becomes redundant once the extraction lands; until then it's th
 
 ### Consequences
 
-- **Reviewers MUST verify both files when changing one.** This is enforced socially (PR description + reviewer checklist) and in the medium term mechanically (parity test in CI).
+- **Reviewers MUST verify both files when changing one.** This is enforced socially (PR description + reviewer checklist) and mechanically (the CI parity test above — a one-sided edit fails the build).
 - **The lockstep convention is brittle but bounded.** The duplicated logic is small (page constants, MM→PT, logo embedding, locale copy table); the bound on damage is the per-letter rendering surface.
 - **The third-surface trigger is explicit.** When receipts ship and a third PDF surface is on the roadmap, the extraction MUST happen — at that point three lockstep files cross the cost-benefit line and the package overhead is amortised across enough consumers.
 - **`packages/web` never imports PDFKit.** This is the durable invariant: ADR-013's frontend-type boundary is preserved by the topology of the package graph, not by per-file discipline.
