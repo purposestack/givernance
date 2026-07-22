@@ -218,12 +218,16 @@ the second; annual giving statements the third) — is captured in
 extraction target cannot be `@givernance/shared` because PDFKit is
 Node-only and ADR-013 forbids Node-only deps in shared.
 
-Since issue #289 the lockstep invariant is **enforced in CI**: the
-golden-fixture parity test
+Since issue #289 the lockstep invariant is **enforced in CI** for the
+**standard-rail letter**: the golden-fixture parity test
 (`packages/api/src/modules/campaigns/postal-pdf.parity.test.ts`)
 renders frozen fixtures through both files and fails the build on any
-hash difference after masking timestamps — a one-sided layout edit can
-no longer merge.
+hash difference after masking timestamps — a one-sided edit to the
+standard-letter layout can no longer merge. The compressed-appeal
+renderer pair for Swiss QR-bill letters (`renderCompressedAppealForQrBill`
+in the worker ↔ `swiss-qr-bill-preview.ts` in the api) is **not** yet
+covered by the harness and remains socially enforced — extension is
+deferred until the Swiss QR-bill reconciliation PR (#361) merges.
 
 Per-campaign locale override is **out of MVP scope** — see § 9.
 
