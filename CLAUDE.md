@@ -114,7 +114,7 @@ Use these agents for domain-specific tasks via Claude Code:
 
 ## Implementation Status
 
-**Phase 0 — Foundation (current)**: Architecture blueprint complete. 17 specification documents, 116 HTML mockups, 4 Mermaid diagrams. No production code yet.
+**Phase 0 — Foundation (current)**: Architecture blueprint complete. 17 specification documents, 117 HTML mockups, 4 Mermaid diagrams. No production code yet.
 
 Next: Phase 1 — Skeleton (TypeScript monorepo scaffolding with pnpm workspaces, Drizzle schema baseline, CI/CD, auth, first module).
 

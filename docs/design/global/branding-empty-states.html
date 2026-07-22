@@ -63,7 +63,29 @@
     }
     .add-logo-banner-dismiss:hover { background: color-mix(in srgb, var(--color-amber-border) 40%, transparent); }
 
-    /* ── Sidebar footer org label (as in dashboard.html) ── */
+    /* ── Topbar ⌘K chip + footer helpers (local, comme notifications.html) ── */
+    .topbar-search { position: relative; }
+    .search-shortcut {
+      position: absolute;
+      right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      background: var(--color-neutral-100);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      padding: 1px 6px;
+      font-family: var(--font-mono);
+      pointer-events: none;
+    }
+    .sidebar-footer-user {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+    }
+
+    /* ── Sidebar footer org label (comme notifications.html) ── */
     .sidebar-footer-org {
       font-size: var(--text-sm);
       font-weight: 600;
@@ -90,8 +112,8 @@
       color: #ffffff;
       user-select: none;
     }
-    .org-initial-avatar--2xl { width: 128px; height: 128px; font-size: var(--text-4xl); }
-    .org-initial-avatar--xl  { width: 96px;  height: 96px;  font-size: var(--text-3xl); }
+    .org-initial-avatar--2xl { width: 128px; height: 128px; font-size: var(--text-5xl); }
+    .org-initial-avatar--xl  { width: 96px;  height: 96px;  font-size: var(--text-4xl); }
     .org-initial-avatar--lg  { width: 64px;  height: 64px;  font-size: var(--text-2xl); }
     .org-initial-avatar--md  { width: 40px;  height: 40px;  font-size: var(--text-base); }
     .org-initial-avatar--sm  { width: 32px;  height: 32px;  font-size: var(--text-sm); }
@@ -164,26 +186,29 @@
       </a>
       <nav class="sidebar-nav">
         <a href="../dashboard.html" class="nav-item active">
-          <span class="material-symbols-outlined nav-icon">dashboard</span>
+          <span class="material-symbols-outlined nav-item-icon">dashboard</span>
           <span>Dashboard</span>
         </a>
         <a href="../constituents/list.html" class="nav-item">
-          <span class="material-symbols-outlined nav-icon">groups</span>
+          <span class="material-symbols-outlined nav-item-icon">groups</span>
           <span>Constituants</span>
         </a>
         <a href="../campaigns/list.html" class="nav-item">
-          <span class="material-symbols-outlined nav-icon">campaign</span>
+          <span class="material-symbols-outlined nav-item-icon">campaign</span>
           <span>Campagnes</span>
         </a>
         <a href="../donations/list.html" class="nav-item">
-          <span class="material-symbols-outlined nav-icon">volunteer_activism</span>
+          <span class="material-symbols-outlined nav-item-icon">volunteer_activism</span>
           <span>Dons</span>
         </a>
       </nav>
 
-      <!-- Empty-state org avatar : rendu quand AUCUN logo n'est configur&eacute;.
-           Rempla&ccedil;&eacute; par la variante `sidebar` 128&times;128 du logo d&egrave;s
-           que le pipeline branding a produit les variantes (Epic #286). -->
+      <!-- Empty-state org avatar : rendu quand aucun logo n'est r&eacute;solu c&ocirc;t&eacute;
+           serveur. Remplac&eacute; par la variante `sidebar` 128&times;128 du logo d&egrave;s que
+           le pipeline branding a produit les variantes (Epic #286). Limitation
+           actuelle : GET /v1/branding/org-logo est r&eacute;serv&eacute; aux org_admin, donc
+           les autres r&ocirc;les conservent l'avatar initiale m&ecirc;me quand un logo
+           existe (suivi produit &agrave; ouvrir). -->
       <div class="sidebar-org-avatar-slot">
         <div class="org-initial-avatar org-initial-avatar--2xl" style="background: var(--color-primary);" role="img" aria-label="Association Solidarit&eacute; M&eacute;d.">A</div>
       </div>
@@ -278,13 +303,13 @@
               <strong>Anatomie.</strong> Bande ambre (<code>--color-amber-light</code>, bordure basse <code>--color-amber-border</code>, texte <code>--color-amber-text</code>) mont&eacute;e <strong>au-dessus du topbar</strong>, dans la colonne de contenu (jamais par-dessus la sidebar). Ic&ocirc;ne <code>add_photo_alternate</code>, corps centr&eacute;, CTA outline tertiaire vers <code>/settings#branding</code> (section logo <em>int&eacute;gr&eacute;e</em> &agrave; la carte Organisation &mdash; pas de hero card d&eacute;di&eacute;), bouton fermer 28&times;28.
             </div>
             <div class="spec-note">
-              <strong>R&egrave;gles de visibilit&eacute;.</strong> Visible <em>uniquement</em> si&nbsp;: (1)&nbsp;r&ocirc;le <code>org_admin</code> &mdash; un non-admin ne peut pas agir, donc ne voit rien&nbsp;; (2)&nbsp;aucun logo actif c&ocirc;t&eacute; serveur&nbsp;; (3)&nbsp;pas de fermeture dans la session courante. La fermeture est stock&eacute;e en <code>sessionStorage</code> <strong>par organisation</strong> (<code>gv.add-logo-banner.dismissed.&lt;orgId&gt;</code>) &mdash; la banni&egrave;re revient &agrave; la prochaine session tant qu'aucun logo n'est configur&eacute; (m&ecirc;me patron que la banni&egrave;re admin provisoire). L'upload d'un logo la retire imm&eacute;diatement.
+              <strong>R&egrave;gles de visibilit&eacute;.</strong> Visible <em>uniquement</em> si&nbsp;: (1)&nbsp;r&ocirc;le <code>org_admin</code> &mdash; un non-admin ne peut pas agir, donc ne voit rien&nbsp;; (2)&nbsp;aucun logo actif c&ocirc;t&eacute; serveur&nbsp;; (3)&nbsp;pas de fermeture dans la session courante. La fermeture est stock&eacute;e en <code>sessionStorage</code> <strong>par organisation</strong> (<code>gv.add-logo-banner.dismissed.&lt;orgId&gt;</code>) &mdash; la banni&egrave;re revient &agrave; la prochaine session tant qu'aucun logo n'est configur&eacute; (fermeture par session, &agrave; l'instar de la banni&egrave;re admin provisoire &mdash; dont la cl&eacute; est toutefois globale, pas par org). L'upload d'un logo la retire imm&eacute;diatement.
             </div>
             <div class="spec-note">
-              <strong>R&eacute;utilisation.</strong> Toute future incitation d'onboarding (&laquo;&nbsp;Connecter Stripe&nbsp;&raquo;, &laquo;&nbsp;V&eacute;rifier votre domaine&nbsp;&raquo;, &hellip;) DOIT r&eacute;utiliser cette anatomie&nbsp;: m&ecirc;me position (au-dessus du topbar, sous les banni&egrave;res impersonation/admin provisoire), m&ecirc;mes jetons ambre, m&ecirc;me m&eacute;canique de fermeture par session et par org. Une seule banni&egrave;re d'onboarding visible &agrave; la fois (ordre d'empilement = ordre de mont&eacute; dans l'AppShell).
+              <strong>R&eacute;utilisation.</strong> Toute future incitation d'onboarding (&laquo;&nbsp;Connecter Stripe&nbsp;&raquo;, &laquo;&nbsp;V&eacute;rifier votre domaine&nbsp;&raquo;, &hellip;) DOIT r&eacute;utiliser cette anatomie&nbsp;: m&ecirc;me position (au-dessus du topbar, sous les banni&egrave;res impersonation/admin provisoire), m&ecirc;mes jetons ambre, m&ecirc;me m&eacute;canique de fermeture par session et par org. Une seule banni&egrave;re d'onboarding visible &agrave; la fois (ordre d'empilement = ordre de montage dans l'AppShell&nbsp;: impersonation, puis admin provisoire, puis logo).
             </div>
             <div class="spec-note">
-              <strong>Contraintes d'upload (canoniques, align&eacute;es impl&eacute;mentation).</strong> Formats accept&eacute;s&nbsp;: <code>PNG</code>, <code>JPEG</code>, <code>WebP</code> &mdash; <strong>5&nbsp;Mo max</strong>&nbsp;; <code>SVG</code> &mdash; <strong>1&nbsp;Mo max</strong> (sanitis&eacute; c&ocirc;t&eacute; serveur&nbsp;: scripts, imbrication et nombre d'&eacute;l&eacute;ments plafonn&eacute;s). Les variantes (sidebar 128&times;128, favicon, PDF) sont produites par le pipeline worker (ADR-024).
+              <strong>Contraintes d'upload (canoniques, align&eacute;es impl&eacute;mentation).</strong> Formats accept&eacute;s&nbsp;: <code>PNG</code>, <code>JPEG</code>, <code>WebP</code> &mdash; <strong>5&nbsp;Mo max</strong>&nbsp;; <code>SVG</code> &mdash; <strong>1&nbsp;Mo max</strong> (sanitis&eacute; c&ocirc;t&eacute; serveur&nbsp;: scripts et handlers interdits, nombre d'&eacute;l&eacute;ments plafonn&eacute;). Les variantes (sidebar 128&times;128, favicon, PDF) sont produites par le pipeline worker (ADR-024).
             </div>
           </div>
         </div>
@@ -292,17 +317,17 @@
         <div class="card" id="spec-avatar" style="margin-top: var(--space-4);">
           <h3 class="form-section-title">Sp&eacute;cification &mdash; avatar initiale (InitialLetterAvatar)</h3>
           <p class="spec-note" style="margin-top: var(--space-2);">
-            Partout o&ugrave; une organisation doit &ecirc;tre identifiable <em>avant</em> (ou en l'absence de) logo&nbsp;: sidebar, carte logo des r&eacute;glages, lignes du s&eacute;lecteur d'organisation, hero de la page de don publique. La couleur est <strong>d&eacute;terministe</strong>&nbsp;: hash multiplicatif-31 du <code>tenantId</code> (repli&nbsp;: nom de l'org) &rarr; index dans la palette fixe de 8 couleurs ci-dessous. M&ecirc;me org &rarr; m&ecirc;me couleur, sur toutes les surfaces et toutes les sessions. <strong>L'ordre de la palette est contractuel</strong>&nbsp;: le changer rem&eacute;langerait la couleur de toutes les orgs existantes. Chaque fond passe WCAG&nbsp;AA (&ge;&nbsp;4,5:1) contre le glyphe blanc. D&eacute;coratif par d&eacute;faut (<code>aria-hidden</code>)&nbsp;; devient <code>role="img"</code> + label quand il porte seul l'identit&eacute; (page de don publique).
+            Partout o&ugrave; une organisation doit &ecirc;tre identifiable <em>avant</em> (ou en l'absence de) logo&nbsp;: sidebar, carte logo des r&eacute;glages, lignes du s&eacute;lecteur d'organisation, hero de la page de don publique. La couleur est <strong>d&eacute;terministe</strong>&nbsp;: hash multiplicatif-31 du <code>tenantId</code> (repli&nbsp;: nom de l'org) &rarr; index dans la palette fixe de 8 couleurs ci-dessous. M&ecirc;me org &rarr; m&ecirc;me couleur, sur toutes les surfaces et toutes les sessions. <strong>L'ordre de la palette est contractuel</strong>&nbsp;: le changer rem&eacute;langerait la couleur de toutes les orgs existantes. Chaque fond passe WCAG&nbsp;AA (&ge;&nbsp;4,5:1) contre le glyphe blanc. D&eacute;coratif (<code>aria-hidden</code>) quand le nom de l'org est adjacent dans le m&ecirc;me composant (lignes de l'org-picker)&nbsp;; labellis&eacute; (<code>role="img"</code> + <code>aria-label</code>) quand il porte l'identit&eacute; visuelle&nbsp;: sidebar (impl&eacute;mentation shipped) et hero de la page de don publique.
           </p>
           <div class="palette-row">
             <div class="palette-chip"><div class="org-initial-avatar org-initial-avatar--md" style="background: var(--color-primary);">A</div><div class="palette-chip-token">--color-primary</div></div>
-            <div class="palette-chip"><div class="org-initial-avatar org-initial-avatar--md" style="background: #5b4fd4;">B</div><div class="palette-chip-token">--color-indigo</div></div>
-            <div class="palette-chip"><div class="org-initial-avatar org-initial-avatar--md" style="background: #2e79a6;">C</div><div class="palette-chip-token">--color-sky</div></div>
-            <div class="palette-chip"><div class="org-initial-avatar org-initial-avatar--md" style="background: #a16207;">D</div><div class="palette-chip-token">--color-amber-strong</div></div>
-            <div class="palette-chip"><div class="org-initial-avatar org-initial-avatar--md" style="background: #7c3aed;">E</div><div class="palette-chip-token">--color-plum</div></div>
-            <div class="palette-chip"><div class="org-initial-avatar org-initial-avatar--md" style="background: #0f766e;">F</div><div class="palette-chip-token">--color-teal</div></div>
-            <div class="palette-chip"><div class="org-initial-avatar org-initial-avatar--md" style="background: #be185d;">G</div><div class="palette-chip-token">--color-rose</div></div>
-            <div class="palette-chip"><div class="org-initial-avatar org-initial-avatar--md" style="background: #475569;">H</div><div class="palette-chip-token">--color-slate</div></div>
+            <div class="palette-chip"><div class="org-initial-avatar org-initial-avatar--md" style="background: var(--color-indigo, #5b4fd4);">B</div><div class="palette-chip-token">--color-indigo</div></div>
+            <div class="palette-chip"><div class="org-initial-avatar org-initial-avatar--md" style="background: var(--color-sky, #2e79a6);">C</div><div class="palette-chip-token">--color-sky</div></div>
+            <div class="palette-chip"><div class="org-initial-avatar org-initial-avatar--md" style="background: var(--color-amber-strong, #a16207);">D</div><div class="palette-chip-token">--color-amber-strong</div></div>
+            <div class="palette-chip"><div class="org-initial-avatar org-initial-avatar--md" style="background: var(--color-plum, #7c3aed);">E</div><div class="palette-chip-token">--color-plum</div></div>
+            <div class="palette-chip"><div class="org-initial-avatar org-initial-avatar--md" style="background: var(--color-teal, #0f766e);">F</div><div class="palette-chip-token">--color-teal</div></div>
+            <div class="palette-chip"><div class="org-initial-avatar org-initial-avatar--md" style="background: var(--color-rose, #be185d);">G</div><div class="palette-chip-token">--color-rose</div></div>
+            <div class="palette-chip"><div class="org-initial-avatar org-initial-avatar--md" style="background: var(--color-slate, #475569);">H</div><div class="palette-chip-token">--color-slate</div></div>
           </div>
           <div class="size-row">
             <div class="size-chip"><div class="org-initial-avatar org-initial-avatar--sm" style="background: var(--color-primary);">A</div><div class="size-chip-label">sm &middot; 32</div></div>
@@ -310,6 +335,12 @@
             <div class="size-chip"><div class="org-initial-avatar org-initial-avatar--lg" style="background: var(--color-primary);">A</div><div class="size-chip-label">lg &middot; 64</div></div>
             <div class="size-chip"><div class="org-initial-avatar org-initial-avatar--xl" style="background: var(--color-primary);">A</div><div class="size-chip-label">xl &middot; 96</div></div>
             <div class="size-chip"><div class="org-initial-avatar org-initial-avatar--2xl" style="background: var(--color-primary);">A</div><div class="size-chip-label">2xl &middot; 128 (sidebar)</div></div>
+            <div class="size-chip">
+              <div style="width:128px;height:128px;display:flex;align-items:center;justify-content:center;">
+                <img src="../shared/assets/givernance-logo.svg" alt="" style="max-width:100%;max-height:100%;object-fit:contain;">
+              </div>
+              <div class="size-chip-label">logo pr&ecirc;t &middot; variante sidebar<br>128&times;128, object-fit: contain,<br>sans cadre ni rayon</div>
+            </div>
           </div>
         </div>
 
