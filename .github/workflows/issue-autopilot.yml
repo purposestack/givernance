@@ -5,7 +5,9 @@
 # (backpressure is enforced by the playbook itself).
 #
 # Required secret:
-#   ANTHROPIC_API_KEY   — API key used by the Claude Code action (API billing).
+#   CLAUDE_CODE_OAUTH_TOKEN — long-lived OAuth token bound to the Claude
+#     subscription (generate locally with `claude setup-token`). Billing goes
+#     to the subscription, NOT the metered API.
 # Optional secret:
 #   AUTOPILOT_GH_TOKEN  — fine-grained PAT (contents, pull-requests, issues:
 #     read/write). Without it the default GITHUB_TOKEN is used, which works but
@@ -88,7 +90,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.AUTOPILOT_GH_TOKEN || secrets.GITHUB_TOKEN }}
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.AUTOPILOT_GH_TOKEN || secrets.GITHUB_TOKEN }}
           # Single source of truth for the playbook is the versioned file —
           # keep this prompt a pointer, never inline the instructions here.
