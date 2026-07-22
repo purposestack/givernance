@@ -298,4 +298,4 @@ Explicitly deferred so prospects, operators, and future-self don't assume any of
 - `docs/23-postal-campaigns.md` — postal-letter renderer (lockstep duplicate consumed by Epic #286)
 - Code refs: `packages/worker/src/lib/s3.ts` (S3 client, SSE-S3), `packages/api/src/modules/campaigns/postal-pdf.ts` + `packages/worker/src/services/campaign-pdf.ts` (lockstep PDF renderers), `packages/api/src/lib/keycloak-admin.ts` (`updateOrganization` GET-then-PUT), `infra/keycloak/themes/givernance/login/template.ftl` (consumes `organization.attributes['logo_url']`)
 - Migration `0042_org_branding_assets.sql` — schema delta for this Epic (table + RLS + `tenants.logo_asset_id`)
-- Mockups: `docs/design/index.html` → "Branding" section (when added)
+- Mockups: [`docs/design/global/branding-empty-states.html`](design/global/branding-empty-states.html) (GLO-006) — AddLogoBanner + sidebar `InitialLetterAvatar` empty state, palette contractuelle, contraintes d'upload (issue #293)
