@@ -1,0 +1,99 @@
+# Issue Autopilot — cloud runs every 6 hours (issue → PR → review → verdict).
+#
+# The playbook lives in .github/autopilot/prompt.md. The agent never merges;
+# it opens at most one PR per run, capped at 2 open `agent:autopilot` PRs
+# (backpressure is enforced by the playbook itself).
+#
+# Required secret:
+#   ANTHROPIC_API_KEY   — API key used by the Claude Code action (API billing).
+# Optional secret:
+#   AUTOPILOT_GH_TOKEN  — fine-grained PAT (contents, pull-requests, issues:
+#     read/write). Without it the default GITHUB_TOKEN is used, which works but
+#     does NOT trigger CI on the pushed branches (GitHub restriction) — the
+#     playbook compensates by running the full quality pipeline in this runner.
+name: Issue Autopilot
+
+on:
+  schedule:
+    - cron: "0 */6 * * *" # UTC — 02:00/08:00/14:00/20:00 CEST
+  workflow_dispatch: {}
+
+# Never let two runs overlap: a second scheduled run queues behind the first.
+concurrency:
+  group: issue-autopilot
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: read
+
+jobs:
+  autopilot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    # Same test infrastructure as ci.yml so the agent can run `pnpm test`
+    # in-runner before pushing (its pushes may not trigger CI, see header).
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: givernance
+          POSTGRES_PASSWORD: givernance_dev
+          POSTGRES_DB: givernance_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U givernance -d givernance_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://givernance:givernance_dev@localhost:5432/givernance_test
+      REDIS_URL: redis://localhost:6379
+      ADMIN_SECRET: ci-test-admin-secret
+      GH_TOKEN: ${{ secrets.AUTOPILOT_GH_TOKEN || secrets.GITHUB_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v7.0.0
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.AUTOPILOT_GH_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - uses: pnpm/action-setup@v6.0.9
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "pnpm"
+
+      # Warm the store so the agent's own `pnpm install` is instant.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run autopilot
+        uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ secrets.AUTOPILOT_GH_TOKEN || secrets.GITHUB_TOKEN }}
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.AUTOPILOT_GH_TOKEN || secrets.GITHUB_TOKEN }}
+          # Single source of truth for the playbook is the versioned file —
+          # keep this prompt a pointer, never inline the instructions here.
+          prompt: >-
+            Lis le fichier .github/autopilot/prompt.md du repo et exécute ce
+            playbook intégralement, de l'étape 0 à la fin de run.
+          # Disposable runner: full autonomy inside the sandbox.
+          claude_args: "--dangerously-skip-permissions"
