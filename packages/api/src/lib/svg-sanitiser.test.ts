@@ -30,7 +30,7 @@
 
 import { JSDOM } from "jsdom";
 import { describe, expect, it } from "vitest";
-import { sanitiseSvg } from "./svg-sanitiser.js";
+import { MAX_SVG_ELEMENTS, SvgSanitiserError, sanitiseSvg } from "./svg-sanitiser.js";
 
 describe("sanitiseSvg — DOMPurify positive coverage", () => {
   it("strips javascript: pseudo-protocol from <a xlink:href>", () => {
@@ -107,5 +107,58 @@ describe("sanitiseSvg — DOMPurify positive coverage", () => {
     expect(cleaned.toLowerCase()).toContain("<rect");
     expect(cleaned.toLowerCase()).toContain("<path");
     expect(cleaned).toContain('fill="#3366cc"');
+  });
+});
+
+describe("sanitiseSvg — element-count cap (issue #295)", () => {
+  /** Build an `<svg>` wrapper containing `n` tiny `<rect>` children. */
+  function svgWithRects(n: number): Buffer {
+    const rects = '<rect width="1" height="1"/>'.repeat(n);
+    return Buffer.from(
+      `<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg">${rects}</svg>`,
+      "utf8",
+    );
+  }
+
+  it("rejects a pathological SVG that blows past the element cap", () => {
+    // The classic OOM vector: thousands of tiny elements, each well under
+    // the 1MB byte cap, that would inflate the jsdom parser DOM. The regex
+    // pre-flight must reject this BEFORE jsdom ever parses it.
+    const input = svgWithRects(MAX_SVG_ELEMENTS + 500);
+
+    expect(() => sanitiseSvg(input)).toThrow(SvgSanitiserError);
+    try {
+      sanitiseSvg(input);
+      expect.unreachable("expected sanitiseSvg to throw");
+    } catch (err) {
+      expect(err).toBeInstanceOf(SvgSanitiserError);
+      expect((err as SvgSanitiserError).reason).toBe("too_complex");
+    }
+  });
+
+  it("accepts a dense-but-legitimate SVG just under the cap", () => {
+    // A complex real logo (~200 paths) or vector portrait (~1000) must
+    // sail through. We test comfortably below the ceiling: the wrapper
+    // `<svg>` counts as one element, so (cap - 100) rects stays under.
+    const input = svgWithRects(MAX_SVG_ELEMENTS - 100);
+
+    const cleaned = sanitiseSvg(input).toString("utf8");
+    expect(cleaned.toLowerCase()).toContain("<svg");
+    expect(cleaned.toLowerCase()).toContain("<rect");
+  });
+
+  it("counts opening tags only — closing tags don't inflate the count", () => {
+    // `<g>…</g>` pairs must not be double-counted: a document with N
+    // group elements has N opening tags, not 2N. If the counter matched
+    // closing tags too, a document with (cap/2 + 1) groups would falsely
+    // trip. Build exactly that and assert it survives.
+    const groups = "<g></g>".repeat(Math.floor(MAX_SVG_ELEMENTS / 2) + 1);
+    const input = Buffer.from(
+      `<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg">${groups}</svg>`,
+      "utf8",
+    );
+
+    // Opening-tag count = 1 (<svg>) + (cap/2 + 1) groups, which is < cap.
+    expect(() => sanitiseSvg(input)).not.toThrow();
   });
 });
