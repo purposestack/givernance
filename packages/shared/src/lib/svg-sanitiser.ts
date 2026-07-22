@@ -40,6 +40,20 @@
 import createDOMPurify, { type WindowLike } from "dompurify";
 import { JSDOM } from "jsdom";
 
+/**
+ * Upper bound on the number of markup elements a single logo SVG may
+ * contain (issue #295). The 1 MB byte cap enforced upstream is not a
+ * sufficient guard on its own: a pathological SVG built from ~100k tiny
+ * `<rect>` elements (≈ 10 bytes each) passes the byte cap yet inflates
+ * jsdom's parser DOM enough to spike memory / CPU before DOMPurify runs.
+ *
+ * 5,000 is a generous ceiling for a real logo — a complex flat-design
+ * org logo is ~200 paths, and even a vector hand-drawn portrait tops out
+ * around ~1,000. It rejects pathology without ever tripping on a
+ * legitimate upload.
+ */
+export const MAX_SVG_ELEMENTS = 5000;
+
 export class SvgSanitiserError extends Error {
   constructor(
     message: string,
@@ -48,6 +62,7 @@ export class SvgSanitiserError extends Error {
       | "contains_foreign_object"
       | "contains_external_use"
       | "contains_event_handler"
+      | "too_complex"
       | "parse_error"
       | "not_svg",
   ) {
@@ -103,6 +118,22 @@ export function sanitiseSvg(input: Buffer): Buffer {
   // into the rasteriser as an empty document.
   if (!lower.includes("<svg")) {
     throw new SvgSanitiserError("Input does not contain an <svg> root", "not_svg");
+  }
+
+  // Element-count cap (issue #295) — MUST run before the jsdom parse
+  // below. Counting opening tags with a cheap regex on the raw text is
+  // O(n) and allocates nothing; letting a 100k-element document reach
+  // jsdom is exactly the OOM/CPU pathology this guards against. We match
+  // the start of every opening tag (`<` immediately followed by a letter)
+  // which counts `<svg`, `<rect`, … but not closing tags (`</rect>`),
+  // comments (`<!--`), the XML declaration (`<?xml`), or CDATA — an
+  // over-count would only ever make the guard *stricter*, never leakier.
+  const elementCount = (text.match(/<[a-z]/gi) ?? []).length;
+  if (elementCount > MAX_SVG_ELEMENTS) {
+    throw new SvgSanitiserError(
+      `SVG has ${elementCount} elements, exceeding the ${MAX_SVG_ELEMENTS} cap`,
+      "too_complex",
+    );
   }
 
   let cleaned: string;
