@@ -150,6 +150,19 @@
   --color-sky-border:    #BAE6FD;
   --color-sky-text:      #0369A1;
 
+  /* ── InitialLetterAvatar palette (Epic #286, GLO-006) ──
+     Mirrors packages/web/src/app/globals.css — the deterministic 8-colour
+     avatar palette. Order and values are contractual (WCAG-AA vs white). */
+  --color-plum:          #7C3AED;
+  --color-plum-light:    #EDE9FE;
+  --color-teal:          #0F766E;
+  --color-teal-light:    #CCFBF1;
+  --color-rose:          #BE185D;
+  --color-rose-light:    #FCE7F3;
+  --color-slate:         #475569;
+  --color-slate-light:   #E2E8F0;
+  --color-amber-strong:  #A16207;
+
   --color-navy:          var(--color-inverse-surface);
   --color-navy-light:    #33302a;
   --color-navy-50:       var(--color-surface-container-low);
