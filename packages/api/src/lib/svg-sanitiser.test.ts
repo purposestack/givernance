@@ -147,6 +147,31 @@ describe("sanitiseSvg — element-count cap (issue #295)", () => {
     expect(cleaned.toLowerCase()).toContain("<rect");
   });
 
+  it("accepts an SVG at exactly the element cap (boundary: `>` not `>=`)", () => {
+    // The comparison is strict `>`, so exactly MAX_SVG_ELEMENTS must
+    // PASS. `<?xml …>` doesn't match the counter (starts with `<?`), the
+    // wrapper `<svg>` counts as 1, and each `<rect>` counts as 1 — so
+    // svgWithRects(cap - 1) yields exactly `cap` counted elements. Pins
+    // the passing side of the boundary: a `>`→`>=` slip would reject this
+    // legitimate exactly-at-ceiling logo and this test would catch it.
+    const input = svgWithRects(MAX_SVG_ELEMENTS - 1);
+    expect(() => sanitiseSvg(input)).not.toThrow();
+  });
+
+  it("rejects an SVG one element over the cap (boundary: first over-cap value)", () => {
+    // svgWithRects(cap) yields exactly `cap + 1` counted elements — the
+    // smallest input that must trip the guard. Pins the failing side of
+    // the boundary with the exact typed reason.
+    const input = svgWithRects(MAX_SVG_ELEMENTS);
+    try {
+      sanitiseSvg(input);
+      expect.unreachable("expected sanitiseSvg to throw at cap + 1");
+    } catch (err) {
+      expect(err).toBeInstanceOf(SvgSanitiserError);
+      expect((err as SvgSanitiserError).reason).toBe("too_complex");
+    }
+  });
+
   it("counts opening tags only — closing tags don't inflate the count", () => {
     // `<g>…</g>` pairs must not be double-counted: a document with N
     // group elements has N opening tags, not 2N. If the counter matched

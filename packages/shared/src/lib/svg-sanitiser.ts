@@ -122,8 +122,10 @@ export function sanitiseSvg(input: Buffer): Buffer {
 
   // Element-count cap (issue #295) — MUST run before the jsdom parse
   // below. Counting opening tags with a cheap regex on the raw text is
-  // O(n) and allocates nothing; letting a 100k-element document reach
-  // jsdom is exactly the OOM/CPU pathology this guards against. We match
+  // O(n) over the (already ≤1 MB) input — a bounded transient match
+  // array, far cheaper than the ~100 MB DOM it prevents; letting a
+  // 100k-element document reach jsdom is exactly the OOM/CPU pathology
+  // this guards against. We match
   // the start of every opening tag (`<` immediately followed by a letter)
   // which counts `<svg`, `<rect`, … but not closing tags (`</rect>`),
   // comments (`<!--`), the XML declaration (`<?xml`), or CDATA — an
