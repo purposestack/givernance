@@ -1659,6 +1659,27 @@ flowchart TD
 
 ---
 
+### GLO-006 — Branding : états sans logo (bannière + avatar initiale)
+
+| Champ | Valeur |
+|---|---|
+| **ID** | GLO-006 |
+| **Module** | Global |
+| **Nom de l'écran** | Branding — états sans logo |
+| **URL pattern** | Chrome applicatif (toutes les pages authentifiées) tant qu'aucun logo n'est configuré |
+| **Description** | Les deux surfaces d'incitation « pas encore de logo » de l'Epic [#286](https://github.com/purposestack/givernance/issues/286) : (1) la bannière ambre `AddLogoBanner` montée au-dessus du topbar, visible uniquement pour les `org_admin` tant qu'aucun logo actif n'existe, fermable par session (`sessionStorage` par org) ; (2) l'avatar initiale déterministe `InitialLetterAvatar` (2xl, 128 px) au-dessus du sélecteur d'organisation de la sidebar, remplacé par la variante `sidebar` 128×128 dès que le pipeline a produit les variantes. La maquette sert aussi de spécification canonique : palette 8 couleurs WCAG-AA à ordre contractuel, échelle de tailles sm→2xl, contraintes d'upload (PNG/JPEG/WebP ≤ 5 Mo, SVG ≤ 1 Mo), règle de réutilisation pour toute future bannière d'onboarding (« Connecter Stripe », « Vérifier votre domaine »). |
+| **États** | BannerVisible, BannerDismissedSession, BannerHiddenNonAdmin, BannerHiddenHasLogo, AvatarFallback, AvatarLogoReady |
+| **Actions principales** | 1. Aller à `/settings#branding` (CTA « Ajouter un logo ») · 2. Fermer la bannière pour la session |
+| **Données affichées** | Nom de l'organisation (initiale + label), copy d'incitation |
+| **Rôles autorisés** | Bannière : `org_admin` uniquement · Avatar sidebar : tous les rôles authentifiés |
+| **Composants clés** | `AddLogoBanner`, `InitialLetterAvatar`, `AppShell` (ordre d'empilement des bannières), `Sidebar` |
+| **Interactions IA** | — |
+| **Priorité** | MUST |
+| **Issue** | [#293](https://github.com/purposestack/givernance/issues/293) |
+| **Maquette** | [`docs/design/global/branding-empty-states.html`](design/global/branding-empty-states.html) |
+
+---
+
 ## Annexe B — Inventaire complet (index)
 
 | ID | Module | Nom de l'écran | URL | Priorité |
@@ -1738,6 +1759,7 @@ flowchart TD
 | GLO-003 | Global | Erreur 500 | fallback | MUST |
 | GLO-004 | Global | Centre de notifications | panneau latéral | MUST |
 | GLO-005 | Global | Menu compte | dropdown topbar (toutes pages auth) | MUST |
+| GLO-006 | Global | Branding — états sans logo | chrome applicatif (toutes pages auth) | MUST |
 | CONV-001 | Conversationnel | Hub conversationnel | vision | VISION |
 | CONV-002 | Conversationnel | Résultats inline | vision | VISION |
 | CONV-003 | Conversationnel | Orchestration d'actions | vision | VISION |

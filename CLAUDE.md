@@ -46,7 +46,7 @@ Givernance is a purpose-built CRM for European nonprofits (2-200 staff), designe
 │   ├── 11-design-identity.md      — Visual identity, design tokens, components
 │   ├── 12-user-journeys.md        — 5 persona journeys with Mermaid flows
 │   ├── 13-ai-modes.md            — Manual / Assisted / Autopilot AI modes
-│   ├── 14-screen-inventory.md     — Complete 86-screen inventory
+│   ├── 14-screen-inventory.md     — Complete screen inventory (per-module IDs + Annexe B index)
 │   ├── 15-infra-adr.md           — Architecture Decision Records (ADR-001, ADR-002, ADR-003)
 │   ├── 16-greg-field-insights.md — Field insights: fundraising channels, migration, pricing (Greg)
 │   ├── 17-log-management.md      — Log management strategy, structured logging, audit trail, GDPR
@@ -73,7 +73,7 @@ Givernance is a purpose-built CRM for European nonprofits (2-200 staff), designe
 │   ├── vision/
 │   │   └── conversational-mode.md — Future conversational AI mode (2026-2028)
 │   ├── security/                  — Security audits & RBAC matrices (non-numbered, dated; e.g. rbac-audit-2026-04-27.md)
-│   └── design/                    — 116 interactive HTML mockups (operator + donor + roadmap), realigned with the MVP shell + canonical `givernance-logo.svg`
+│   └── design/                    — 117 interactive HTML mockups (operator + donor + roadmap), realigned with the MVP shell + canonical `givernance-logo.svg`
 ├── diagrams/
 │   ├── context.mmd       — C4 system context
 │   ├── container.mmd     — C4 container diagram
