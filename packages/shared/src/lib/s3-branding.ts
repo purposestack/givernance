@@ -111,6 +111,17 @@ export async function deleteBrandingPrefix(
   bucket: string,
   prefix: string,
 ): Promise<number> {
+  // Structural guard (issue #291 review H2): an empty/root prefix
+  // would make the ListObjectsV2 below enumerate — and then delete —
+  // the ENTIRE bucket. Every legitimate caller passes a
+  // `{org_id}/logo/{logo_id}/` (or at least `{org_id}/`) prefix, so
+  // anything this short is a caller bug and must fail loudly, never
+  // fan out.
+  if (!prefix || prefix === "/" || !prefix.includes("/")) {
+    throw new Error(
+      `deleteBrandingPrefix refused suspicious prefix ${JSON.stringify(prefix)} — a bucket-wide delete is never intended`,
+    );
+  }
   let totalDeleted = 0;
   let continuationToken: string | undefined;
   do {

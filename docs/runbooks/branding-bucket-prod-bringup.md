@@ -26,11 +26,18 @@ staging soak.
 ```sh
 cd infra/terraform/branding-bucket
 export SCW_ACCESS_KEY=… SCW_SECRET_KEY=… SCW_DEFAULT_PROJECT_ID=…   # prod project
-terraform init          # first run: commit .terraform.lock.hcl
+terraform init
+git add .terraform.lock.hcl && git commit -m "chore(infra): pin scaleway provider (branding bucket)"
 terraform validate
 terraform plan          # review every line — no CI validates HCL
 terraform apply
 ```
+
+⚠ **Committing `.terraform.lock.hcl` is a BLOCKING step, not a nicety** —
+do not run `apply` before the lockfile is committed. Without it, two
+operators can apply different provider builds against the public-read
+prod bucket, which is the exact schema-drift incident class the repo
+has already been bitten by (CLAUDE.md § Kamal pinned-version rule).
 
 Override CORS origins if the prod web origins differ from the defaults:
 

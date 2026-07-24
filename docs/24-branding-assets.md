@@ -175,14 +175,18 @@ The per-asset `branding.gc_asset` job (enqueued by the explicit DELETE endpoint)
 
 | Phase | Orphan source | Detection | Action |
 |---|---|---|---|
-| 1 | Soft-deleted row whose per-asset GC job failed terminally (S3 outage, DLQ) | `deleted_at < now() - 7 days` | re-sweep S3 prefix, hard-delete row |
-| 2 | Replaced logo (new upload mints a new `{logo_id}`; the old row is never soft-deleted — ADR-024) or an upload stuck in `pending`/`failed` | `deleted_at IS NULL AND updated_at < now() - 7 days AND tenants.logo_asset_id IS DISTINCT FROM id` | sweep S3 prefix, hard-delete row |
-| 3 | `{org_id}/` prefix whose tenant was hard-deleted (FK cascade removed the rows before the per-asset job ran) | top-level prefix not matching any live `tenants.id`, newest object `LastModified` past grace | sweep prefix |
+| 1 | Soft-deleted row past grace: explicit delete whose per-asset GC failed terminally (S3 outage, DLQ), **or a replaced logo** — activation soft-deletes the previous asset when repointing, which starts the 7-day clock at the replacement moment | `deleted_at < now() - 7 days AND tenants.logo_asset_id IS DISTINCT FROM id` | sweep S3 prefix, hard-delete row, `audit_logs` entry |
+| 2 | Stale never-activated row (`pending`/`failed`/never-pointed `ready`), plus legacy replaced rows from before activation soft-deleted them | `deleted_at IS NULL AND updated_at < now() - 7 days AND tenants.logo_asset_id IS DISTINCT FROM id` | sweep S3 prefix, hard-delete row, `audit_logs` entry |
+| 3 | `{org_id}/` prefix whose tenant was hard-deleted (FK cascade removed the rows before the per-asset job ran) | top-level prefix not matching any live `tenants.id`, newest object `LastModified` past grace | sweep prefix (Loki log is the trail — the org's `audit_logs` FK target is gone) |
+
+Flow diagram: [`diagrams/branding-orphan-gc-flow.mmd`](../diagrams/branding-orphan-gc-flow.mmd).
 
 Safety posture:
 
 - **Feature-flag gated, default-off**: `branding.orphan_gc_sweep` (platform scope, first platform-scope flag). The flag is checked at job pickup — off means a logged no-op. Enablement order (staging soak → prod) is in the bring-up runbook.
-- The sweep **never touches the active asset** — anything `tenants.logo_asset_id` points at is excluded by construction, so the Keycloak `logo_url` attribute can never reference a swept prefix (no KC sync needed here; the explicit-delete path owns its own sync).
+- The sweep **never touches an asset `tenants.logo_asset_id` points at** — both DB-driven phases carry the exclusion, so even a soft-deleted logo that support manually re-activated survives, and the Keycloak `logo_url` attribute can never reference a swept prefix (no KC sync needed here; the explicit-delete path owns its own sync).
+- **Prefix namespace guard**: the S3 prefix derived from `original_key` must sit strictly under the row's own `{org_id}/logo/` namespace, else the row is skipped with a warning (manual review). A malformed key can never widen the delete to the whole bucket or another tenant's prefix; `deleteBrandingPrefix` itself additionally refuses empty/root prefixes.
+- **Audit trail**: every DB-row reap writes `audit_logs` (`action='branding.orphan_gc_reaped'`, with phase + prefix + object count) — GDPR Art. 5(2), same posture as the cache-flush rule (issue #449).
 - Non-UUID top-level prefixes are warned about and never deleted (unexpected layout is a human's problem, not a cron's).
 - Per-row failures don't abort the sweep; the row survives and the next nightly run retries it. The completion log line (`branding orphan-GC sweep complete`, with reap counters) is the Loki observability hook.
 

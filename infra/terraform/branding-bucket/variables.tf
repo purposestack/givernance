@@ -33,7 +33,14 @@ variable "cors_allowed_origins" {
 }
 
 variable "tags" {
-  description = "Bucket tags."
-  type        = list(string)
-  default     = ["givernance", "branding", "adr-023", "public-read"]
+  # `scaleway_object_bucket.tags` is a key/value MAP in the scaleway
+  # provider (unlike instance resources, where tags are a list).
+  description = "Bucket tags (key/value map)."
+  type        = map(string)
+  default = {
+    project    = "givernance"
+    domain     = "branding"
+    adr        = "adr-023"
+    visibility = "public-read"
+  }
 }

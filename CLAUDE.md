@@ -86,7 +86,8 @@ Givernance is a purpose-built CRM for European nonprofits (2-200 staff), designe
 │   ├── public-page-styles-flow.mmd — Operator picks archetype → donor sees archetype (Epic #362, companion to docs/26)
 │   ├── notifications-flow.mmd     — Outbox event → worker fanout → SSE delivery → panel + email digest (Epic #363, companion to docs/27)
 │   ├── bulk-import-flow.mmd — Bulk constituent import: download template → upload → poll → results (companion to docs/28)
-│   └── custom-fields-flow.mmd — Custom fields: create definition → fill value → projection → option merge dry-run/backfill/undo (Epic #539, companion to docs/35)
+│   ├── custom-fields-flow.mmd — Custom fields: create definition → fill value → projection → option merge dry-run/backfill/undo (Epic #539, companion to docs/35)
+│   └── branding-orphan-gc-flow.mmd — Nightly branding orphan-GC sweep: 3 reap phases + namespace guard + audit trail (issue #291, companion to docs/24 §4.2b)
 └── .claude/agents/        — 12 specialized Claude agents
 ```
 

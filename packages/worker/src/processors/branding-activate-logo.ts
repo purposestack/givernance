@@ -83,10 +83,35 @@ export async function processBrandingActivateLogo(
 
   await db.transaction(async (tx) => {
     await tx.execute(sql`SELECT set_config('app.current_organization_id', ${orgId}, true)`);
+
+    // Capture the asset being replaced BEFORE repointing, then
+    // soft-delete its row in the same transaction. This is what starts
+    // the orphan-GC 7-day grace clock at the *replacement* moment
+    // (issue #291 review H1): nothing else touches the old row on
+    // replacement, so without this the nightly sweep would see a
+    // months-old `updated_at` and reap the old logo on its very next
+    // tick instead of 7 days later. The S3 objects stay untouched here
+    // — `branding.orphan_gc_sweep` Phase 1 reaps them once
+    // `deleted_at` is 7+ days old, preserving the undo window.
+    const [tenant] = await tx
+      .select({ previousAssetId: tenants.logoAssetId })
+      .from(tenants)
+      .where(eq(tenants.id, orgId));
+
     await tx
       .update(tenants)
       .set({ logoAssetId: assetId, updatedAt: new Date() })
       .where(eq(tenants.id, orgId));
+
+    if (tenant?.previousAssetId && tenant.previousAssetId !== assetId) {
+      await tx
+        .update(orgBrandingAssets)
+        .set({ deletedAt: new Date(), updatedAt: new Date() })
+        // Issue #430 — explicit org filter even on a PK update.
+        .where(
+          and(eq(orgBrandingAssets.id, tenant.previousAssetId), eq(orgBrandingAssets.orgId, orgId)),
+        );
+    }
 
     // Enqueue the KC sync via outbox so the relay handles retry +
     // breaker semantics consistently with other KC-bound jobs.
