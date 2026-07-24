@@ -22,6 +22,7 @@ describe("StatCard", () => {
     );
     expect(screen.getByText("Total collecté")).toBeInTheDocument();
     expect(screen.getByText("12 400 €")).toBeInTheDocument();
+    expect(screen.getByText("Basé sur les derniers dons enregistrés.")).toBeInTheDocument();
     expect(screen.getByText("Mois en cours (juillet 2026)")).toBeInTheDocument();
     // Trend badge is a tooltip trigger button with an accessible name (issue #229:
     // the delta must explain itself on hover — the aria-label carries the same copy).
@@ -41,6 +42,22 @@ describe("StatCard", () => {
     );
     const link = screen.getByRole("link", { name: "Ouvrir le rapport détaillé : Donateurs" });
     expect(link).toHaveAttribute("href", "/constituents?types=donor");
+  });
+
+  it("falls back to the label as the link accessible name", () => {
+    render(
+      <StatCard
+        label="Campagnes actives"
+        value="3"
+        description="desc"
+        href="/campaigns?status=active"
+        cascadeIndex={1}
+      />,
+    );
+    expect(screen.getByRole("link", { name: "Campagnes actives" })).toHaveAttribute(
+      "href",
+      "/campaigns?status=active",
+    );
   });
 
   it("renders no link when href is absent", () => {

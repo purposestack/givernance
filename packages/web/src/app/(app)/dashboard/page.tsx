@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
 import { hasPermission, requireAuth } from "@/lib/auth/guards";
+import { isoDay, monthBoundsUtc } from "@/lib/dashboard-period";
 import { formatCurrency, formatCurrencyRounded, formatDate, formatNumber } from "@/lib/format";
 import type { Campaign, CampaignStats } from "@/models/campaign";
 import type { DashboardPeriod } from "@/models/dashboard";
@@ -92,17 +93,21 @@ export default async function DashboardPage() {
   // Issue #229 — explicit time bounds per card + deep links to the detailed
   // report. The month window mirrors the API's `monthRanges()` (calendar
   // month, UTC, half-open) so the label and the deep-linked donations range
-  // agree with the aggregated figure.
+  // agree with the aggregated figure (the donations list treats a date-only
+  // `dateTo` as inclusive end-of-day, matching the half-open aggregate).
   const now = new Date();
-  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-  const monthLastDay = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0));
+  const { monthStart, monthLastDay } = monthBoundsUtc(now);
   const monthLabel = new Intl.DateTimeFormat(locale, {
     month: "long",
     year: "numeric",
     timeZone: "UTC",
   }).format(now);
-  const todayLabel = formatDate(now.toISOString(), locale, "medium");
-  const isoDay = (d: Date) => d.toISOString().slice(0, 10);
+  // Same UTC convention as monthLabel/monthBoundsUtc — never the server's
+  // local zone, or the two labels could disagree around midnight.
+  const todayLabel = new Intl.DateTimeFormat(locale, {
+    dateStyle: "medium",
+    timeZone: "UTC",
+  }).format(now);
   const detailAria = (label: string) => t("stats.openDetailAria", { label });
 
   return (
@@ -163,7 +168,11 @@ export default async function DashboardPage() {
           value={<CountUp value={donorResult?.pagination.total ?? 0} locale={locale} />}
           description={t("stats.newDonorsThisMonth", { count: newDonorsThisMonth })}
           period={t("stats.periodAllTime")}
-          href="/constituents?types=donor"
+          // Both param spellings on purpose: with `constituents.multi_type`
+          // OFF the list page only reads the legacy `?type=`, with the flag
+          // ON it reads `?types=` and ignores `type` — sending both keeps
+          // the deep link filtering in either flag state (issue #229 review).
+          href="/constituents?type=donor&types=donor"
           hrefAriaLabel={detailAria(t("stats.donors"))}
           icon={Users}
           color="tertiary"

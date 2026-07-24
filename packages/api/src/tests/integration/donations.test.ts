@@ -219,6 +219,46 @@ describe("Donations CRUD", () => {
     }
   });
 
+  it("GET /v1/donations dateTo includes the whole last day (issue #229)", async () => {
+    const tokenA = signToken(app);
+    // Mid-day on the filter's last day — the regression this pins: the old
+    // `lte(donatedAt, dateTo)` compared against 00:00 UTC and silently
+    // dropped every donation recorded during the final filtered day.
+    const created = await app.inject({
+      method: "POST",
+      url: "/v1/donations",
+      headers: authHeader(tokenA),
+      payload: {
+        constituentId: constituentIdA,
+        amountCents: 4200,
+        currency: "EUR",
+        paymentMethod: "check",
+        paymentRef: `CHK-dateto-${Date.now()}-${Math.random()}`,
+        donatedAt: "2024-04-30T14:00:00.000Z",
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    const createdId = created.json<{ data: { id: string } }>().data.id;
+
+    const inRange = await app.inject({
+      method: "GET",
+      url: "/v1/donations?dateFrom=2024-04-01&dateTo=2024-04-30&perPage=100",
+      headers: authHeader(tokenA),
+    });
+    expect(inRange.statusCode).toBe(200);
+    const inRangeIds = inRange.json<{ data: { id: string }[] }>().data.map((d) => d.id);
+    expect(inRangeIds).toContain(createdId);
+
+    const outOfRange = await app.inject({
+      method: "GET",
+      url: "/v1/donations?dateFrom=2024-04-01&dateTo=2024-04-29&perPage=100",
+      headers: authHeader(tokenA),
+    });
+    expect(outOfRange.statusCode).toBe(200);
+    const outOfRangeIds = outOfRange.json<{ data: { id: string }[] }>().data.map((d) => d.id);
+    expect(outOfRangeIds).not.toContain(createdId);
+  });
+
   it("GET /v1/donations supports search filter by constituent name/email", async () => {
     const tokenA = signToken(app);
     const res = await app.inject({

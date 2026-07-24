@@ -544,6 +544,21 @@ h4 { font-size: var(--text-lg); line-height: var(--leading-heading-lg, 1.25); }
   background: var(--color-surface-container-low);
 }
 
+/* Issue #229 — clickable KPI cards: block-level anchor, colors-only hover */
+.stat-card--link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+  transition:
+    background 200ms var(--ease-out),
+    box-shadow 150ms var(--ease-out);
+}
+
+.stat-card--link:hover,
+.stat-card--link:focus-visible {
+  box-shadow: 0 0 0 1.5px var(--color-primary);
+}
+
 .stat-icon {
   width: 40px;
   height: 40px;
