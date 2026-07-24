@@ -59,6 +59,7 @@ export async function processKeycloakSyncOrgLogo(
   }
 
   let logoUrl = "";
+  let syncedAsset: { id: string; createdAt: Date } | null = null;
   if (tenant.logoAssetId) {
     const [asset] = await db
       .select({
@@ -66,6 +67,7 @@ export async function processKeycloakSyncOrgLogo(
         status: orgBrandingAssets.status,
         variants: orgBrandingAssets.variants,
         deletedAt: orgBrandingAssets.deletedAt,
+        createdAt: orgBrandingAssets.createdAt,
       })
       .from(orgBrandingAssets)
       // Defence in depth (issue #430): if `tenants.logo_asset_id` ever
@@ -78,6 +80,7 @@ export async function processKeycloakSyncOrgLogo(
       const heroKey = asset.variants?.["public-hero"]?.key;
       if (heroKey) {
         logoUrl = brandingPublicUrl(heroKey);
+        syncedAsset = { id: asset.id, createdAt: asset.createdAt };
       }
     }
   }
@@ -88,6 +91,31 @@ export async function processKeycloakSyncOrgLogo(
     attributes: { logo_url: logoUrl ? [logoUrl] : [] },
   });
 
-  log.info({ orgId, logoUrl: logoUrl || "(cleared)" }, "KC organization logo_url synced");
+  if (syncedAsset) {
+    // `brandingPipeline` discriminator (issue #290): end-to-end latency
+    // of the activation chain, measured AFTER the KC PATCH so the span
+    // covers upload accept → 3 outbox hops → sharp pipeline → KC write.
+    // `createdAt` is Postgres clock and `Date.now()` is worker clock —
+    // hosts are NTP-synced and the ADR-024 SLO is seconds-scale, so
+    // sub-second skew is immaterial; clamp at 0 for pathological skew.
+    // Emitted only on the upload path (a clear/delete sync has no
+    // upload to measure against).
+    const e2eLatencyMs = Math.max(0, Date.now() - syncedAsset.createdAt.getTime());
+    log.info(
+      {
+        orgId,
+        logoUrl,
+        brandingPipeline: {
+          event: "kc_synced",
+          assetId: syncedAsset.id,
+          uploadAcceptedAt: syncedAsset.createdAt.toISOString(),
+          e2eLatencyMs,
+        },
+      },
+      "KC organization logo_url synced",
+    );
+  } else {
+    log.info({ orgId, logoUrl: logoUrl || "(cleared)" }, "KC organization logo_url synced");
+  }
   return { synced: true, logoUrl };
 }
