@@ -13,6 +13,8 @@ describe("FormStickyFooter", () => {
     const outer = container.firstElementChild;
     expect(outer?.className).toContain("sticky");
     expect(outer?.className).toContain("bottom-0");
+    // Default inner layout: right-aligned action row (donation/constituent forms).
+    expect(outer?.firstElementChild?.className).toContain("justify-end");
   });
 
   it("applies the inner layout override", () => {

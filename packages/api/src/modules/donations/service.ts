@@ -25,6 +25,7 @@ import {
   gte,
   ilike,
   inArray,
+  lt,
   lte,
   or,
   sql,
@@ -98,6 +99,12 @@ async function assertFundsBelongToOrg(
  * defense-in-depth normalizer derive from this tuple — adding a 7th
  * field is now a one-line change here, not two-and-pray-they-stay-in-sync.
  */
+/** Exclusive upper bound for an inclusive date-only `dateTo` filter. */
+function addUtcDay(dateOnly: string): Date {
+  const d = new Date(dateOnly);
+  return new Date(d.getTime() + 24 * 60 * 60 * 1000);
+}
+
 export const DONATION_SORT_FIELDS = [
   "donatedAt",
   "amountCents",
@@ -355,7 +362,13 @@ function listDonationsConditions(orgId: string, query: ListDonationsQuery) {
   }
 
   if (dateFrom) conditions.push(gte(donations.donatedAt, new Date(dateFrom)));
-  if (dateTo) conditions.push(lte(donations.donatedAt, new Date(dateTo)));
+  // `dateTo` is a date-only string (TypeBox format:"date") but `donatedAt`
+  // is a timestamptz — an inclusive-day filter must cover the WHOLE last
+  // day, not just its 00:00 UTC instant. Issue #229 review: `lte(midnight)`
+  // silently dropped every donation recorded during the final filtered day
+  // (and made the dashboard month deep-link disagree with the month
+  // aggregate, which uses a half-open window).
+  if (dateTo) conditions.push(lt(donations.donatedAt, addUtcDay(dateTo)));
   if (amountMin !== undefined) conditions.push(gte(donations.amountCents, amountMin));
   if (amountMax !== undefined) conditions.push(lte(donations.amountCents, amountMax));
   if (constituentId) conditions.push(eq(donations.constituentId, constituentId));

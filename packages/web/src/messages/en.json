@@ -2135,7 +2135,7 @@
       "periodCurrentMonth": "Current month ({month})",
       "periodAsOf": "As of {date}",
       "periodAllTime": "Since the beginning",
-      "openDetailAria": "Open the detailed view: {label}"
+      "openDetailAria": "Open the detailed report: {label}"
     },
     "recentDonations": {
       "title": "Recent donations",
