@@ -17,6 +17,7 @@ import {
   FormMessage,
 } from "@/components/shared/form-field";
 import { FormSection } from "@/components/shared/form-section";
+import { FormStickyFooter } from "@/components/shared/form-sticky-footer";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -397,7 +398,7 @@ export function BankAccountForm(props: BankAccountFormProps) {
           </div>
         </FormSection>
 
-        <div className="flex flex-col gap-4 py-8">
+        <FormStickyFooter className="flex flex-col gap-4">
           <div className="min-h-5 text-sm text-error">{rootError}</div>
           <div className="flex flex-wrap justify-end gap-2">
             <Button asChild variant="ghost">
@@ -411,7 +412,7 @@ export function BankAccountForm(props: BankAccountFormProps) {
                   : t("actions.submitUpdate")}
             </Button>
           </div>
-        </div>
+        </FormStickyFooter>
       </form>
     </Form>
   );

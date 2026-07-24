@@ -143,7 +143,7 @@
         "help": "Lettres, chiffres et tirets uniquement.",
         "checking": "Vérification de la disponibilité…",
         "available": "Disponible.",
-        "taken": "Cette URL est déjà prise."
+        "taken": "Cette organisation existe déjà. Contactez-nous en cas d'erreur ou ajoutez le nom de votre antenne locale."
       },
       "consent": "J'accepte les <terms>conditions d'utilisation</terms> et la <privacy>politique de confidentialité</privacy>.",
       "errors": {
@@ -155,7 +155,7 @@
         "slugSyntax": "Utilisez des lettres minuscules, des chiffres et des tirets.",
         "slugReserved": "Cette URL est réservée — choisissez-en une autre.",
         "slugPunycode": "Les noms de domaine internationalisés ne sont pas encore pris en charge.",
-        "slugTaken": "Cette URL est déjà prise.",
+        "slugTaken": "Cette organisation existe déjà. Contactez-nous en cas d'erreur ou ajoutez le nom de votre antenne locale.",
         "consentRequired": "Vous devez accepter les conditions pour continuer.",
         "captchaRequired": "Complétez d'abord le contrôle de sécurité.",
         "captchaInvalid": "Le contrôle de sécurité a échoué. Veuillez réessayer.",
@@ -763,7 +763,7 @@
           "slugSyntax": "Le slug doit être en minuscules alphanumériques avec des tirets internes uniquement.",
           "slugReserved": "Ce slug est réservé — choisissez-en un autre.",
           "slugPunycode": "Les préfixes de domaines internationalisés (xn--) ne sont pas encore pris en charge.",
-          "slugTaken": "Ce slug est déjà pris.",
+          "slugTaken": "Cette organisation existe déjà. Contactez-nous en cas d'erreur ou ajoutez le nom de votre antenne locale.",
           "upstream": "Impossible de joindre Keycloak pour provisionner l’Organization. Veuillez réessayer.",
           "generic": "Impossible de créer le tenant. Veuillez réessayer.",
           "firstAdminNameTooLong": "Le nom du premier admin doit contenir au plus 255 caractères.",
@@ -2131,7 +2131,11 @@
       "grantDeadlines": "Échéances de subventions",
       "noGrantDeadlinesValue": "0",
       "noGrantDeadlinesHint": "Le suivi des subventions arrivera dans un sprint ultérieur.",
-      "trendLabel": "vs mois précédent"
+      "trendLabel": "vs mois précédent",
+      "periodCurrentMonth": "Mois en cours ({month})",
+      "periodAsOf": "Au {date}",
+      "periodAllTime": "Depuis le début",
+      "openDetailAria": "Ouvrir le rapport détaillé : {label}"
     },
     "recentDonations": {
       "title": "Dons récents",

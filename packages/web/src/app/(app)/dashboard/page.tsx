@@ -12,7 +12,7 @@ import {
 import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
 
-import { StatCardTrend } from "@/components/dashboard/stat-card-trend";
+import { cascadeStyle, StatCard, type StatCardTrendData } from "@/components/dashboard/stat-card";
 import { CountUp } from "@/components/shared/count-up";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
@@ -89,6 +89,22 @@ export default async function DashboardPage() {
   );
   const trendDonors = buildTrend(stats?.newDonors, trendLabel, (n) => formatNumber(n, locale));
 
+  // Issue #229 — explicit time bounds per card + deep links to the detailed
+  // report. The month window mirrors the API's `monthRanges()` (calendar
+  // month, UTC, half-open) so the label and the deep-linked donations range
+  // agree with the aggregated figure.
+  const now = new Date();
+  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const monthLastDay = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0));
+  const monthLabel = new Intl.DateTimeFormat(locale, {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(now);
+  const todayLabel = formatDate(now.toISOString(), locale, "medium");
+  const isoDay = (d: Date) => d.toISOString().slice(0, 10);
+  const detailAria = (label: string) => t("stats.openDetailAria", { label });
+
   return (
     <div className="space-y-6 sm:space-y-8">
       {/* ADR-035 rule A1 — the page title is static shell, never animated;
@@ -121,6 +137,9 @@ export default async function DashboardPage() {
             />
           }
           description={t("stats.totalRaisedHint")}
+          period={t("stats.periodCurrentMonth", { month: monthLabel })}
+          href={`/donations?dateFrom=${isoDay(monthStart)}&dateTo=${isoDay(monthLastDay)}`}
+          hrefAriaLabel={detailAria(t("stats.totalRaised"))}
           valueClassName="font-mono"
           icon={Banknote}
           color="primary"
@@ -131,6 +150,9 @@ export default async function DashboardPage() {
           label={t("stats.activeCampaigns")}
           value={<CountUp value={activeCampaignCount} locale={locale} />}
           description={t("stats.activeCampaignsHint")}
+          period={t("stats.periodAsOf", { date: todayLabel })}
+          href="/campaigns?status=active"
+          hrefAriaLabel={detailAria(t("stats.activeCampaigns"))}
           icon={Megaphone}
           color="secondary"
           trend={trendCampaigns}
@@ -140,6 +162,9 @@ export default async function DashboardPage() {
           label={t("stats.donors")}
           value={<CountUp value={donorResult?.pagination.total ?? 0} locale={locale} />}
           description={t("stats.newDonorsThisMonth", { count: newDonorsThisMonth })}
+          period={t("stats.periodAllTime")}
+          href="/constituents?types=donor"
+          hrefAriaLabel={detailAria(t("stats.donors"))}
           icon={Users}
           color="tertiary"
           trend={trendDonors}
@@ -284,7 +309,7 @@ function buildTrend(
   period: DashboardPeriod | undefined,
   label: string,
   format: (n: number) => string,
-): TrendProp | undefined {
+): StatCardTrendData | undefined {
   if (!period || period.previous === 0) return undefined;
   const value = Math.round(((period.current - period.previous) / period.previous) * 100);
   return {
@@ -292,20 +317,6 @@ function buildTrend(
     label,
     detail: { current: format(period.current), previous: format(period.previous) },
   };
-}
-
-interface TrendProp {
-  value: number;
-  label: string;
-  detail: { current: string; previous: string };
-}
-
-/**
- * Inline style feeding the ADR-035 `.reveal-item` cascade order — the shared
- * utility in globals.css reads `--cascade-i` for its animation-delay (rule A2).
- */
-function cascadeStyle(index: number): React.CSSProperties {
-  return { "--cascade-i": index } as React.CSSProperties;
 }
 
 function SectionHeader({
@@ -331,65 +342,6 @@ function SectionHeader({
         </Button>
       ) : null}
     </div>
-  );
-}
-
-function StatCard({
-  label,
-  value,
-  description,
-  valueClassName,
-  icon: Icon,
-  color = "primary",
-  trend,
-  cascadeIndex,
-}: {
-  label: string;
-  value: React.ReactNode;
-  description: string;
-  valueClassName?: string;
-  icon?: React.ElementType;
-  color?: "primary" | "secondary" | "tertiary" | "amber";
-  trend?: TrendProp;
-  /** ADR-035 cascade order — the card (value + trend badge) is the animated unit. */
-  cascadeIndex: number;
-}) {
-  // Semantic icon background: maps stat type to palette.
-  // `amber` used for deadline/warning cards (grant deadlines).
-  const colorStyles = {
-    primary: "bg-primary-fixed text-on-primary-fixed-variant",
-    secondary: "bg-secondary-fixed text-on-secondary-fixed-variant",
-    tertiary: "bg-tertiary-fixed text-on-tertiary-fixed-variant",
-    amber: "bg-amber-light text-amber-dark",
-  };
-
-  return (
-    <article
-      className="reveal-item min-h-36 rounded-2xl bg-surface-container-lowest p-5 border border-border-brand"
-      style={cascadeStyle(cascadeIndex)}
-    >
-      <div className="flex items-center justify-between">
-        <p className="text-sm font-medium text-on-surface-variant">{label}</p>
-        <div className="flex items-center gap-2">
-          {trend ? (
-            <StatCardTrend value={trend.value} label={trend.label} detail={trend.detail} />
-          ) : null}
-          {Icon ? (
-            <div
-              className={`flex h-10 w-10 items-center justify-center rounded-xl ${colorStyles[color]}`}
-            >
-              <Icon size={20} aria-hidden="true" />
-            </div>
-          ) : null}
-        </div>
-      </div>
-      <p
-        className={`mt-3 font-heading text-4xl font-normal leading-tight text-on-surface ${valueClassName ?? ""}`.trim()}
-      >
-        {value}
-      </p>
-      <p className="mt-2 text-sm text-on-surface-variant">{description}</p>
-    </article>
   );
 }
 
