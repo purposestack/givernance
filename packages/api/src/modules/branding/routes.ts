@@ -369,8 +369,22 @@ export async function brandingRoutes(app: FastifyInstance) {
         traceparent,
       });
 
+      // `brandingPipeline` discriminator (issue #290): `acceptedAt` is the
+      // DB-clock `created_at` of the asset row — the same instant the
+      // KC-sync processor reads back to compute the end-to-end latency,
+      // so both ends of the span share one authoritative timestamp.
       request.log.info(
-        { assetId: row.id, orgId, mime, bytes: toStore.byteLength },
+        {
+          assetId: row.id,
+          orgId,
+          mime,
+          bytes: toStore.byteLength,
+          brandingPipeline: {
+            event: "upload_accepted",
+            assetId: row.id,
+            acceptedAt: row.createdAt.toISOString(),
+          },
+        },
         "Branding logo uploaded; pipeline enqueued",
       );
 

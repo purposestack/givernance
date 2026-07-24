@@ -187,6 +187,8 @@ Drift on the relay is < 1s in practice. A donor logging in during that window br
 
 The reusable shape (outbox → worker → KC Admin API GET-then-PUT) is documented in `docs/05-integration-migration.md` as the canonical pattern for any future tenant-attribute → Keycloak sync.
 
+**Observability (issue #290)** — the full activation chain (upload accepted → 3 outbox hops → sharp pipeline → KC PATCH) is instrumented end-to-end via the `brandingPipeline` structured-log discriminator: the API stamps `event: "upload_accepted"` on the 201 path, and the KC-sync processor emits `event: "kc_synced"` with `e2eLatencyMs` (measured after the PATCH, anchored on the asset row's DB-clock `created_at`, upload path only). Per-tenant p95 histogram, SLO-breach alert, and stuck-pipeline LogQL recipes: `docs/17-log-management.md` § 7.2.2. SLO (**p95 < 5s**) + queue-topology revisit criterion: ADR-024.
+
 ### 4.5 Worker LRU cache (PDF embedding)
 
 Postal exports run in batches of thousands of recipients (Epic #274). Without a cache, each recipient PDF would re-fetch the same `pdf-letterhead` variant from S3. The worker maintains an in-process LRU keyed by `logo_asset_id`:

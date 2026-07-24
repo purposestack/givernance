@@ -125,10 +125,17 @@ There is **no `variants_schema_version` column**, no migration. The strategy is 
 - **Worker LRU cache for PDF embedding** keyed by `logo_asset_id`, max 50 entries (~10MB), 1h TTL. Postal exports run in batches of thousands of recipients; without the cache, each recipient PDF would re-fetch the same logo from S3.
 - **`sharp` install on Alpine requires `vips-dev` / `libvips42`.** API and worker Dockerfiles must include the apt/apk lines; CI must verify the install at image-build time.
 
+### SLO — end-to-end activation latency (issue #290)
+
+**p95 < 5s** from *upload accepted* (the `org_branding_assets.created_at` INSERT in the API handler) to *KC synced* (the `attributes.logo_url` PATCH acknowledged in `keycloak-sync-org-logo.ts`), per tenant.
+
+The chain crosses 3 outbox events × ~500ms relay poll cycle + the sharp pipeline + a KC PATCH, so the steady-state floor is ~1.5s before any real work; 5s leaves headroom for a cold sharp pool and a slow KC round-trip without masking a stuck relay. Measured from structured logs, not in-process metrics: the worker emits a `brandingPipeline: { event: "kc_synced", e2eLatencyMs }` discriminator on every upload-path sync (the API side stamps `event: "upload_accepted"`), and the per-tenant p95 comes from the LogQL recipe in [`docs/17-log-management.md` § 7.2.2](../17-log-management.md). Both ends of the span share the single DB-clock `created_at` timestamp — no cross-service clock passing.
+
 ### Revisit criteria
 
 Reopen this ADR when:
 
 - End-to-end variant generation (queue ack → all variants written → row flipped to `'ready'`) **exceeds 1s** on a representative input. The bottleneck moves from CPU to either S3 latency or BullMQ scheduling, and the pipeline shape needs to change (sharp pool? dedicated worker? on-the-fly fallback?).
+- The end-to-end activation SLO above (**p95 < 5s** upload-accepted → KC-synced) is breached for a week while variant generation itself stays under 1s — the latency then lives in the outbox/relay topology (3 chained events × poll cycle), and the fix is structural: collapse the event chain, shorten the relay poll interval, or move branding onto a push-based queue rather than tuning sharp.
 - **5+ tenants** routinely saturate the worker — at that point evaluate either a `sharp` worker pool inside the BullMQ processor or splitting branding off into a dedicated `image-worker` deployment.
 - A new asset class needs **on-the-fly transformations** that the pre-gen variant set can't cover (e.g. arbitrary cropping for an OG-image generator).

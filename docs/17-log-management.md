@@ -319,6 +319,74 @@ The discriminators are **only** populated on guard denials. CSRF, validation, an
 
 **Audit table retention vs Pino retention.** `audit_logs` retains 7+ years (§7.1); the Pino warn/info lines retain 90 days for info / 1 year for error (§6.2). The discriminators are **observability-only**, not 7-year audit. After 90 days, "was there an RBAC probe against resource X on date Y" is unanswerable from logs alone — you'd join on the audit table by `(reqId, userId, orgId, resourceType)`. If long-term forensics on denial-reason becomes a requirement, add a `metadata jsonb` column to `audit_logs` and write the discriminator into it.
 
+### 7.2.2 Branding-pipeline latency discriminator (issue #290)
+
+The logo activation chain — upload accepted → `branding.process_asset` → `branding.activate_logo` → `keycloak.sync_org_logo` → KC `attributes.logo_url` PATCH — crosses two services and three outbox hops. Its end-to-end latency is measured from **structured logs** (no in-process metrics exist yet — OTel is Phase 2–3, §12): both ends of the span emit a `brandingPipeline` discriminator, and the span is anchored on a single DB-clock timestamp (`org_branding_assets.created_at`) so no clock is passed across services.
+
+**Emission sites** (exactly two):
+
+- API upload handler ([`packages/api/src/modules/branding/routes.ts`](../packages/api/src/modules/branding/routes.ts)) — on the 201 accept path:
+
+```json
+{
+  "service": "givernance-api",
+  "msg": "Branding logo uploaded; pipeline enqueued",
+  "brandingPipeline": {
+    "event": "upload_accepted",
+    "assetId": "0198…",
+    "acceptedAt": "2026-07-23T12:00:05.800Z"
+  }
+}
+```
+
+- KC-sync processor ([`packages/worker/src/processors/keycloak-sync-org-logo.ts`](../packages/worker/src/processors/keycloak-sync-org-logo.ts)) — emitted AFTER the KC PATCH acknowledges, and **only on the upload path** (a clear/delete sync or a not-ready asset has no upload to measure against). `e2eLatencyMs = max(0, now − created_at)`, 0-clamped against pathological clock skew:
+
+```json
+{
+  "service": "givernance-worker",
+  "msg": "KC organization logo_url synced",
+  "tenantId": "0197…",
+  "brandingPipeline": {
+    "event": "kc_synced",
+    "assetId": "0198…",
+    "uploadAcceptedAt": "2026-07-23T12:00:05.800Z",
+    "e2eLatencyMs": 4200
+  }
+}
+```
+
+**LogQL — per-tenant p95 end-to-end latency** (the ADR-024 SLO panel: histogram or time-series, threshold line at 5000ms):
+
+```logql
+quantile_over_time(0.95,
+  {service="givernance-worker"} | json | __error__=""
+    | brandingPipeline_event="kc_synced"
+    | unwrap brandingPipeline_e2eLatencyMs [1h]
+) by (tenantId)
+```
+
+**LogQL — SLO breach alert** (fleet-wide, fires when any sync exceeds 5s):
+
+```logql
+count_over_time(
+  {service="givernance-worker"} | json | __error__=""
+    | brandingPipeline_event="kc_synced"
+    | brandingPipeline_e2eLatencyMs > 5000 [15m]
+)
+```
+
+**LogQL — stuck-pipeline detection** (an `upload_accepted` with no matching `kc_synced` — compare the two counters; a persistent gap means the relay or a processor is stalled):
+
+```logql
+sum(count_over_time({service="givernance-api"}    | json | __error__="" | brandingPipeline_event="upload_accepted" [1h]))
+-
+sum(count_over_time({service="givernance-worker"} | json | __error__="" | brandingPipeline_event="kc_synced"       [1h]))
+```
+
+> Caveat: the gap counter over-counts by design — re-uploads that supersede a pending asset mid-pipeline, and clear/delete syncs, both legitimately break the 1:1 pairing. Treat a *persistent* positive gap as the signal, not any single-window blip.
+
+The SLO itself (p95 < 5s) and its queue-topology revisit criterion live in [ADR-024](adrs/adr-024-image-processing-pipeline.md).
+
 ### 7.3 Audit log schema
 
 See Log Analyst agent for full Drizzle schema. Key design decisions:
