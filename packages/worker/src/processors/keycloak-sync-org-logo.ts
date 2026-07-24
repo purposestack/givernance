@@ -87,11 +87,11 @@ export async function processKeycloakSyncOrgLogo(
 
   // Empty array → KC drops the attribute (template's `?has_content`
   // check correctly treats it as "no logo set").
-  await updateOrganization(tenant.keycloakOrgId, {
+  const { changed } = await updateOrganization(tenant.keycloakOrgId, {
     attributes: { logo_url: logoUrl ? [logoUrl] : [] },
   });
 
-  if (syncedAsset) {
+  if (syncedAsset && changed) {
     // `brandingPipeline` discriminator (issue #290): end-to-end latency
     // of the activation chain, measured AFTER the KC PATCH so the span
     // covers upload accept → 3 outbox hops → sharp pipeline → KC write.
@@ -99,7 +99,13 @@ export async function processKeycloakSyncOrgLogo(
     // hosts are NTP-synced and the ADR-024 SLO is seconds-scale, so
     // sub-second skew is immaterial; clamp at 0 for pathological skew.
     // Emitted only on the upload path (a clear/delete sync has no
-    // upload to measure against).
+    // upload to measure against) and only when the KC attribute
+    // actually transitioned (`changed`): the relay is at-least-once
+    // and BullMQ can re-run stalled jobs, and a late re-delivery would
+    // otherwise re-measure against the ORIGINAL upload's `created_at`
+    // and fire a false SLO-breach alert. The trade-off (a retry that
+    // crashed between the KC PUT and this log line under-counts one
+    // sync) is documented in docs/17 §7.2.2.
     const e2eLatencyMs = Math.max(0, Date.now() - syncedAsset.createdAt.getTime());
     log.info(
       {

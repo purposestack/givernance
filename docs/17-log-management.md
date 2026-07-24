@@ -339,7 +339,7 @@ The logo activation chain — upload accepted → `branding.process_asset` → `
 }
 ```
 
-- KC-sync processor ([`packages/worker/src/processors/keycloak-sync-org-logo.ts`](../packages/worker/src/processors/keycloak-sync-org-logo.ts)) — emitted AFTER the KC PATCH acknowledges, and **only on the upload path** (a clear/delete sync or a not-ready asset has no upload to measure against). `e2eLatencyMs = max(0, now − created_at)`, 0-clamped against pathological clock skew:
+- KC-sync processor ([`packages/worker/src/processors/keycloak-sync-org-logo.ts`](../packages/worker/src/processors/keycloak-sync-org-logo.ts)) — emitted AFTER the KC PATCH acknowledges, **only on the upload path** (a clear/delete sync or a not-ready asset has no upload to measure against), and **only when the KC attribute actually transitioned** (`updateOrganization` reports `changed: false` when the requested value was already in place — the relay is at-least-once and BullMQ can re-run stalled jobs, and a late re-delivery would otherwise re-measure against the *original* upload's `created_at` and fire a false SLO-breach alert). `e2eLatencyMs = max(0, now − created_at)`, 0-clamped against pathological clock skew:
 
 ```json
 {
@@ -383,7 +383,7 @@ sum(count_over_time({service="givernance-api"}    | json | __error__="" | brandi
 sum(count_over_time({service="givernance-worker"} | json | __error__="" | brandingPipeline_event="kc_synced"       [1h]))
 ```
 
-> Caveat: the gap counter over-counts by design — re-uploads that supersede a pending asset mid-pipeline, and clear/delete syncs, both legitimately break the 1:1 pairing. Treat a *persistent* positive gap as the signal, not any single-window blip.
+> Caveat: the gap counter over-counts by design — re-uploads that supersede a pending asset mid-pipeline break the 1:1 pairing, and a worker retry that crashed between the KC PUT and the log emission under-counts one `kc_synced` (the retry sees `changed: false`). The `changed` gate guarantees duplicates never push the gap *negative* — a re-delivered sync emits nothing — so a *persistent* positive gap is the signal, not any single-window blip.
 
 The SLO itself (p95 < 5s) and its queue-topology revisit criterion live in [ADR-024](adrs/adr-024-image-processing-pipeline.md).
 
