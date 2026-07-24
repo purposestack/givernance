@@ -142,11 +142,17 @@ export async function getOrganization(id: string): Promise<KeycloakOrganization 
  * Merge attributes onto an organization via GET-then-PUT. Identical
  * semantics to `KeycloakAdminClient.updateOrganization` in the api
  * package — see that file for the security rationale.
+ *
+ * Returns `changed: false` when every updated attribute already held
+ * the requested value (the PUT is still issued — idempotence stays the
+ * safety contract; the flag only tells the caller whether this call
+ * was a first write or an at-least-once re-delivery, so observability
+ * emissions can be gated on real transitions — issue #290 review).
  */
 export async function updateOrganization(
   id: string,
   updates: { attributes?: Record<string, string[]> },
-): Promise<void> {
+): Promise<{ changed: boolean }> {
   assertSafeOrgAttributes(updates.attributes);
   const current = await getOrganization(id);
   if (!current) {
@@ -154,8 +160,11 @@ export async function updateOrganization(
       { keycloakOrgId: id },
       "KC org missing — skipping updateOrganization (tenant may have been deleted)",
     );
-    return;
+    return { changed: false };
   }
+  const changed = Object.entries(updates.attributes ?? {}).some(
+    ([key, value]) => JSON.stringify(current.attributes?.[key] ?? []) !== JSON.stringify(value),
+  );
   const mergedAttributes = updates.attributes
     ? { ...(current.attributes ?? {}), ...updates.attributes }
     : current.attributes;
@@ -163,4 +172,5 @@ export async function updateOrganization(
     ...current,
     attributes: mergedAttributes,
   });
+  return { changed };
 }
