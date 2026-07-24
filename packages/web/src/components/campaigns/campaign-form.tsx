@@ -43,6 +43,7 @@ import {
   useFormField,
 } from "@/components/shared/form-field";
 import { FormSection } from "@/components/shared/form-section";
+import { FormStickyFooter } from "@/components/shared/form-sticky-footer";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -522,7 +523,7 @@ export function CampaignForm(props: CampaignFormProps) {
           disabled={isSubmitting}
         />
 
-        <div className="flex flex-col gap-3 py-8 sm:flex-row sm:items-center sm:justify-between">
+        <FormStickyFooter className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-h-5 text-sm text-error">{rootError}</div>
           <div className="flex flex-wrap items-center gap-3">
             <Button asChild variant="ghost">
@@ -541,7 +542,7 @@ export function CampaignForm(props: CampaignFormProps) {
                   : t("actions.submitEdit")}
             </Button>
           </div>
-        </div>
+        </FormStickyFooter>
       </form>
     </Form>
   );

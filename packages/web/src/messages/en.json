@@ -143,7 +143,7 @@
         "help": "Letters, numbers and dashes only.",
         "checking": "Checking availability…",
         "available": "Available.",
-        "taken": "This URL is already taken."
+        "taken": "This organisation already exists. Contact us if this is a mistake, or add the name of your local chapter."
       },
       "consent": "I accept the <terms>terms of service</terms> and the <privacy>privacy policy</privacy>.",
       "errors": {
@@ -155,7 +155,7 @@
         "slugSyntax": "Use lowercase letters, numbers and dashes.",
         "slugReserved": "This URL is reserved — choose another.",
         "slugPunycode": "International domain names are not supported yet.",
-        "slugTaken": "This URL is already taken.",
+        "slugTaken": "This organisation already exists. Contact us if this is a mistake, or add the name of your local chapter.",
         "consentRequired": "You must accept the terms to continue.",
         "captchaRequired": "Complete the security check first.",
         "captchaInvalid": "Security check failed. Please try again.",
@@ -763,7 +763,7 @@
           "slugSyntax": "Slug must be lowercase alphanumeric with internal dashes only.",
           "slugReserved": "This slug is reserved — choose another.",
           "slugPunycode": "International domain prefixes (xn--) are not supported yet.",
-          "slugTaken": "This slug is already taken.",
+          "slugTaken": "This organisation already exists. Contact us if this is a mistake, or add the name of your local chapter.",
           "upstream": "Could not reach Keycloak to provision the Organization. Please retry.",
           "generic": "Could not create the tenant. Please retry.",
           "firstAdminNameTooLong": "The first admin name must be 255 characters or fewer.",
@@ -2131,7 +2131,11 @@
       "grantDeadlines": "Grant deadlines",
       "noGrantDeadlinesValue": "0",
       "noGrantDeadlinesHint": "Grant tracking is coming in a later sprint.",
-      "trendLabel": "vs previous month"
+      "trendLabel": "vs previous month",
+      "periodCurrentMonth": "Current month ({month})",
+      "periodAsOf": "As of {date}",
+      "periodAllTime": "Since the beginning",
+      "openDetailAria": "Open the detailed view: {label}"
     },
     "recentDonations": {
       "title": "Recent donations",

@@ -432,6 +432,13 @@
 
         <!-- ============================================================
              STAT CARDS (4 columns) — matches dashboard/page.tsx <StatCard>
+             Issue #229 (démo 30/04) : chaque carte MVP affiche ses bornes
+             temporelles et est entièrement cliquable (stretched-link) vers
+             le rapport détaillé — Total levé → /donations (mois en cours),
+             Campagnes actives → /campaigns?status=active,
+             Donateurs → /constituents?types=donor. Hover = bordure primary
+             (couleurs uniquement, ADR-035 règle 13). La carte roadmap
+             « Échéances subventions » reste inerte.
              ============================================================ -->
         <div class="grid-4">
 
@@ -448,6 +455,7 @@
             </div>
             <div class="stat-value font-mono" style="margin-top:var(--space-3);">€12 450</div>
             <p style="margin-top:var(--space-2);font-size:var(--text-sm);color:var(--color-on-surface-variant);">Dons reçus sur la période en cours</p>
+            <p style="margin-top:var(--space-1);font-size:var(--text-xs);color:var(--color-on-surface-variant);opacity:.8;">Mois en cours (juillet 2026)</p>
           </article>
 
           <!-- 2. Campagnes actives -->
@@ -463,6 +471,7 @@
             </div>
             <div class="stat-value" style="margin-top:var(--space-3);">3</div>
             <p style="margin-top:var(--space-2);font-size:var(--text-sm);color:var(--color-on-surface-variant);">Campagnes en cours ce mois</p>
+            <p style="margin-top:var(--space-1);font-size:var(--text-xs);color:var(--color-on-surface-variant);opacity:.8;">Au 24 juillet 2026</p>
           </article>
 
           <!-- 3. Donateurs -->
@@ -478,6 +487,7 @@
             </div>
             <div class="stat-value" style="margin-top:var(--space-3);">1 247</div>
             <p style="margin-top:var(--space-2);font-size:var(--text-sm);color:var(--color-on-surface-variant);">23 nouveaux ce mois</p>
+            <p style="margin-top:var(--space-1);font-size:var(--text-xs);color:var(--color-on-surface-variant);opacity:.8;">Depuis le début</p>
           </article>
 
           <!-- Roadmap widget: not in MVP — kept for prospect demos -->

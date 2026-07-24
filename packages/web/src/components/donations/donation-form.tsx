@@ -42,6 +42,7 @@ import {
   FormMessage,
 } from "@/components/shared/form-field";
 import { FormSection } from "@/components/shared/form-section";
+import { FormStickyFooter } from "@/components/shared/form-sticky-footer";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -673,7 +674,7 @@ export function DonationForm(props: DonationFormProps) {
           </p>
         ) : null}
 
-        <div className="flex items-center justify-end gap-3 border-t border-outline-variant py-6">
+        <FormStickyFooter>
           <Button variant="ghost" onClick={() => router.back()} disabled={isSubmitting}>
             {t("actions.cancel")}
           </Button>
@@ -684,7 +685,7 @@ export function DonationForm(props: DonationFormProps) {
                 ? t("actions.submitCreate")
                 : t("actions.submitEdit")}
           </Button>
-        </div>
+        </FormStickyFooter>
       </form>
     </Form>
   );

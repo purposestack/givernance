@@ -61,7 +61,11 @@ describe("NewTenantForm", () => {
     await user.type(screen.getByLabelText(/Workspace URL/i), "croix-rouge");
     await user.click(screen.getByRole("button", { name: /Create enterprise tenant/i }));
 
-    expect(await screen.findByText("This slug is already taken.")).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        "This organisation already exists. Contact us if this is a mistake, or add the name of your local chapter.",
+      ),
+    ).toBeInTheDocument();
     expect(mockToast.error).not.toHaveBeenCalled();
     expect(mockRouter.push).not.toHaveBeenCalled();
   });

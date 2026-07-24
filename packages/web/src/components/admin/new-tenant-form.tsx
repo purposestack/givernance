@@ -23,6 +23,7 @@ import {
   FormMessage,
 } from "@/components/shared/form-field";
 import { FormSection } from "@/components/shared/form-section";
+import { FormStickyFooter } from "@/components/shared/form-sticky-footer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -379,7 +380,7 @@ export function NewTenantForm() {
           />
         </FormSection>
 
-        <div className="flex flex-col gap-3 py-8 sm:flex-row sm:items-center sm:justify-between">
+        <FormStickyFooter className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           {/* UX-1 (review): announced to AT via role="alert" so screen-reader users
               are notified on upstream/502 without relying on the toast. */}
           <div className="min-h-5 text-sm text-error" role="alert">
@@ -393,7 +394,7 @@ export function NewTenantForm() {
               {isSubmitting ? t("actions.submitting") : t("actions.submit")}
             </Button>
           </div>
-        </div>
+        </FormStickyFooter>
       </form>
     </Form>
   );
