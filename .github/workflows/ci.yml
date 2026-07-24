@@ -26,7 +26,7 @@ jobs:
       # and `packageManager` are set, so we keep a single source of truth.
       - uses: pnpm/action-setup@v6.0.9
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: "pnpm"
@@ -109,7 +109,7 @@ jobs:
 
       - uses: pnpm/action-setup@v6.0.9
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: "pnpm"

@@ -130,7 +130,7 @@ jobs:
       # the SSH agent / kamal CLI / accessory secrets are wired the same way.
 
       - uses: pnpm/action-setup@v6.0.9
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: "pnpm"
