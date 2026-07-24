@@ -1,0 +1,39 @@
+%% Branding orphan-GC nightly sweep (issue #291) — companion to docs/24 §4.2b
+%% Cron 02:00 UTC on the `branding` queue; flag `branding.orphan_gc_sweep`
+%% (platform scope, default-off). All phases apply a 7-day grace window.
+flowchart TD
+    CRON["⏰ 02:00 UTC repeatable job<br/>branding.orphan_gc_sweep"] --> FLAG{flag<br/>branding.orphan_gc_sweep<br/>enabled?}
+    FLAG -- "no" --> NOOP["log 'skipping sweep'<br/>→ no-op"]
+    FLAG -- "yes" --> P1
+
+    subgraph P1G ["Phase 1 — soft-deleted rows"]
+        P1["SELECT org_branding_assets<br/>deleted_at &lt; now() − 7d<br/>AND logo_asset_id IS DISTINCT FROM id<br/>(support-restored logo survives)"]
+    end
+    subgraph P2G ["Phase 2 — stale never-activated rows"]
+        P2["SELECT deleted_at IS NULL<br/>AND updated_at &lt; now() − 7d<br/>AND logo_asset_id IS DISTINCT FROM id<br/>(replaced logos arrive via Phase 1:<br/>activation soft-deletes the old row)"]
+    end
+    P1 --> GUARD
+    P2 --> GUARD
+    P1G --> P2G
+
+    GUARD{prefix from original_key<br/>strictly under<br/>orgId/logo/… ?}
+    GUARD -- "no" --> SKIP["⚠ warn + skip row<br/>(manual review —<br/>never widen a delete)"]
+    GUARD -- "yes" --> REAP["deleteBrandingPrefix(prefix)<br/>→ hard-delete row (eq id AND eq org_id)<br/>→ audit_logs 'branding.orphan_gc_reaped'"]
+    REAP -- "S3/DB error" --> RETRY["⚠ warn, row survives<br/>→ retried next night"]
+
+    P2G --> P3
+    subgraph P3G ["Phase 3 — unowned prefixes (tenant hard-deleted)"]
+        P3["LIST top-level {org_id}/ prefixes"] --> UUID{strict UUID?}
+        UUID -- "no" --> WARN["⚠ warn, never delete"]
+        UUID -- "yes" --> LIVE{tenant exists?}
+        LIVE -- "yes" --> KEEP["skip (owned)"]
+        LIVE -- "no" --> MTIME{newest object<br/>older than 7d?}
+        MTIME -- "no" --> KEEP2["skip (grace)"]
+        MTIME -- "yes" --> REAP3["deleteBrandingPrefix(prefix)<br/>Loki log = audit trail<br/>(org FK target is gone)"]
+    end
+    P3 -.->|"LIST fails"| SAFE["⚠ phase 3 skipped —<br/>phases 1–2 already committed"]
+
+    REAP3 --> DONE["log 'sweep complete'<br/>{softDeletedReaped, replacedReaped,<br/>unownedPrefixesReaped, objectsDeleted}"]
+    KEEP --> DONE
+    KEEP2 --> DONE
+    SAFE --> DONE
