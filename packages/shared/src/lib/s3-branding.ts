@@ -137,6 +137,67 @@ export async function deleteBrandingPrefix(
 }
 
 /**
+ * List the top-level `{org_id}/` prefixes of the branding bucket.
+ * Used by the nightly orphan-GC sweep (issue #291) to find prefixes
+ * whose parent tenant no longer exists (hard-deleted tenant whose
+ * `org_branding_assets` cascade beat the per-asset GC job). Uses the
+ * S3 `Delimiter` grouping so one paginated LIST returns one entry per
+ * org regardless of how many objects each org holds.
+ */
+export async function listBrandingTopLevelPrefixes(
+  s3: S3Client,
+  bucket: string,
+): Promise<string[]> {
+  const prefixes: string[] = [];
+  let continuationToken: string | undefined;
+  do {
+    const list = await s3.send(
+      new ListObjectsV2Command({
+        Bucket: bucket,
+        Delimiter: "/",
+        ContinuationToken: continuationToken,
+      }),
+    );
+    for (const cp of list.CommonPrefixes ?? []) {
+      if (cp.Prefix) prefixes.push(cp.Prefix);
+    }
+    continuationToken = list.IsTruncated ? list.NextContinuationToken : undefined;
+  } while (continuationToken);
+  return prefixes;
+}
+
+/**
+ * Newest `LastModified` among the objects under a prefix, or null when
+ * the prefix is empty. The orphan-GC sweep uses this as the grace-period
+ * clock for prefixes that have no DB row left to date them by: a prefix
+ * is only reaped once its newest object is older than the grace window.
+ */
+export async function newestBrandingObjectMtime(
+  s3: S3Client,
+  bucket: string,
+  prefix: string,
+): Promise<Date | null> {
+  let newest: Date | null = null;
+  let continuationToken: string | undefined;
+  do {
+    const list = await s3.send(
+      new ListObjectsV2Command({
+        Bucket: bucket,
+        Prefix: prefix,
+        ContinuationToken: continuationToken,
+      }),
+    );
+    for (const obj of list.Contents ?? []) {
+      if (obj.LastModified && (!newest || obj.LastModified > newest)) {
+        newest = obj.LastModified;
+      }
+    }
+    continuationToken = list.IsTruncated ? list.NextContinuationToken : undefined;
+  } while (continuationToken);
+  return newest;
+}
+
+/**
  * Compose the public URL of a branding object. Defaults to
  * `${endpoint}/${brandingBucket}/${key}` so local dev (SeaweedFS, ADR-034)
  * works without configuration. Production overrides via `publicUrlBase`

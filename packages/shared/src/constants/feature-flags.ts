@@ -319,6 +319,35 @@ export const FEATURE_FLAG_KEYS = {
    *     detail rows, list columns.
    */
   CAMPAIGNS_CUSTOM_FIELDS: "campaigns.custom_fields",
+
+  /**
+   * Gates the nightly branding orphan-GC sweep worker job (issue #291,
+   * ADR-023 § Consequences, ADR-024 "drift to nightly orphan-GC").
+   *
+   * The sweep DELETES objects from the public-read branding bucket and
+   * hard-deletes `org_branding_assets` rows past their 7-day grace, so
+   * a net-new destructive cron gets a platform-wide kill-switch: the
+   * flag is checked at job pickup in
+   * `packages/worker/src/processors/branding-orphan-gc-sweep.ts`, and
+   * an off flag makes the nightly tick a logged no-op. There is no API
+   * or web surface — worker-only.
+   *
+   * `scope='platform'` (first platform-scope flag): enabling is a
+   * Givernance-staff decision taken once per environment after the
+   * staging soak documented in
+   * `docs/runbooks/branding-bucket-prod-bringup.md`; tenant overrides
+   * are meaningless for a platform-wide sweep and are ignored by the
+   * evaluator at this scope.
+   *
+   * `public=false`: internal ops flag; nothing donor- or
+   * operator-facing reads it.
+   *
+   * Emergency rollback: flip the flag off (Back Office or
+   * `docs/runbooks/feature-flag-rollback.md`) — the next nightly tick
+   * no-ops. Already-deleted orphans are NOT recoverable (they were
+   * 7+ days past soft-delete/replacement by definition).
+   */
+  BRANDING_ORPHAN_GC_SWEEP: "branding.orphan_gc_sweep",
 } as const;
 
 export type FeatureFlagKey = (typeof FEATURE_FLAG_KEYS)[keyof typeof FEATURE_FLAG_KEYS];
@@ -465,5 +494,15 @@ export const FEATURE_FLAG_REGISTRY: ReadonlyArray<{
     scope: "tenant",
     tenantOverrideAllowed: false,
     public: true,
+  },
+  {
+    key: FEATURE_FLAG_KEYS.BRANDING_ORPHAN_GC_SWEEP,
+    defaultEnabled: false,
+    label: "Nightly logo storage cleanup",
+    description:
+      "Runs a nightly maintenance job that permanently removes logo files left behind after a logo was replaced or deleted, once a 7-day safety window has passed. Off by default: Givernance staff enable it per environment after verification.",
+    scope: "platform",
+    tenantOverrideAllowed: false,
+    public: false,
   },
 ];

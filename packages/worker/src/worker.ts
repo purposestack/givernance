@@ -19,6 +19,7 @@ import { routeDomainEvent } from "./lib/route-domain-event.js";
 import { extractTraceId } from "./lib/trace-context.js";
 import { processBrandingActivateLogo } from "./processors/branding-activate-logo.js";
 import { processBrandingGcAsset } from "./processors/branding-gc-asset.js";
+import { processBrandingOrphanGcSweep } from "./processors/branding-orphan-gc-sweep.js";
 import { processBrandingAsset } from "./processors/branding-process-asset.js";
 import { processGenerateCampaignDocuments } from "./processors/campaign-documents.js";
 import { processCustomFieldOptionMerge } from "./processors/custom-field-option-merge.js";
@@ -140,6 +141,26 @@ const platformReportsQueue = new Queue(QUEUE_NAMES.PLATFORM_REPORTS, {
  * restarts doesn't fan-out to duplicate repeatable schedules.
  */
 async function scheduleRepeatableJobs() {
+  // Issue #291 / ADR-023 — nightly branding orphan-GC sweep at 02:00
+  // UTC (before the 03:xx cron cluster; the sweep lists the whole
+  // bucket so it gets the quietest slot). Fixed `jobId` so worker
+  // restarts don't fan out duplicate schedules. Retry opts are set
+  // per-add because `brandingQueue` deliberately carries no
+  // `defaultJobOptions` — the outbox-routed branding jobs manage their
+  // own retry posture and must not be changed by this cron.
+  await brandingQueue.add(
+    BRANDING_EVENT_TYPES.ORPHAN_GC_SWEEP,
+    {},
+    {
+      jobId: "branding-orphan-gc-sweep-nightly",
+      repeat: { pattern: "0 2 * * *", tz: "UTC" },
+      attempts: 3,
+      backoff: { type: "exponential", delay: 60_000 },
+      removeOnComplete: { count: 10 },
+      removeOnFail: { count: 50 },
+    },
+  );
+
   await tenantLifecycleQueue.add(
     TENANT_LIFECYCLE_JOBS.PROVISIONAL_ADMIN_EXPIRE,
     {},
@@ -660,8 +681,9 @@ function startWorkers() {
   );
 
   // ── Branding queue (Epic #286) ──────────────────────────────────────
-  // The branding queue carries three job names — process / activate / gc.
-  // We route by `job.name` rather than splitting into three queues so
+  // The branding queue carries four job names — process / activate / gc
+  // / nightly orphan-gc sweep (issue #291).
+  // We route by `job.name` rather than splitting into per-name queues so
   // BullMQ's per-tenant jobId ordering (last-write-wins for the same
   // logical asset) stays trivial. Concurrency 1: each pipeline pegs
   // libvips and uploads four objects sequentially — adding workers
@@ -679,6 +701,9 @@ function startWorkers() {
       }
       if (j.name === BRANDING_EVENT_TYPES.GC_ASSET) {
         return processBrandingGcAsset(j);
+      }
+      if (j.name === BRANDING_EVENT_TYPES.ORPHAN_GC_SWEEP) {
+        return processBrandingOrphanGcSweep(j);
       }
       logger.warn({ jobName: j.name }, "Unknown branding job — skipping");
       return null;
