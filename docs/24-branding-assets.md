@@ -167,6 +167,25 @@ The `branding` bucket is **public-read at the bucket level**, with no per-object
 
 The CLAUDE.md rule "🛑 One Bucket per Visibility Class (ADR-023)" governs every future asset-class addition.
 
+**Prod provisioning is code** (issue #291): the Terraform module at [`infra/terraform/branding-bucket/`](../infra/terraform/branding-bucket/) owns the prod bucket — public-read ACL, per-environment CORS allowlist (`GET`/`HEAD` only), and the abort-incomplete-multipart lifecycle rule, mirroring what `infra/seaweedfs/init.sh` + `s3config.json` provision for dev/staging. There is deliberately **no S3 expiry lifecycle**: object deletion is owned exclusively by the worker GC jobs below, so a mis-set lifecycle rule can never eat live logos. Bring-up walkthrough: [`docs/runbooks/branding-bucket-prod-bringup.md`](runbooks/branding-bucket-prod-bringup.md).
+
+### 4.2b Nightly orphan-GC sweep (issue #291)
+
+The per-asset `branding.gc_asset` job (enqueued by the explicit DELETE endpoint) is the fast path. The nightly sweep `branding.orphan_gc_sweep` ([`packages/worker/src/processors/branding-orphan-gc-sweep.ts`](../packages/worker/src/processors/branding-orphan-gc-sweep.ts), repeatable cron at **02:00 UTC**) is the safety net for the three orphan sources the fast path structurally misses. All three phases apply a **7-day grace window**:
+
+| Phase | Orphan source | Detection | Action |
+|---|---|---|---|
+| 1 | Soft-deleted row whose per-asset GC job failed terminally (S3 outage, DLQ) | `deleted_at < now() - 7 days` | re-sweep S3 prefix, hard-delete row |
+| 2 | Replaced logo (new upload mints a new `{logo_id}`; the old row is never soft-deleted — ADR-024) or an upload stuck in `pending`/`failed` | `deleted_at IS NULL AND updated_at < now() - 7 days AND tenants.logo_asset_id IS DISTINCT FROM id` | sweep S3 prefix, hard-delete row |
+| 3 | `{org_id}/` prefix whose tenant was hard-deleted (FK cascade removed the rows before the per-asset job ran) | top-level prefix not matching any live `tenants.id`, newest object `LastModified` past grace | sweep prefix |
+
+Safety posture:
+
+- **Feature-flag gated, default-off**: `branding.orphan_gc_sweep` (platform scope, first platform-scope flag). The flag is checked at job pickup — off means a logged no-op. Enablement order (staging soak → prod) is in the bring-up runbook.
+- The sweep **never touches the active asset** — anything `tenants.logo_asset_id` points at is excluded by construction, so the Keycloak `logo_url` attribute can never reference a swept prefix (no KC sync needed here; the explicit-delete path owns its own sync).
+- Non-UUID top-level prefixes are warned about and never deleted (unexpected layout is a human's problem, not a cron's).
+- Per-row failures don't abort the sweep; the row survives and the next nightly run retries it. The completion log line (`branding orphan-GC sweep complete`, with reap counters) is the Loki observability hook.
+
 ### 4.3 Upload validation
 
 - **Magic-byte check.** `file-type` is the source of truth — never trust the `Content-Type` header. The accepted set is `{image/png, image/jpeg, image/webp, image/svg+xml}`; anything else gets a 422 with `code: invalid_file_type`.
@@ -237,7 +256,7 @@ The bulk-postal-export pipeline reads the `pdf-letterhead` variant via the worke
 - **EXIF stripping** (privacy hygiene). The raster upload pipeline strips EXIF metadata before writing the `original` to S3. A JPEG with embedded GPS coordinates from the operator's phone (a real failure mode — operators photograph their printed logo and upload that) does not leak donor or staff location.
 - **SVG sanitisation** (defense in depth). Even though SVG is text and the threat model is XSS-against-the-uploader rather than donor-PII-leakage, the strict allowlist removes `<script>`, `<foreignObject>`, external `<use href>`, and `on*` event handlers before storing the original. A `MAX_SVG_ELEMENTS = 5000` opening-tag cap (issue #295) is enforced before the parse to stop a resource-exhaustion upload (100k tiny elements under the byte cap) from spiking the parser.
 - **Tenant offboarding cascade.** A `DELETE FROM tenants WHERE id=$1` cascades via FK to `org_branding_assets` (`ON DELETE CASCADE`). The S3 prefix `{org_id}/` is wiped by a single `aws s3api delete-objects --prefix {org_id}/` in the offboarding runbook; one bucket, one query.
-- **Soft-deleted assets** are GC'd nightly. The orphan-GC sweep finds rows with `deleted_at IS NOT NULL AND deleted_at < now() - interval '7 days'` and removes their `s3_key_original` + every entry in `s3_key_variants` from S3 before hard-deleting the row. The 7-day window covers the audit case "an operator deletes the wrong logo and wants it back."
+- **Soft-deleted assets** are GC'd nightly by the `branding.orphan_gc_sweep` job (§4.2b — issue #291, flag-gated): rows with `deleted_at IS NOT NULL AND deleted_at < now() - interval '7 days'` have their whole `{org_id}/logo/{logo_id}/` S3 prefix removed before the row is hard-deleted. The 7-day window covers the audit case "an operator deletes the wrong logo and wants it back." The same sweep reaps replaced-logo rows and tenant-less prefixes under the same grace window.
 - **Right-to-erasure (Art. 17)** is unaffected — logos contain no personal data, so the erasure worker doesn't touch this table.
 - **`uploaded_by` audit trail** — every uploaded asset records `users.id`, satisfying GDPR Art. 5(2) accountability for who introduced which branding asset on which date. `ON DELETE SET NULL` preserves the asset row when an offboarded user is anonymised.
 - **Keycloak Organization attribute is non-sensitive.** The `logo_url` value is a public-bucket URL, not a secret. It is safe to emit into JWTs via the `oidc-organization-membership-mapper` (the CLAUDE.md "🛑 No secrets in Keycloak Organization attributes" rule explicitly permits public-facing labels).

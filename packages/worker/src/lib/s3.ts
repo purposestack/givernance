@@ -7,6 +7,8 @@ import {
   brandingPublicUrl as brandingPublicUrlShared,
   deleteBrandingPrefix as deleteBrandingPrefixShared,
   getBrandingObject as getBrandingObjectShared,
+  listBrandingTopLevelPrefixes as listBrandingTopLevelPrefixesShared,
+  newestBrandingObjectMtime as newestBrandingObjectMtimeShared,
   putBrandingObject as putBrandingObjectShared,
 } from "@givernance/shared/lib/s3-branding";
 import { env } from "../env.js";
@@ -180,6 +182,22 @@ export function getBrandingObject(key: string): Promise<Buffer | null> {
  */
 export function deleteBrandingPrefix(prefix: string): Promise<number> {
   return deleteBrandingPrefixShared(s3, env.S3_BRANDING_BUCKET, prefix);
+}
+
+/**
+ * List the top-level `{org_id}/` prefixes of the branding bucket.
+ * Used by the nightly orphan-GC sweep (issue #291).
+ */
+export function listBrandingTopLevelPrefixes(): Promise<string[]> {
+  return listBrandingTopLevelPrefixesShared(s3, env.S3_BRANDING_BUCKET);
+}
+
+/**
+ * Newest object mtime under a branding prefix (null when empty) — the
+ * orphan-GC sweep's grace clock for prefixes with no DB row.
+ */
+export function newestBrandingObjectMtime(prefix: string): Promise<Date | null> {
+  return newestBrandingObjectMtimeShared(s3, env.S3_BRANDING_BUCKET, prefix);
 }
 
 /** Compose the public URL of a branding object. */

@@ -118,6 +118,14 @@ export const BRANDING_EVENT_TYPES = {
   ACTIVATE_LOGO: "branding.activate_logo",
   /** GC S3 prefix + clear KC org attribute for a soft-deleted asset. */
   GC_ASSET: "branding.gc_asset",
+  /**
+   * Nightly platform-wide sweep (issue #291, ADR-023 § Consequences):
+   * removes S3 prefixes + rows for assets orphaned by a replaced logo
+   * (ADR-024 — old rows "drift to nightly orphan-GC"), a failed
+   * per-asset GC, or a hard-deleted tenant whose cascade beat the
+   * per-asset job. Repeatable cron, no payload — not outbox-routed.
+   */
+  ORPHAN_GC_SWEEP: "branding.orphan_gc_sweep",
   /** Sync `tenants.logo_asset_id` → KC org `logo_url` attribute. */
   KEYCLOAK_SYNC_ORG_LOGO: "keycloak.sync_org_logo",
 } as const;
@@ -149,6 +157,17 @@ export interface BrandingGcAssetJob {
     /** S3 prefix to delete (`{org}/logo/{asset}/`). */
     prefix: string;
   };
+}
+
+/**
+ * Nightly orphan-GC sweep over the branding bucket (issue #291).
+ * Repeatable job — the payload is empty; every sweep re-derives its
+ * work list from `org_branding_assets` + the bucket's top-level
+ * prefixes at run time.
+ */
+export interface BrandingOrphanGcSweepJob {
+  name: "branding.orphan_gc_sweep";
+  data: Record<string, never>;
 }
 
 /** Sync the active logo URL (or empty) into the KC organization attributes. */
