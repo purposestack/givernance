@@ -1,0 +1,59 @@
+# Issue #564 / ADR-038 — HCL is a schema-validated config surface, the
+# exact failure class that broke staging deploys for days when an
+# unknown Kamal key shipped unvalidated (CLAUDE.md § Kamal pinned-version
+# rule). This job is the standing gate ADR-038 ratifies: fmt + provider
+# schema validation on every PR that touches a Terraform module.
+#
+# What it does NOT do: `terraform plan`/`apply`. Those need live Scaleway
+# credentials and mutate donor-facing prod resources — they stay a
+# deliberate operator action (docs/runbooks/branding-bucket-prod-bringup.md).
+# CI has no cloud credentials, by design.
+name: Terraform validate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "infra/terraform/**"
+      - ".github/workflows/terraform-validate.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "infra/terraform/**"
+      - ".github/workflows/terraform-validate.yml"
+
+# Same superseded-run policy as ci.yml: cancel on PR pushes, queue on main.
+concurrency:
+  group: terraform-validate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.0
+
+      - uses: hashicorp/setup-terraform@v4.0.1
+        with:
+          # Pinned to the exact floor of every module's required_version
+          # (">= 1.10") — validating at the floor keeps the floor honest:
+          # if a module starts using newer syntax, this job fails until
+          # the floor (and this pin) are raised together.
+          terraform_version: "1.10.5"
+
+      - name: terraform fmt (check only)
+        run: terraform fmt -check -recursive -diff infra/terraform
+
+      # One module today (branding-bucket); the loop picks up every
+      # future module (ADR-038 absorption order) with no workflow edit.
+      # -backend=false: validation needs the provider schema, not the
+      # remote state — and CI must never touch the state bucket.
+      - name: terraform init + validate (every module)
+        run: |
+          set -euo pipefail
+          for dir in infra/terraform/*/; do
+            echo "::group::${dir}"
+            terraform -chdir="${dir}" init -backend=false -input=false
+            terraform -chdir="${dir}" validate
+            echo "::endgroup::"
+          done

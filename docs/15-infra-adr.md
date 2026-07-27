@@ -39,3 +39,4 @@ This document serves as an index for the Givernance Architecture Decision Record
 - [ADR-035: Loading & Motion Choreography — Orchestrated Cascade, Directional Data-Draw, No Spinners](./adrs/adr-035-loading-motion-choreography.md)
 - [ADR-036: Custom Fields — Per-Org JSONB Column + Registry over EAV, Per-Tenant DDL, and Custom Objects](./adrs/adr-036-custom-fields-jsonb-registry.md)
 - [ADR-037: Receipt Envelope Encryption — Per-Receipt DEK + Rotatable KEK over Storage-Native SSE Alone](./adrs/adr-037-receipt-envelope-encryption.md)
+- [ADR-038: Terraform for Durable Cloud Resources — Terraform/Kamal Boundary + S3 State Backend](./adrs/adr-038-terraform-for-durable-cloud-resources-kamal-boundary.md)
