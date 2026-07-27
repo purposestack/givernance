@@ -12,6 +12,7 @@
     "test:watch": "vitest",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "db:journal:baseline": "cp migrations/meta/_journal.json migrations/meta/_journal.baseline.json",
     "db:seed": "tsx scripts/seed.ts",
     "db:seed:local": "tsx --env-file=../../.env scripts/seed.ts",
     "db:seed:funds": "tsx --env-file=../../.env scripts/seed-funds.ts"

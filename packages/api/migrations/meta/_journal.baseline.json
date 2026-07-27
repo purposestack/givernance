@@ -1,0 +1,643 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1744502400000,
+      "tag": "0001_outbox",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1744502401000,
+      "tag": "0002_auth_rbac",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1744502402000,
+      "tag": "0003_constituents_donations",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1744502403000,
+      "tag": "0004_schema_hardening",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1744502404000,
+      "tag": "0005_rls_app_role",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1744502405000,
+      "tag": "0006_constituents_soft_delete",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1744502406000,
+      "tag": "0007_enable_pg_trgm",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1744502407000,
+      "tag": "0008_donations_core",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1744502408000,
+      "tag": "0009_receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1744502409000,
+      "tag": "0010_postal_campaigns",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1744502410000,
+      "tag": "0011_receipt_sequences",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1744502411000,
+      "tag": "0012_force_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1744502412000,
+      "tag": "0013_allocation_trigger",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1744502413000,
+      "tag": "0014_campaign_hierarchy",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1744502414000,
+      "tag": "0015_donation_indices",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1744502415000,
+      "tag": "0016_fix_cost_cents_bigint",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1744502416000,
+      "tag": "0017_stripe_connect",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1744502417000,
+      "tag": "0018_public_pages",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1744502418000,
+      "tag": "0019_rls_org_id_function",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1744502419000,
+      "tag": "0020_rls_empty_string_fix",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1744502420000,
+      "tag": "0021_tenant_onboarding_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1744502421000,
+      "tag": "0022_invitation_purpose",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1744502422000,
+      "tag": "0023_onboarding_runtime",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1776956400000,
+      "tag": "0023_multi_currency_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1776960000000,
+      "tag": "0024_campaign_roi_read_model",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1776978756727,
+      "tag": "0025_blue_lenny_balinger",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1777049131653,
+      "tag": "0026_phase1_hardening",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1777233862018,
+      "tag": "0027_locale_resolution",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1777275694193,
+      "tag": "0028_invitation_locale",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1777280400000,
+      "tag": "0029_invitation_profile_prefill",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1777287854238,
+      "tag": "0030_common_namorita",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1777289831329,
+      "tag": "0031_hot_hydra",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1777366800000,
+      "tag": "0032_user_soft_delete",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1777400000000,
+      "tag": "0033_impersonation_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1777500000000,
+      "tag": "0034_platform_admins",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1777750000000,
+      "tag": "0035_invitation_purpose_platform_admin",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1777800000000,
+      "tag": "0036_platform_admins_sort_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1777900000000,
+      "tag": "0037_postal_campaigns_mvp",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1777920000000,
+      "tag": "0038_org_mission_campaign_description",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1777930000000,
+      "tag": "0039_constituent_postal_address",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1777940000000,
+      "tag": "0040_postal_export_idempotency",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1777950000000,
+      "tag": "0041_campaign_description_length_cap",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1777960000000,
+      "tag": "0042_org_branding_assets",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1777970000000,
+      "tag": "0043_org_branding_int_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1777980000000,
+      "tag": "0044_swiss_qr_bill_foundation",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1777990000000,
+      "tag": "0045_bulk_email_jobs",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1778000000000,
+      "tag": "0046_bulk_email_jobs_review_followups",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1778010000000,
+      "tag": "0047_feature_flags",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1778020000000,
+      "tag": "0048_drop_redundant_feature_flags_idx",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1778030000000,
+      "tag": "0049_feature_flags_friendly_text",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1778040000000,
+      "tag": "0050_postal_export_run_mode",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1778050000000,
+      "tag": "0051_feature_flags_phase2",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1778060000000,
+      "tag": "0052_bulk_email_tenant_scope",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1778070000000,
+      "tag": "0053_donation_public_page_styles_flag",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1778080000000,
+      "tag": "0054_public_page_style_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1778090000000,
+      "tag": "0055_notifications_center",
+      "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1778100000000,
+      "tag": "0056_bulk_import_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1778110000000,
+      "tag": "0057_bulk_import_feature_flag",
+      "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1778120000000,
+      "tag": "0058_notifications_panel_visible",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1778130000000,
+      "tag": "0059_admin_impersonation_replicate_flag",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1778140000000,
+      "tag": "0060_tenant_isolation_hardening",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1778150000000,
+      "tag": "0061_command_palette_feature_flag",
+      "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1778160000000,
+      "tag": "0062_search_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1778170000000,
+      "tag": "0063_add_filter_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1778180000000,
+      "tag": "0064_seed_advanced_filters_flag",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1788180000000,
+      "tag": "0065_donations_platform_fee_base_cents",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1798180000000,
+      "tag": "0066_donations_stripe_fee_cents",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1808180000000,
+      "tag": "0067_donations_refunded_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1818180000000,
+      "tag": "0068_pledges_base_currency",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1828180000000,
+      "tag": "0069_tenants_constituent_count_cached",
+      "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1838180000000,
+      "tag": "0070_payment_attempts",
+      "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1848180000000,
+      "tag": "0071_surveys",
+      "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1858180000000,
+      "tag": "0072_survey_invitations",
+      "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1868180000000,
+      "tag": "0073_survey_responses",
+      "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1878180000000,
+      "tag": "0074_survey_launches",
+      "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1888180000000,
+      "tag": "0075_admin_finance_dashboard_flag",
+      "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1898180000000,
+      "tag": "0076_survey_views",
+      "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1908180000000,
+      "tag": "0077_survey_fk_restrict",
+      "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1918180000000,
+      "tag": "0078_admin_finance_dashboard_flag_label_update",
+      "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1928180000000,
+      "tag": "0079_platform_finance_reports",
+      "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1938180000000,
+      "tag": "0080_platform_admins_locale",
+      "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1948180000000,
+      "tag": "0081_postal_export_merged_pdf",
+      "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1958180000000,
+      "tag": "0082_retire_validated_feature_flags",
+      "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1968180000000,
+      "tag": "0083_constituent_types_array",
+      "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1978180000000,
+      "tag": "0084_constituents_multi_type_flag",
+      "breakpoints": true
+    },
+    {
+      "idx": 85,
+      "version": "7",
+      "when": 1988180000000,
+      "tag": "0085_constituent_types_partial_gin",
+      "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1998180000000,
+      "tag": "0086_custom_field_definitions",
+      "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 2008180000000,
+      "tag": "0087_customization_supporting_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 2018180000000,
+      "tag": "0088_domain_custom_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 2028180000000,
+      "tag": "0089_custom_fields_flags",
+      "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 2038180000000,
+      "tag": "0090_seed_donations_advanced_filters_flag",
+      "breakpoints": true
+    }
+  ]
+}
