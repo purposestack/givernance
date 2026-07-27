@@ -7,12 +7,18 @@ import {
   type CustomFieldValues,
   type CustomValidator,
 } from "@givernance/shared/custom-fields";
+import {
+  createDecryptStream,
+  RECEIPT_ENCRYPTION_SCHEME_V1,
+  verifyEncryptedStream,
+} from "@givernance/shared/lib/receipt-crypto";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { CustomFieldValidationError, customFieldsProblem } from "../../lib/custom-field-values.js";
 import { flagService as defaultFlagService } from "../../lib/flags/flag-service.js";
 import { requireAuth, requireOrgAdmin, requireWrite } from "../../lib/guards.js";
 import { resolveTranslations } from "../../lib/i18n.js";
+import { getReceiptKekProvider } from "../../lib/receipt-kek.js";
 import { fetchReceiptObject } from "../../lib/s3.js";
 import {
   CurrencySchema,
@@ -535,6 +541,157 @@ const RECEIPT_METADATA_TTL_SECONDS = 3600;
  * download still works, the legal artifact still ships, the header just
  * stops carrying user-controlled bytes. */
 const SAFE_RECEIPT_NUMBER_RE = /^[A-Za-z0-9._-]{1,64}$/;
+
+/** Decryption material for one envelope-encrypted receipt (issue #228). */
+interface ReceiptDecryptMaterial {
+  dek: Buffer;
+  iv: Buffer;
+  authTag: Buffer;
+}
+
+type ReceiptDecryptResolution =
+  | { ok: true; decrypt: ReceiptDecryptMaterial | null }
+  | { ok: false };
+
+/**
+ * Resolve — and integrity-verify — the decryption material for a receipt
+ * row (issue #228). Returns `{ ok: true, decrypt: null }` for legacy
+ * (scheme NULL) rows, the verified material for envelope-encrypted rows,
+ * and `{ ok: false }` (after logging) for every failure mode: unknown
+ * scheme (forward-compat — a NEWER deploy wrote it; 502 is retryable
+ * once the fleet converges), missing crypto fields, KEK unwrap failure,
+ * and GCM integrity failure. Fail-closed: the caller must 502, never
+ * fall through to streaming raw ciphertext.
+ *
+ * Why a pre-verification pass: GCM only verifies its auth tag at stream
+ * finalisation — AFTER every plaintext chunk has already been emitted —
+ * so a single-pass pipe-to-response would flush a 200 + tampered-origin
+ * bytes before discovering the corruption. Instead the ciphertext is
+ * streamed through a throwaway decipher (memory-bounded, output
+ * discarded) before the serving pass. Costs one extra S3 GET on
+ * encrypted receipts (tens of KB) in exchange for a genuinely
+ * fail-closed 502 on tampering.
+ *
+ * Log lines carry reason strings only — NEVER key material (dek /
+ * dekWrapped / keyring are also pino-redacted as a second wall).
+ */
+async function resolveReceiptDecryption(
+  request: FastifyRequest,
+  receipt: {
+    id: string;
+    s3Path: string;
+    encryptionScheme: string | null;
+    dekWrapped: string | null;
+    kekVersionId: string | null;
+    encryptionIv: string | null;
+    encryptionAuthTag: string | null;
+  },
+): Promise<ReceiptDecryptResolution> {
+  const scheme = receipt.encryptionScheme;
+  if (scheme === null) {
+    return { ok: true, decrypt: null };
+  }
+  if (scheme !== RECEIPT_ENCRYPTION_SCHEME_V1) {
+    request.log.error(
+      { receiptId: receipt.id, encryptionScheme: scheme, reason: "unknown_encryption_scheme" },
+      "Receipt decryption failed",
+    );
+    return { ok: false };
+  }
+
+  let decrypt: ReceiptDecryptMaterial;
+  try {
+    if (
+      !receipt.dekWrapped ||
+      !receipt.kekVersionId ||
+      !receipt.encryptionIv ||
+      !receipt.encryptionAuthTag
+    ) {
+      // The DB CHECK constraint makes this unreachable; belt-and-suspenders.
+      throw new Error("encrypted receipt row is missing crypto fields");
+    }
+    const kekProvider = getReceiptKekProvider();
+    const dek = await kekProvider.unwrap(receipt.dekWrapped, receipt.kekVersionId);
+    decrypt = {
+      dek,
+      iv: Buffer.from(receipt.encryptionIv, "base64"),
+      authTag: Buffer.from(receipt.encryptionAuthTag, "base64"),
+    };
+  } catch (err) {
+    request.log.error(
+      {
+        receiptId: receipt.id,
+        kekVersionId: receipt.kekVersionId,
+        reason: err instanceof Error ? err.message : String(err),
+      },
+      "Receipt DEK unwrap failed",
+    );
+    return { ok: false };
+  }
+
+  try {
+    const { body: verifyBody } = await fetchReceiptObject(receipt.s3Path);
+    await verifyEncryptedStream(decrypt.dek, decrypt.iv, decrypt.authTag, verifyBody);
+  } catch (err) {
+    request.log.error(
+      {
+        receiptId: receipt.id,
+        kekVersionId: receipt.kekVersionId,
+        reason: err instanceof Error ? err.message : String(err),
+      },
+      "Receipt ciphertext integrity verification failed",
+    );
+    return { ok: false };
+  }
+
+  return { ok: true, decrypt };
+}
+
+/**
+ * Wire the receipt response stream (issue #228): the raw S3 body for
+ * legacy rows, or `body → decipher` for envelope-encrypted rows. The
+ * decipher's own error listener covers "object changed between the
+ * verification pass and this streaming pass" (near-impossible, but at
+ * that point headers are flushed — all we can do is destroy).
+ */
+function buildReceiptResponseStream(
+  request: FastifyRequest,
+  body: Awaited<ReturnType<typeof fetchReceiptObject>>["body"],
+  decrypt: ReceiptDecryptMaterial | null,
+  ctx: { donationId: string; receiptId: string },
+): NodeJS.ReadableStream {
+  if (!decrypt) return body;
+  const decipher = createDecryptStream(decrypt.dek, decrypt.iv, decrypt.authTag);
+  decipher.on("error", (streamErr) => {
+    request.log.error(
+      { err: streamErr, donationId: ctx.donationId, receiptId: ctx.receiptId },
+      "Receipt decipher stream error after headers flushed",
+    );
+    body.destroy();
+    decipher.destroy();
+  });
+  return body.pipe(decipher);
+}
+
+/**
+ * Content-Length for the receipt download (issue #228). For envelope-
+ * encrypted rows the S3 ContentLength is the CIPHERTEXT size — the
+ * client receives plaintext, so the header comes from the DB's
+ * `plaintext_length` (omitted → chunked transfer if a legacy writer
+ * left it null). Legacy rows keep the S3 value.
+ */
+function resolveReceiptContentLength(
+  decrypt: ReceiptDecryptMaterial | null,
+  plaintextLength: number | null | undefined,
+  s3ContentLength: number | undefined,
+): string | null {
+  if (decrypt) {
+    return plaintextLength !== null && plaintextLength !== undefined
+      ? plaintextLength.toString()
+      : null;
+  }
+  return s3ContentLength !== undefined ? s3ContentLength.toString() : null;
+}
 
 export async function donationRoutes(app: FastifyInstance) {
   /** List donations with pagination and filters */
@@ -1074,6 +1231,21 @@ export async function donationRoutes(app: FastifyInstance) {
           );
       }
 
+      // ── Envelope-encryption decision (issue #228) ──────────────────────
+      // NOT flag-gated: the flag only gates NEW encryption at generation
+      // time. Here the row itself says whether the object is ciphertext —
+      // an encrypted receipt must stay downloadable even if the flag is
+      // later turned off. The helper fails CLOSED on anything unexpected
+      // (unknown scheme, unresolvable KEK, failed integrity check) — raw
+      // ciphertext must NEVER stream to the client as a "fallback".
+      const resolution = await resolveReceiptDecryption(request, receipt);
+      if (!resolution.ok) {
+        return reply
+          .status(502)
+          .send(problemDetail(502, "Bad Gateway", "Receipt is temporarily unavailable"));
+      }
+      const decrypt = resolution.decrypt;
+
       // Fetch from MinIO/S3. A receipt row pointing at a missing object
       // (volume reset on staging, partial worker run, manual delete) is
       // genuinely common — surface it as a clean 502 with a generic
@@ -1099,6 +1271,16 @@ export async function donationRoutes(app: FastifyInstance) {
           .status(502)
           .send(problemDetail(502, "Bad Gateway", "Receipt is temporarily unavailable"));
       }
+
+      // Decrypt in-flight for envelope-encrypted receipts (integrity was
+      // pre-verified above; this second pass streams). If the object
+      // somehow changed between the two passes, the decipher errors after
+      // headers — handled by the stream error listener inside the helper,
+      // same posture as a transient S3 read error on the legacy path.
+      const responseStream = buildReceiptResponseStream(request, body, decrypt, {
+        donationId: id,
+        receiptId: receipt.id,
+      });
 
       // Detach + destroy the S3 stream if the client disconnects
       // mid-transfer (closed tab, slow network) so the AWS SDK's HTTP
@@ -1152,10 +1334,15 @@ export async function donationRoutes(app: FastifyInstance) {
         .header("Content-Type", "application/pdf")
         .header("Content-Disposition", `inline; filename="${safeFilename}"`)
         .header("Cache-Control", "private, no-store");
-      if (contentLength !== undefined) {
-        reply.header("Content-Length", contentLength.toString());
+      const responseLength = resolveReceiptContentLength(
+        decrypt,
+        receipt.plaintextLength,
+        contentLength,
+      );
+      if (responseLength !== null) {
+        reply.header("Content-Length", responseLength);
       }
-      return reply.send(body);
+      return reply.send(responseStream);
     },
   );
 

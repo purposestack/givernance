@@ -3,9 +3,13 @@ import { and, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { db } from "../../lib/db.js";
 
-// Mock S3 upload before importing the processor
+// Mock S3 upload before importing the processor. The processor also
+// imports `uploadEncryptedReceiptPdf` (issue #228) — it stays uncalled
+// in this suite (the envelope flag is default-off) but the partial mock
+// factory must still provide it or the import explodes.
 vi.mock("../../lib/s3.js", () => ({
   uploadReceiptPdf: vi.fn().mockResolvedValue("test-org/receipts/REC-2026-0001.pdf"),
+  uploadEncryptedReceiptPdf: vi.fn().mockResolvedValue("test-org/receipts/REC-2026-0001.pdf"),
 }));
 
 // Import processor after mocking

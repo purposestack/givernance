@@ -7,6 +7,7 @@ import {
   NOTIFICATIONS_DIGEST_JOBS,
   PLATFORM_REPORTS_JOBS,
   QUEUE_NAMES,
+  RECEIPT_JOBS,
   TENANT_LIFECYCLE_JOBS,
 } from "@givernance/shared/jobs";
 import type { Job } from "bullmq";
@@ -41,6 +42,7 @@ import {
 } from "./processors/platform-report-trigger.js";
 import { processGeneratePostalExport } from "./processors/postal-export.js";
 import { processBulkImport } from "./processors/process-bulk-import.js";
+import { processRewrapReceiptDeks } from "./processors/rewrap-receipt-deks.js";
 import { processSendBulkEmail } from "./processors/send-bulk-email.js";
 import { processSignupVerificationEmail } from "./processors/signup-email.js";
 import { processSignupResend } from "./processors/signup-resend.js";
@@ -609,11 +611,26 @@ function startWorkers() {
   };
 
   /** Each Worker gets its own Redis connection per BullMQ best practices */
-  const receiptsWorker = new Worker(QUEUE_NAMES.RECEIPTS, processGenerateReceipt, {
-    connection: createRedisConnection(),
-    concurrency: 5,
-    ...defaultJobOpts,
-  });
+  // The receipts queue carries two job names: the per-donation
+  // `generate-receipt` fan-out and the manual `receipts.rewrap_deks`
+  // KEK-rotation sweep (issue #228). Routed by `job.name`, defaulting to
+  // generation so historical jobs (pre-name-const) keep processing.
+  const receiptsWorker = new Worker(
+    QUEUE_NAMES.RECEIPTS,
+    async (job: Job) => {
+      if (job.name === RECEIPT_JOBS.REWRAP_DEKS) {
+        // biome-ignore lint/suspicious/noExplicitAny: BullMQ Job is heterogeneously typed at runtime
+        return processRewrapReceiptDeks(job as Job<any>);
+      }
+      // biome-ignore lint/suspicious/noExplicitAny: BullMQ Job is heterogeneously typed at runtime
+      return processGenerateReceipt(job as Job<any>);
+    },
+    {
+      connection: createRedisConnection(),
+      concurrency: 5,
+      ...defaultJobOpts,
+    },
+  );
 
   // Wrap the processor in an arrow so BullMQ's second-arg `token: string`
   // doesn't collide with the processor's optional `deps` parameter used

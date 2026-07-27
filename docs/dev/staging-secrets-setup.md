@@ -29,6 +29,19 @@ Set every entry in **Settings → Environments → staging → Environment secre
 
 > **Total: 16 entries** — 13 application/infra secrets + 3 deploy-time identifiers (`VPS_IP`, `SSH_PRIVATE_KEY`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`).
 
+## Conditional secrets — receipt envelope encryption (issue #228)
+
+Only needed once the platform-scoped flag `donation.receipt_envelope_encryption` is being enabled for the environment — they are **not** in the required bag above, and a deploy without them succeeds as long as the flag stays off. Flag on + these absent = receipt-generation jobs fail loudly (fail-closed by design — see [ADR-037](../adrs/adr-037-receipt-envelope-encryption.md)). Set them BEFORE flipping the flag, and keep them set (and every keyring version resolvable) for as long as any encrypted receipt row exists — even if the flag is later turned off. Same values must reach **both** the api and worker services.
+
+Staging uses the `local` provider (env-var keyring); production uses `scaleway` (Scaleway Key Manager) — see [`docs/runbooks/receipt-kek-rotation.md`](../runbooks/receipt-kek-rotation.md) §1 for the full provisioning walkthrough, including the Scaleway key + minimal-IAM setup.
+
+| Secret name | Generate via | Used by | Notes |
+|---|---|---|---|
+| `RECEIPT_ENCRYPTION_LOCAL_KEYRING` | `printf '{"v1":"%s"}' "$(openssl rand -base64 32)"` | api + worker — JSON map of KEK version id → base64 32-byte key | The whole JSON value is a secret. To rotate: **add** a `v2` entry (never remove the old one yet), flip the active-version secret below, redeploy, run the `rewrap:trigger` sweep, and drop `v1` only after the sweep reports `failed: 0` — full procedure in [`receipt-kek-rotation.md`](../runbooks/receipt-kek-rotation.md) §2. |
+| `RECEIPT_ENCRYPTION_LOCAL_ACTIVE_VERSION` | pick the keyring version id (e.g. `v1`) | api + worker — which keyring entry wraps NEW receipt DEKs | Must exist as a key in the keyring JSON or the provider throws (fail-closed). |
+
+`RECEIPT_ENCRYPTION_KEK_PROVIDER=local` is configuration, not a secret — it belongs in the deploy config's clear env, alongside the services' other non-secret vars. The `RECEIPT_ENCRYPTION_SCW_*` counterparts (key UUID, IAM secret key, region) are the production-flavoured equivalents and follow the same env-vars-first-flag-second ordering.
+
 ## Bulk-setup recipe
 
 For a fresh staging environment (or a fork), run something like this from a local checkout (assumes `gh` CLI authenticated against your fork):

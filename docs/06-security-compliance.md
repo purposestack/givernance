@@ -1,6 +1,6 @@
 # 06 — Security & Compliance (EU/GDPR)
 
-> Last updated: 2026-04-14
+> Last updated: 2026-07-27
 
 ## Control baseline
 - Data residency: EU-only regions by default
@@ -18,10 +18,20 @@
 |---|---|---|
 | Postgres (`givernance`, `givernance_keycloak`) | Scaleway Managed PostgreSQL EU (SaaS) / self-hosted PG 17 | AES-256, Scaleway-managed KMS (SaaS); LUKS at the volume layer (self-hosted) |
 | Redis (BullMQ + caches) | Scaleway Managed Redis EU (SaaS) / self-hosted Redis 8 | AES-256 by Scaleway default ([Scaleway docs](https://www.scaleway.com/en/docs/managed-databases-for-redis/concepts/#data-encryption)); volume-level encryption (self-hosted). **Outbox/job payloads carrying transient PII (e.g. bulk-email recipient snapshots, postal-export QR seed lists) inherit this protection.** |
-| Object Storage (`receipts`, `campaigns` buckets) | Scaleway Object Storage EU (SaaS) / SeaweedFS (self-hosted) | SSE-S3 AES-256, configured at upload time via `ServerSideEncryption: "AES256"` (`packages/worker/src/lib/s3.ts`). SeaweedFS derives the SSE-S3 KEK from `WEED_S3_SSE_KEY` (HKDF) — see [ADR-034](./adrs/adr-034-seaweedfs-over-minio-for-self-hosted-object-storage.md). |
+| Object Storage (`receipts`, `campaigns` buckets) | Scaleway Object Storage EU (SaaS) / SeaweedFS (self-hosted) | SSE-S3 AES-256, configured at upload time via `ServerSideEncryption: "AES256"` (`packages/worker/src/lib/s3.ts`). SeaweedFS derives the SSE-S3 KEK from `WEED_S3_SSE_KEY` (HKDF) — see [ADR-034](./adrs/adr-034-seaweedfs-over-minio-for-self-hosted-object-storage.md). **Receipt PDFs additionally get an application-level envelope layer on top of SSE-S3** once `donation.receipt_envelope_encryption` is on: the stored object is pure AES-256-GCM ciphertext under a per-receipt DEK, wrapped by a rotatable KEK held outside the object store — see the subsection below and [ADR-037](./adrs/adr-037-receipt-envelope-encryption.md). |
 | Object Storage (`branding` bucket — Epic #286) | Scaleway Object Storage EU (SaaS) / SeaweedFS (self-hosted) | SSE-S3 AES-256, same `ServerSideEncryption: "AES256"` flag on every PutObject. Bucket-level public-read ACL (the only public bucket in the topology — see [ADR-023](./adrs/adr-023-object-storage-bucket-topology.md) and the CLAUDE.md "🛑 One Bucket per Visibility Class" rule). Encryption-at-rest applies to the original AND every derived variant; serving public-read does not weaken at-rest protection on the storage backend. |
 | Object Storage (`bulk-imports` bucket — Epic #373) | Scaleway Object Storage EU (SaaS) / SeaweedFS (self-hosted) | SSE-S3 AES-256 on every PutObject (`packages/api/src/lib/s3.ts → putBulkImportObject`). **Private** bucket — signed URLs disabled, files re-streamed through the API only. 90-day lifecycle matches the `row_data` retention in `bulk_import_results`. See [`docs/26-bulk-import.md`](./26-bulk-import.md) §5–§6 for the full GDPR posture + upload threat model (size cap, magic-byte sniff, `exceljs` instead of CVE-flagged SheetJS, formula-injection scrub, path-traversal sanitisation, multipart CSRF). |
 | Keycloak realm export / DB | Scaleway Managed PostgreSQL EU | AES-256 (same as application DB) |
+
+### Receipt envelope encryption (issue #228, ADR-037)
+
+Donation tax receipts (CERFA) carry donor name + address + amount and must stay readable for 7 years (CGI art. 200 / 238 bis) — long enough that a single storage-wide key compromise would expose the entire archive. Behind the platform-scoped flag `donation.receipt_envelope_encryption`, newly generated receipt PDFs get an **application-level envelope** on top of the SSE-S3 row above:
+
+- **Key schema**: one fresh AES-256-GCM DEK per receipt; the S3 object is pure ciphertext (`Content-Type: application/octet-stream`). IV, auth tag, wrapped DEK, KEK version and plaintext length live on the `receipts` row — a leaked bucket alone yields nothing decryptable, a leaked DB dump alone yields no PDFs. The DEK is wrapped by a KEK held outside the object store, via a provider abstraction: Scaleway Key Manager (SaaS prod) or a versioned env-var keyring (dev / staging / self-hosted). Implementation: [`packages/shared/src/lib/receipt-crypto.ts`](../packages/shared/src/lib/receipt-crypto.ts).
+- **Rotation**: KEK rotation re-wraps the 32-byte DEKs in the database only (manual `receipts.rewrap_deks` worker sweep) — zero S3 rewrites, minutes not days, works identically for planned rotation and compromise response. Procedure: [`docs/runbooks/receipt-kek-rotation.md`](./runbooks/receipt-kek-rotation.md).
+- **Fail-closed everywhere**: flag on + missing KEK config fails generation jobs before any byte reaches S3 (never a silent plaintext fallback); on download, the ciphertext is GCM-verified in a discarded pre-pass before a second pass streams plaintext, so tampering yields a generic 502 — never a 200 with unauthenticated bytes, and no error oracle distinguishing crypto failure from storage unavailability. The download path is deliberately **not** flag-gated: encrypted receipts stay readable even if the flag is later turned off.
+- **Log hygiene**: pino redaction covers `dek`, `dekWrapped`/`dek_wrapped`, `kekSecret`, `keyring`, `plaintextKey` (+ prefixed variants); `kek_version_id`, IV and auth tag are non-secret metadata and stay greppable for ops.
+- **Erasure posture**: crypto-shredding is possible by design (dropping `dek_wrapped` renders one receipt unreadable without touching S3) but is **not** wired into the erasure flow — receipts are financial records under the 7-year retention obligation. Legacy receipts (`encryption_scheme IS NULL`) keep the SSE-S3-only posture; no backfill has shipped.
 
 ### Image-upload security controls (Epic #286)
 

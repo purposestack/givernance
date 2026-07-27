@@ -643,7 +643,21 @@
       "idx": 91,
       "version": "7",
       "when": 2048180000000,
-      "tag": "0091_seed_branding_orphan_gc_sweep_flag",
+"tag": "0091_seed_branding_orphan_gc_sweep_flag",
+      "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 2058180000000,
+      "tag": "0092_receipt_envelope_encryption",
+      "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 2068180000000,
+      "tag": "0093_seed_receipt_envelope_encryption_flag",
       "breakpoints": true
     }
   ]

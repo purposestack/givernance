@@ -15,6 +15,7 @@
     "./finance/reporting": "./src/finance/reporting/index.ts",
     "./lib/svg-sanitiser": "./src/lib/svg-sanitiser.ts",
     "./lib/s3-branding": "./src/lib/s3-branding.ts",
+    "./lib/receipt-crypto": "./src/lib/receipt-crypto.ts",
     "./lib/lru-fetch-cache": "./src/lib/lru-fetch-cache.ts",
     "./i18n": "./src/i18n/locales.ts",
     "./contracts/branding": "./src/contracts/branding.ts",
