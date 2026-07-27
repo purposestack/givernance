@@ -4,7 +4,11 @@
 **/.terraform/
 *.tfstate
 *.tfstate.*
+# Plan files serialize full resource values + a copy of state. Cover the
+# common `-out=` names too — and prefer never using `-out` at all.
 *.tfplan
+tfplan
+plan.out
 crash.log
 crash.*.log
 # Per-operator variable overrides stay local (credentials discipline:

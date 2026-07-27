@@ -7,8 +7,17 @@
 # What it does NOT do: `terraform plan`/`apply`. Those need live Scaleway
 # credentials and mutate donor-facing prod resources — they stay a
 # deliberate operator action (docs/runbooks/branding-bucket-prod-bringup.md).
-# CI has no cloud credentials, by design.
+# CI has no cloud credentials, by design. Known blind spot: with
+# `-backend=false` the `backend "s3"` block is NOT schema-checked here —
+# it is only validated at the operator's real `terraform init` (see the
+# ADR-037 consequences section).
 name: Terraform validate
+
+# The job needs nothing beyond reading the repo, and it executes provider
+# binaries selected by PR-controlled files (versions.tf + lockfile) —
+# least privilege even if the repo's default token setting ever widens.
+permissions:
+  contents: read
 
 on:
   push:
@@ -35,10 +44,12 @@ jobs:
 
       - uses: hashicorp/setup-terraform@v4.0.1
         with:
-          # Pinned to the exact floor of every module's required_version
-          # (">= 1.10") — validating at the floor keeps the floor honest:
-          # if a module starts using newer syntax, this job fails until
-          # the floor (and this pin) are raised together.
+          # Pinned inside the floor minor (1.10.x) of every module's
+          # required_version (">= 1.10") — validating near the minimum
+          # keeps the floor honest: if a module starts using newer-minor
+          # syntax, this job fails until the floor (and this pin) are
+          # raised together. (1.10.5 not 1.10.0: same syntax surface,
+          # patch fixes included.)
           terraform_version: "1.10.5"
 
       - name: terraform fmt (check only)
