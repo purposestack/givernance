@@ -4,11 +4,14 @@
 # ⚠ Schema-validated config (CLAUDE.md § Kamal lesson applies here too):
 # provider attribute names differ across provider majors/minors. CI runs
 # `terraform fmt -check` + `init -backend=false` + `validate` on every
-# PR touching infra/terraform/** (.github/workflows/terraform-validate.yml),
-# but `terraform plan` against live state remains a MANDATORY local gate
-# before any apply, and the generated `.terraform.lock.hcl` must be
-# committed on first init so every later plan runs against the same
-# provider build.
+# PR touching infra/terraform/** (.github/workflows/terraform-validate.yml).
+# KNOWN CI BLIND SPOT: `init -backend=false` skips the `backend "s3"`
+# block entirely — a typo'd or too-new backend key passes CI green and
+# only fails at the operator's real `terraform init`. Provider/resource
+# schemas are CI-covered; the backend block is validated at operator init
+# only. `terraform plan` against live state therefore remains a MANDATORY
+# local gate before any apply, and the committed `.terraform.lock.hcl`
+# pins the provider build for CI and operators alike.
 
 terraform {
   # ">= 1.10" (not 1.6) because `use_lockfile` below — S3-native state
