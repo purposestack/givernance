@@ -167,10 +167,13 @@ export const PINO_REDACT_PATHS: readonly string[] = [
   "*._constituentCustom",
 
   // ─── Receipt envelope-encryption key material (issue #228) ────────────────
-  // A raw DEK, a wrapped-DEK blob, the local keyring, or a KEK secret in a
-  // log line would defeat the whole envelope design — redact every carrier a
-  // careless `log.info({ ...receiptRow })` / provider-config spread could
-  // ride in on. (kek_version_id / IV / auth tag are deliberately NOT
+  // A raw DEK, a wrapped-DEK blob, the local keyring, or the Scaleway IAM
+  // secret in a log line would defeat the whole envelope design — redact
+  // every carrier a careless `log.info({ ...receiptRow })` / provider-config
+  // spread could ride in on. Paths mirror the ACTUAL identifiers in
+  // `@givernance/shared/lib/receipt-crypto` — `secretKey` is the IAM secret
+  // field on `ScalewayKmsOptions` / the provider instance; no phantom names
+  // (false assurance). (kek_version_id / IV / auth tag are deliberately NOT
   // redacted: they are non-secret metadata the ops runbooks grep for.)
   "dek",
   "*.dek",
@@ -178,10 +181,8 @@ export const PINO_REDACT_PATHS: readonly string[] = [
   "*.dekWrapped",
   "dek_wrapped",
   "*.dek_wrapped",
-  "kekSecret",
-  "*.kekSecret",
   "keyring",
   "*.keyring",
-  "plaintextKey",
-  "*.plaintextKey",
+  "secretKey",
+  "*.secretKey",
 ];

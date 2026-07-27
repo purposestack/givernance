@@ -126,7 +126,14 @@ export async function processGenerateReceipt(
       // row. The auth tag only exists once `Upload` has fully consumed
       // the cipher stream, so it's read strictly after the upload.
       const dek = generateDek();
-      const { cipher, iv, getAuthTag } = createEncryptStream(dek);
+      // AAD = tenant orgId (D1): binds the ciphertext to this tenant so a
+      // transplanted crypto tuple fails tag verification cross-org.
+      const { cipher, iv, getAuthTag } = createEncryptStream(dek, Buffer.from(orgId));
+      // Latent-proofing: PDFKit sources are synchronous today (the doc is
+      // fully written before the pipe), but forward a hypothetical source
+      // error so the cipher — and therefore the S3 upload — fails instead
+      // of hanging if that ever changes.
+      pdfStream.on("error", (err) => cipher.destroy(err as Error));
       const { counter, getCount } = createByteCounter();
       const ciphertextStream = pdfStream.pipe(counter).pipe(cipher);
       s3Path = await uploadEncryptedReceiptPdf(orgId, receiptNumber, ciphertextStream);

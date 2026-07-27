@@ -1,5 +1,6 @@
 /** Donation routes — list, get, and create donations */
 
+import type { Readable } from "node:stream";
 import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
 import {
   buildCustomValidator,
@@ -547,6 +548,18 @@ interface ReceiptDecryptMaterial {
   dek: Buffer;
   iv: Buffer;
   authTag: Buffer;
+  /**
+   * GCM associated data — the authenticated tenant's orgId. Binds the
+   * ciphertext to its tenant: a crypto tuple transplanted onto another
+   * org's row fails tag verification (D1 hardening).
+   */
+  aad: Buffer;
+  /**
+   * Exact plaintext byte count observed by the integrity verification
+   * pass — exact by construction, so it (not the DB's advisory
+   * `plaintext_length` column) is what Content-Length is built from.
+   */
+  verifiedPlaintextLength: number;
 }
 
 type ReceiptDecryptResolution =
@@ -577,6 +590,7 @@ type ReceiptDecryptResolution =
  */
 async function resolveReceiptDecryption(
   request: FastifyRequest,
+  orgId: string,
   receipt: {
     id: string;
     s3Path: string;
@@ -599,7 +613,14 @@ async function resolveReceiptDecryption(
     return { ok: false };
   }
 
-  let decrypt: ReceiptDecryptMaterial;
+  // AAD = the AUTHENTICATED tenant's orgId (from the JWT context that
+  // scoped `getReceiptByDonation`), never a client-supplied value — this
+  // is what makes the cross-org transplant binding trustworthy (D1).
+  const aad = Buffer.from(orgId);
+
+  let dek: Buffer;
+  let iv: Buffer;
+  let authTag: Buffer;
   try {
     if (
       !receipt.dekWrapped ||
@@ -611,12 +632,9 @@ async function resolveReceiptDecryption(
       throw new Error("encrypted receipt row is missing crypto fields");
     }
     const kekProvider = getReceiptKekProvider();
-    const dek = await kekProvider.unwrap(receipt.dekWrapped, receipt.kekVersionId);
-    decrypt = {
-      dek,
-      iv: Buffer.from(receipt.encryptionIv, "base64"),
-      authTag: Buffer.from(receipt.encryptionAuthTag, "base64"),
-    };
+    dek = await kekProvider.unwrap(receipt.dekWrapped, receipt.kekVersionId);
+    iv = Buffer.from(receipt.encryptionIv, "base64");
+    authTag = Buffer.from(receipt.encryptionAuthTag, "base64");
   } catch (err) {
     request.log.error(
       {
@@ -629,10 +647,22 @@ async function resolveReceiptDecryption(
     return { ok: false };
   }
 
+  let verifyBody: Awaited<ReturnType<typeof fetchReceiptObject>>["body"] | undefined;
+  let verifiedPlaintextLength: number;
   try {
-    const { body: verifyBody } = await fetchReceiptObject(receipt.s3Path);
-    await verifyEncryptedStream(decrypt.dek, decrypt.iv, decrypt.authTag, verifyBody);
+    ({ body: verifyBody } = await fetchReceiptObject(receipt.s3Path));
+    verifiedPlaintextLength = await verifyEncryptedStream(dek, iv, authTag, aad, verifyBody);
   } catch (err) {
+    // If the failure was SYNCHRONOUS (e.g. a malformed IV/tag length in
+    // the DB row throws before the pipe starts), the S3 stream was never
+    // consumed — destroy it so the SDK socket is reclaimed instead of
+    // leaking until its idle timeout (review M3). Best-effort: the
+    // stream may already be consumed/destroyed on async failures.
+    try {
+      verifyBody?.destroy();
+    } catch {
+      // ignore — cleanup only
+    }
     request.log.error(
       {
         receiptId: receipt.id,
@@ -644,7 +674,7 @@ async function resolveReceiptDecryption(
     return { ok: false };
   }
 
-  return { ok: true, decrypt };
+  return { ok: true, decrypt: { dek, iv, authTag, aad, verifiedPlaintextLength } };
 }
 
 /**
@@ -661,7 +691,7 @@ function buildReceiptResponseStream(
   ctx: { donationId: string; receiptId: string },
 ): NodeJS.ReadableStream {
   if (!decrypt) return body;
-  const decipher = createDecryptStream(decrypt.dek, decrypt.iv, decrypt.authTag);
+  const decipher = createDecryptStream(decrypt.dek, decrypt.iv, decrypt.authTag, decrypt.aad);
   decipher.on("error", (streamErr) => {
     request.log.error(
       { err: streamErr, donationId: ctx.donationId, receiptId: ctx.receiptId },
@@ -676,19 +706,18 @@ function buildReceiptResponseStream(
 /**
  * Content-Length for the receipt download (issue #228). For envelope-
  * encrypted rows the S3 ContentLength is the CIPHERTEXT size — the
- * client receives plaintext, so the header comes from the DB's
- * `plaintext_length` (omitted → chunked transfer if a legacy writer
- * left it null). Legacy rows keep the S3 value.
+ * client receives plaintext, so the header comes from the byte count
+ * the integrity verification pass just measured (exact by
+ * construction, review L4; the DB's `plaintext_length` column stays as
+ * advisory metadata and covers rows a legacy writer left NULL). Legacy
+ * rows keep the S3 value.
  */
 function resolveReceiptContentLength(
   decrypt: ReceiptDecryptMaterial | null,
-  plaintextLength: number | null | undefined,
   s3ContentLength: number | undefined,
 ): string | null {
   if (decrypt) {
-    return plaintextLength !== null && plaintextLength !== undefined
-      ? plaintextLength.toString()
-      : null;
+    return decrypt.verifiedPlaintextLength.toString();
   }
   return s3ContentLength !== undefined ? s3ContentLength.toString() : null;
 }
@@ -1238,7 +1267,7 @@ export async function donationRoutes(app: FastifyInstance) {
       // later turned off. The helper fails CLOSED on anything unexpected
       // (unknown scheme, unresolvable KEK, failed integrity check) — raw
       // ciphertext must NEVER stream to the client as a "fallback".
-      const resolution = await resolveReceiptDecryption(request, receipt);
+      const resolution = await resolveReceiptDecryption(request, orgId, receipt);
       if (!resolution.ok) {
         return reply
           .status(502)
@@ -1298,6 +1327,18 @@ export async function donationRoutes(app: FastifyInstance) {
           "Receipt stream error after headers flushed",
         );
         body.destroy();
+        // H1: on the envelope path the CLIENT-facing stream is the
+        // decipher (`body.pipe(decipher)`), and `pipe` does NOT forward
+        // source errors — destroying only `body` would leave the
+        // decipher un-ended and the reply hanging until the client
+        // times out. Destroy the response stream too (with the error so
+        // Fastify tears the socket down). On the legacy path
+        // `responseStream === body`, already destroyed above.
+        if (responseStream !== body) {
+          (responseStream as Readable).destroy(
+            streamErr instanceof Error ? streamErr : new Error(String(streamErr)),
+          );
+        }
       });
 
       // Audit log — single source of truth for "who downloaded this
@@ -1334,11 +1375,7 @@ export async function donationRoutes(app: FastifyInstance) {
         .header("Content-Type", "application/pdf")
         .header("Content-Disposition", `inline; filename="${safeFilename}"`)
         .header("Cache-Control", "private, no-store");
-      const responseLength = resolveReceiptContentLength(
-        decrypt,
-        receipt.plaintextLength,
-        contentLength,
-      );
+      const responseLength = resolveReceiptContentLength(decrypt, contentLength);
       if (responseLength !== null) {
         reply.header("Content-Length", responseLength);
       }

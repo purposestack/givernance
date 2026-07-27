@@ -18,8 +18,9 @@
  * The sweep itself runs in the live `worker` process — watch its logs
  * for the `{ scanned, rewrapped, failed }` summary line. The job
  * no-ops (loudly) if the `donation.receipt_envelope_encryption` flag
- * is off, and fails if the RECEIPT_ENCRYPTION_* env vars are absent or
- * invalid on the worker.
+ * is off — set `REWRAP_FORCE=1` to bypass the gate for EMERGENCY
+ * rotation (encrypted rows outlive the flag) — and fails if the
+ * RECEIPT_ENCRYPTION_* env vars are absent or invalid on the worker.
  */
 
 import { Queue } from "bullmq";
@@ -33,10 +34,14 @@ const connection = new IORedis(REDIS_URL, { maxRetriesPerRequest: null });
 const queue = new Queue(QUEUE_NAME, { connection });
 
 const requestedBy = process.env.REWRAP_REQUESTED_BY ?? "manual-script";
+// REWRAP_FORCE=1 → bypass the feature-flag gate (EMERGENCY rotation:
+// encrypted rows outlive the flag, and a compromised-KEK response must
+// not require re-enabling encryption platform-wide first).
+const force = process.env.REWRAP_FORCE === "1";
 
 const job = await queue.add(
   JOB_NAME,
-  { requestedBy },
+  { requestedBy, force },
   {
     // One-off, timestamped id — two rotations on the same day must not
     // collapse onto each other, and a sweep is idempotent anyway
@@ -55,6 +60,7 @@ console.log(
       jobName: JOB_NAME,
       jobId: job.id,
       requestedBy,
+      force,
       hint: "Watch the worker logs for the { scanned, rewrapped, failed } summary.",
     },
     null,
