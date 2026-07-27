@@ -1,0 +1,13 @@
+# Terraform local working files — never committed. The lockfile
+# (.terraform.lock.hcl) IS committed (provider pinning, ADR-038);
+# everything else here is per-operator scratch or, worse, live state.
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+# Per-operator variable overrides stay local (credentials discipline:
+# secrets come from SCW_*/AWS_* env vars, never tfvars).
+*.tfvars
+*.tfvars.json

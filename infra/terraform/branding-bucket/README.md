@@ -19,23 +19,39 @@ bucket, DNS for `cdn.givernance.eu`, the other (private) buckets —
 `receipts` / `campaigns` / `bank-statements` keep their `aws s3api`
 provisioning until they get their own modules.
 
+## State & prerequisites (ADR-038)
+
+Remote state lives in the shared, private, versioned
+`givernance-terraform-state` bucket on Scaleway (`backend "s3"` block in
+`versions.tf`, key `branding-bucket/terraform.tfstate`, S3-native
+lockfile locking). The state bucket is the one hand-provisioned
+bootstrap resource — bring-up in
+[`docs/runbooks/branding-bucket-prod-bringup.md`](../../../docs/runbooks/branding-bucket-prod-bringup.md)
+§ 1a. Requires **Terraform ≥ 1.10** (`use_lockfile`).
+
 ## Usage
 
 ```sh
 cd infra/terraform/branding-bucket
 export SCW_ACCESS_KEY=… SCW_SECRET_KEY=… SCW_DEFAULT_PROJECT_ID=…
-terraform init            # commit the generated .terraform.lock.hcl
+# The S3 state backend reads AWS-style env (standard for non-AWS S3):
+export AWS_ACCESS_KEY_ID="$SCW_ACCESS_KEY" AWS_SECRET_ACCESS_KEY="$SCW_SECRET_KEY"
+terraform init            # respects the COMMITTED .terraform.lock.hcl
 terraform validate
 terraform plan            # review — MANDATORY gate, see below
 terraform apply
 ```
 
-⚠ **No CI validates HCL** and provider attribute names differ across
-provider versions (the repo has been bitten by exactly this class of
-bug — see CLAUDE.md § "Kamal config keys must be valid for the PINNED
-version"). `terraform validate` + `plan` locally before any apply is the
-gate; commit `.terraform.lock.hcl` on first init so later plans use the
-same provider build.
+CI validates `fmt` + provider schema on every PR touching
+`infra/terraform/**`
+([`terraform-validate.yml`](../../../.github/workflows/terraform-validate.yml)
+— ADR-038's answer to the CLAUDE.md § Kamal pinned-version incident
+class), but CI holds no cloud credentials: `terraform plan` against
+live state is still the only place the real diff is visible, and stays
+a MANDATORY local gate before any apply. The committed
+`.terraform.lock.hcl` carries multi-platform hashes (Linux CI, macOS
+operators) — if `init` wants to change it, treat that as provider
+drift to review, never `-upgrade` through it silently.
 
 Operator walkthrough (verification curls, env-var cutover, GC-sweep
 flag enablement): `docs/runbooks/branding-bucket-prod-bringup.md`.

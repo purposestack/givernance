@@ -79,6 +79,8 @@ Per [ADR-023](../adrs/adr-023-object-storage-bucket-topology.md), every asset cl
 
 Bucket names are read from `S3_*_BUCKET` env vars (see `.env.example`). The bucket name is also persisted on each row that points into it (`bulk_import_files.s3_bucket`, `camt_statements.s3_path`, …) so a future env-var rename doesn't break older rows.
 
+One bucket exists outside this asset-class table: **`givernance-terraform-state`** (prod Scaleway project only — private, versioned, no `{org_id}` prefixing) holds Terraform remote state per [ADR-038](../adrs/adr-038-terraform-for-durable-cloud-resources-kamal-boundary.md). It carries operational metadata, never app or donor data, and is hand-bootstrapped once per project ([`branding-bucket-prod-bringup.md`](../runbooks/branding-bucket-prod-bringup.md) § 1a).
+
 ### Recommended Local Tooling (macOS Apple Silicon)
 
 | Tool | Purpose | Download |

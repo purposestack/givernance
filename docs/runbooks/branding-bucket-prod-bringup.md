@@ -9,7 +9,8 @@
 > environment) and closes the "MUST be matched in prod via Scaleway
 > bucket policy" hand-off comment from PR #287. Related: ADR-023
 > (bucket topology), ADR-024 (image pipeline / content-addressed keys),
-> ADR-034 (prod stays Scaleway), `docs/24-branding-assets.md` §7.
+> ADR-034 (prod stays Scaleway), ADR-038 (Terraform/Kamal boundary +
+> state backend), `docs/24-branding-assets.md` §7.
 
 ## 0. Why this exists
 
@@ -21,23 +22,66 @@ module are that artefact. The nightly orphan-GC sweep (ADR-023
 `branding.orphan_gc_sweep`; enabling it is the last step here, after a
 staging soak.
 
+## 1a. Bootstrap the Terraform state bucket (one-shot per project)
+
+Remote state lives in the private, versioned `givernance-terraform-state`
+bucket (ADR-038) — the **one hand-provisioned bootstrap resource**
+(Terraform can't manage the bucket its own state lives in). Skip this
+section if the bucket already exists (`aws s3api head-bucket` below
+succeeds): it is shared by every Terraform module, created once per
+Scaleway project, ever.
+
+```sh
+export SCW_ACCESS_KEY=… SCW_SECRET_KEY=… SCW_DEFAULT_PROJECT_ID=…   # prod project
+# The generic S3 tooling (and Terraform's S3 backend) read AWS-style env:
+export AWS_ACCESS_KEY_ID="$SCW_ACCESS_KEY" AWS_SECRET_ACCESS_KEY="$SCW_SECRET_KEY"
+ENDPOINT=https://s3.fr-par.scw.cloud
+
+aws s3api head-bucket --bucket givernance-terraform-state --endpoint-url "$ENDPOINT" \
+  || aws s3api create-bucket --bucket givernance-terraform-state \
+       --endpoint-url "$ENDPOINT" --region fr-par
+
+# Versioning ON — a clobbered/corrupted state file must be recoverable:
+aws s3api put-bucket-versioning --bucket givernance-terraform-state \
+  --versioning-configuration Status=Enabled \
+  --endpoint-url "$ENDPOINT" --region fr-par
+
+# Verify posture: private (anonymous GET → 403, unlike the branding
+# bucket where 404 is the healthy answer) and versioned:
+curl -sI "https://givernance-terraform-state.s3.fr-par.scw.cloud/x" | head -1   # → 403
+aws s3api get-bucket-versioning --bucket givernance-terraform-state \
+  --endpoint-url "$ENDPOINT" | grep Enabled
+```
+
+State locking uses Terraform ≥ 1.10's S3-native lockfile (conditional
+writes). If a `plan`/`apply` ever fails on the *lock* step with a
+conditional-write/`412`-style error (Scaleway-side behaviour change —
+loud, never silent), file an issue referencing ADR-038's revisit
+criteria; do **not** silently drop `use_lockfile` from `versions.tf`.
+
 ## 1. Provision the bucket (one-shot)
+
+Requires Terraform **≥ 1.10** (`required_version`; CI validates at the
+1.10 floor). The `SCW_*` + `AWS_*` exports from § 1a must still be in
+the shell — the scaleway provider reads `SCW_*`, the state backend
+reads `AWS_*`.
 
 ```sh
 cd infra/terraform/branding-bucket
-export SCW_ACCESS_KEY=… SCW_SECRET_KEY=… SCW_DEFAULT_PROJECT_ID=…   # prod project
-terraform init
-git add .terraform.lock.hcl && git commit -m "chore(infra): pin scaleway provider (branding bucket)"
+terraform init          # connects to the § 1a state bucket; respects the committed .terraform.lock.hcl
 terraform validate
-terraform plan          # review every line — no CI validates HCL
+terraform plan          # review every line — CI validates schema, only YOU see the live diff
 terraform apply
 ```
 
-⚠ **Committing `.terraform.lock.hcl` is a BLOCKING step, not a nicety** —
-do not run `apply` before the lockfile is committed. Without it, two
-operators can apply different provider builds against the public-read
-prod bucket, which is the exact schema-drift incident class the repo
-has already been bitten by (CLAUDE.md § Kamal pinned-version rule).
+The provider is pinned by the **committed** `.terraform.lock.hcl`
+(multi-platform hashes — Linux CI + macOS operators). If `init` wants
+to change it, stop: that's a provider-drift signal to review, not to
+`-upgrade` through. Two operators applying different provider builds
+against the public-read prod bucket is the exact schema-drift incident
+class the repo has already been bitten by (CLAUDE.md § Kamal
+pinned-version rule) — the lockfile plus the § 1a state lock are what
+prevent it.
 
 Override CORS origins if the prod web origins differ from the defaults:
 
