@@ -21,10 +21,12 @@ import {
 } from "../lib/receipt-crypto.js";
 
 const PLAINTEXT = Buffer.from(`%PDF-1.4 receipt payload ${"x".repeat(4096)}`, "utf8");
+/** AAD = tenant orgId in production (D1 hardening). */
+const AAD = Buffer.from("00000000-0000-0000-0000-0000000000aa");
 
 /** Run a buffer through the streaming encrypt pipeline, like the worker does. */
-async function encryptBuffer(dek: Buffer, plaintext: Buffer) {
-  const { cipher, iv, getAuthTag } = createEncryptStream(dek);
+async function encryptBuffer(dek: Buffer, plaintext: Buffer, aad: Buffer = AAD) {
+  const { cipher, iv, getAuthTag } = createEncryptStream(dek, aad);
   const { counter, getCount } = createByteCounter();
   const chunks: Buffer[] = [];
   const out = Readable.from(plaintext).pipe(counter).pipe(cipher);
@@ -49,7 +51,7 @@ describe("DEK stream encrypt / decrypt round-trip", () => {
     expect(ciphertext.length).toBe(PLAINTEXT.length); // GCM = CTR keystream, same length
     expect(ciphertext.subarray(0, 4).toString("utf8")).not.toBe("%PDF");
 
-    const decipher = createDecryptStream(dek, iv, authTag);
+    const decipher = createDecryptStream(dek, iv, authTag, AAD);
     const chunks: Buffer[] = [];
     const out = Readable.from(ciphertext).pipe(decipher);
     for await (const chunk of out) {
@@ -61,9 +63,9 @@ describe("DEK stream encrypt / decrypt round-trip", () => {
   it("verifyEncryptedStream resolves with the plaintext length on an intact object", async () => {
     const dek = generateDek();
     const { ciphertext, iv, authTag } = await encryptBuffer(dek, PLAINTEXT);
-    await expect(verifyEncryptedStream(dek, iv, authTag, Readable.from(ciphertext))).resolves.toBe(
-      PLAINTEXT.length,
-    );
+    await expect(
+      verifyEncryptedStream(dek, iv, authTag, AAD, Readable.from(ciphertext)),
+    ).resolves.toBe(PLAINTEXT.length);
   });
 
   it("verifyEncryptedStream rejects on a tampered auth tag (fail-closed)", async () => {
@@ -72,7 +74,7 @@ describe("DEK stream encrypt / decrypt round-trip", () => {
     const badTag = Buffer.from(authTag);
     badTag[0] = badTag[0]! ^ 0xff;
     await expect(
-      verifyEncryptedStream(dek, iv, badTag, Readable.from(ciphertext)),
+      verifyEncryptedStream(dek, iv, badTag, AAD, Readable.from(ciphertext)),
     ).rejects.toThrow();
   });
 
@@ -82,8 +84,28 @@ describe("DEK stream encrypt / decrypt round-trip", () => {
     const tampered = Buffer.from(ciphertext);
     tampered[10] = tampered[10]! ^ 0xff;
     await expect(
-      verifyEncryptedStream(dek, iv, authTag, Readable.from(tampered)),
+      verifyEncryptedStream(dek, iv, authTag, AAD, Readable.from(tampered)),
     ).rejects.toThrow();
+  });
+
+  it("rejects when the AAD does not match the one bound at encryption (cross-org transplant)", async () => {
+    // D1: a crypto tuple encrypted for tenant A must NOT verify when the
+    // serving context is tenant B — the AAD (orgId) is part of the tag.
+    const dek = generateDek();
+    const { ciphertext, iv, authTag } = await encryptBuffer(dek, PLAINTEXT, AAD);
+    const otherOrgAad = Buffer.from("00000000-0000-0000-0000-0000000000bb");
+    await expect(
+      verifyEncryptedStream(dek, iv, authTag, otherOrgAad, Readable.from(ciphertext)),
+    ).rejects.toThrow();
+    // Same tuple with the RIGHT AAD still verifies (control).
+    await expect(
+      verifyEncryptedStream(dek, iv, authTag, AAD, Readable.from(ciphertext)),
+    ).resolves.toBe(PLAINTEXT.length);
+  });
+
+  it("rejects an empty AAD outright (the org binding must never silently vanish)", () => {
+    const dek = generateDek();
+    expect(() => createEncryptStream(dek, Buffer.alloc(0))).toThrow(/AAD/);
   });
 });
 
@@ -243,6 +265,27 @@ describe("ScalewayKmsKekProvider", () => {
     await expect(provider.unwrap("blob", "v1")).rejects.toThrow(/Scaleway/);
     expect(fetchImpl).not.toHaveBeenCalled();
   });
+
+  it("refuses a non-UUID key id smuggled through kekVersionId — no fetch (SSRF path traversal, review M1)", async () => {
+    const fetchImpl = vi.fn();
+    const provider = new ScalewayKmsKekProvider({
+      keyId,
+      secretKey: "scw-secret",
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    // A tampered DB row: fetch normalises the dot-segments, so without
+    // the UUID gate this would become an arbitrary api.scaleway.com POST
+    // signed with the IAM secret.
+    const malicious = "scw:../../../../account/v3/projects?x=";
+    await expect(provider.unwrap("blob", malicious)).rejects.toThrow(/UUID/);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("rejects a non-UUID key id at construction too", () => {
+    expect(() => new ScalewayKmsKekProvider({ keyId: "../evil", secretKey: "scw-secret" })).toThrow(
+      /UUID/,
+    );
+  });
 });
 
 describe("createKekProviderFromEnv", () => {
@@ -257,12 +300,13 @@ describe("createKekProviderFromEnv", () => {
   });
 
   it("builds a ScalewayKmsKekProvider from env shape", () => {
+    const envKeyId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
     const provider = createKekProviderFromEnv({
       RECEIPT_ENCRYPTION_KEK_PROVIDER: "scaleway",
-      RECEIPT_ENCRYPTION_SCW_KEY_ID: "key-id",
+      RECEIPT_ENCRYPTION_SCW_KEY_ID: envKeyId,
       RECEIPT_ENCRYPTION_SCW_SECRET_KEY: "secret",
     });
-    expect(provider.activeVersionId()).toBe("scw:key-id");
+    expect(provider.activeVersionId()).toBe(`scw:${envKeyId}`);
   });
 
   it("throws on absent provider (fail-closed, never plaintext fallback)", () => {

@@ -1105,7 +1105,7 @@ export const receipts = pgTable(
     fiscalYear: integer("fiscal_year").notNull(),
     s3Path: varchar("s3_path", { length: 500 }).notNull(),
     status: receiptStatusEnum("status").notNull().default("pending"),
-    // ── Envelope encryption (issue #228, migration 0091) ────────────────────
+    // ── Envelope encryption (issue #228, migration 0092) ────────────────────
     // NULL scheme = legacy object (SSE-S3 only, plaintext PDF in the bucket).
     // 'dek-aes256gcm.v1' = S3 object is pure AES-256-GCM ciphertext; the
     // per-receipt DEK is wrapped by the KEK named in `kek_version_id` and

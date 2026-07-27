@@ -94,12 +94,13 @@ describe("PINO_REDACT_PATHS — receipt envelope-encryption key material (issue 
     ["nested wrapped dek (camel) — receipt row spread", { receipt: { dekWrapped: KEY_SECRET } }],
     ["wrapped dek (snake)", { dek_wrapped: KEY_SECRET }],
     ["nested wrapped dek (snake)", { row: { dek_wrapped: KEY_SECRET } }],
-    ["kek secret", { kekSecret: KEY_SECRET }],
-    ["nested kek secret", { provider: { kekSecret: KEY_SECRET } }],
     ["local keyring", { keyring: { v1: KEY_SECRET } }],
     ["nested local keyring — provider config spread", { config: { keyring: { v1: KEY_SECRET } } }],
-    ["plaintext key", { plaintextKey: KEY_SECRET }],
-    ["nested plaintext key", { kms: { plaintextKey: KEY_SECRET } }],
+    // `secretKey` is the REAL field name of the Scaleway IAM secret on
+    // `ScalewayKmsOptions` / `ScalewayKmsKekProvider` — the carrier a
+    // provider-options or provider-instance spread would ride in on.
+    ["scaleway IAM secret (options field)", { secretKey: KEY_SECRET }],
+    ["nested scaleway IAM secret — provider spread", { provider: { secretKey: KEY_SECRET } }],
   ];
 
   for (const [name, context] of carriers) {

@@ -23,6 +23,11 @@
  *     local keyring (dev / staging / self-hosted) or Scaleway Key
  *     Manager (SaaS prod). KEK rotation re-wraps DEKs in the DB only —
  *     no S3 rewrite (see `rewrap-receipt-deks` worker processor).
+ *   - The content cipher binds the tenant `orgId` as GCM associated
+ *     data (AAD): a crypto tuple transplanted onto another tenant's row
+ *     fails tag verification. The DEK wrap layer stays AAD-less — the
+ *     content binding covers that vector (Scaleway `associated_data`
+ *     is follow-up work).
  *   - Everything fails CLOSED: unknown KEK version, malformed blob, or
  *     GCM tag mismatch throws; callers must never fall back to
  *     streaming raw ciphertext (or uploading plaintext).
@@ -52,30 +57,52 @@ export function generateDek(): Buffer {
  * upload the output. The S3 object is ciphertext ONLY — grab `iv` now
  * and `getAuthTag()` strictly AFTER the upload has fully consumed the
  * stream (the tag only exists once the cipher has finalised).
+ *
+ * `aad` (mandatory) is bound into the GCM auth tag as associated data —
+ * the platform uses the receipt's tenant `orgId`. Because the download
+ * path always derives its AAD from the AUTHENTICATED tenant context, a
+ * crypto tuple (object + DB columns) transplanted onto another tenant's
+ * row no longer verifies: the tag check fails before a single byte is
+ * served. The DEK *wrap* layer deliberately stays AAD-less — the
+ * content binding already covers the cross-org transplant vector, and
+ * Scaleway KMS `associated_data` is tracked as follow-up work.
  */
-export function createEncryptStream(dek: Buffer): {
+export function createEncryptStream(
+  dek: Buffer,
+  aad: Buffer,
+): {
   cipher: CipherGCM;
   iv: Buffer;
   getAuthTag: () => Buffer;
 } {
   assertDekShape(dek);
+  assertAadShape(aad);
   const iv = randomBytes(GCM_IV_LENGTH_BYTES);
   const cipher = createCipheriv("aes-256-gcm", dek, iv);
+  cipher.setAAD(aad);
   return { cipher, iv, getAuthTag: () => cipher.getAuthTag() };
 }
 
 /**
- * Create the decrypt side of the streaming pipeline. The auth tag is
- * set BEFORE any data flows (allowed with GCM); the stream throws at
- * finalisation if the tag doesn't verify — fail-closed.
+ * Create the decrypt side of the streaming pipeline. The auth tag and
+ * the AAD are set BEFORE any data flows (allowed with GCM); the stream
+ * throws at finalisation if the tag doesn't verify — fail-closed. The
+ * `aad` must be the same tenant `orgId` the encrypt side bound (see
+ * `createEncryptStream`).
  *
  * GCM caveat the API route must respect: plaintext chunks are emitted
  * BEFORE the tag is verified (verification only happens at `final()`).
  * Never pipe this straight to an HTTP response without a prior
  * verification pass — see `verifyEncryptedStream`.
  */
-export function createDecryptStream(dek: Buffer, iv: Buffer, authTag: Buffer): DecipherGCM {
+export function createDecryptStream(
+  dek: Buffer,
+  iv: Buffer,
+  authTag: Buffer,
+  aad: Buffer,
+): DecipherGCM {
   assertDekShape(dek);
+  assertAadShape(aad);
   if (iv.length !== GCM_IV_LENGTH_BYTES) {
     throw new Error(`receipt-crypto: IV must be ${GCM_IV_LENGTH_BYTES} bytes, got ${iv.length}`);
   }
@@ -86,6 +113,7 @@ export function createDecryptStream(dek: Buffer, iv: Buffer, authTag: Buffer): D
   }
   const decipher = createDecipheriv("aes-256-gcm", dek, iv);
   decipher.setAuthTag(authTag);
+  decipher.setAAD(aad);
   return decipher;
 }
 
@@ -115,10 +143,11 @@ export function verifyEncryptedStream(
   dek: Buffer,
   iv: Buffer,
   authTag: Buffer,
+  aad: Buffer,
   ciphertext: NodeJS.ReadableStream,
 ): Promise<number> {
   return new Promise((resolve, reject) => {
-    const decipher = createDecryptStream(dek, iv, authTag);
+    const decipher = createDecryptStream(dek, iv, authTag, aad);
     let plaintextBytes = 0;
     decipher.on("data", (chunk: Buffer) => {
       plaintextBytes += chunk.length;
@@ -252,6 +281,23 @@ export interface ScalewayKmsOptions {
 const SCW_VERSION_PREFIX = "scw:";
 
 /**
+ * Scaleway Key Manager key ids are UUIDs — enforced BEFORE any URL is
+ * built from one. `kekVersionId` comes from a DATABASE column: without
+ * this check, a tampered row like `scw:../../../../account/v3/...`
+ * would path-traverse the request URL (fetch normalises dot-segments)
+ * into an arbitrary api.scaleway.com POST signed with the IAM secret.
+ */
+const SCW_KEY_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function assertScwKeyId(keyId: string): void {
+  if (!SCW_KEY_ID_RE.test(keyId)) {
+    throw new Error(
+      "receipt-crypto: Scaleway KMS key id must be a UUID — refusing to build a request URL from it",
+    );
+  }
+}
+
+/**
  * Scaleway Key Manager provider (SaaS prod — EU data-residency, single
  * Scaleway DPA, same rationale as the rest of the stack).
  *
@@ -276,6 +322,8 @@ export class ScalewayKmsKekProvider implements KekProvider {
 
   constructor(options: ScalewayKmsOptions) {
     if (!options.keyId) throw new Error("receipt-crypto: Scaleway KMS keyId is required");
+    // Same UUID gate as unwrap — the configured id also ends up in URLs.
+    assertScwKeyId(options.keyId);
     if (!options.secretKey) throw new Error("receipt-crypto: Scaleway KMS secretKey is required");
     this.keyId = options.keyId;
     this.secretKey = options.secretKey;
@@ -310,7 +358,11 @@ export class ScalewayKmsKekProvider implements KekProvider {
     }
     // Unwrap against the key resource recorded on the row (supports
     // reading rows wrapped under a previous key resource mid-rotation).
+    // The extracted id is validated as a strict UUID before it can reach
+    // a URL — `kek_version_id` is DB data, and an unvalidated slice here
+    // was an SSRF-shaped path traversal (see SCW_KEY_ID_RE).
     const keyId = kekVersionId.slice(SCW_VERSION_PREFIX.length);
+    assertScwKeyId(keyId);
     const body = await this.call(keyId, "decrypt", { ciphertext: wrapped });
     const plaintext = (body as { plaintext?: string }).plaintext;
     if (!plaintext) {
@@ -444,5 +496,13 @@ function assertDekShape(dek: Buffer): void {
 function assertKekShape(kek: Buffer): void {
   if (kek.length !== DEK_LENGTH_BYTES) {
     throw new Error(`receipt-crypto: KEK must be ${DEK_LENGTH_BYTES} bytes, got ${kek.length}`);
+  }
+}
+
+function assertAadShape(aad: Buffer): void {
+  // The AAD is the tenant orgId — an empty buffer would silently drop
+  // the cross-org binding, so it is rejected outright.
+  if (aad.length === 0) {
+    throw new Error("receipt-crypto: AAD must be a non-empty buffer (the receipt's tenant orgId)");
   }
 }

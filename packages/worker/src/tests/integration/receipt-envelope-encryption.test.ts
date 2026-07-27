@@ -91,7 +91,7 @@ function setLocalKekEnv() {
 }
 
 async function setFlag(enabled: boolean) {
-  // The seed migration (0092) provisions the row; upsert defensively so
+  // The seed migration (0093) provisions the row; upsert defensively so
   // a stale local test DB without the seed still exercises the path.
   await db.execute(
     sql`INSERT INTO feature_flags (key, enabled, label, description, scope, tenant_override_allowed, public)
@@ -225,12 +225,14 @@ describe("processGenerateReceipt — envelope encryption flag ON", () => {
 
     // Round-trip: unwrap the DEK with the test keyring and decrypt the
     // captured upload — must yield a real PDF of exactly plaintext_length.
+    // AAD = the row's orgId (D1): the processor binds it at encryption.
     const provider = new LocalKekProvider({ v1: KEYRING_V1 }, "v1");
     const dek = await provider.unwrap(receipt!.dekWrapped!, receipt!.kekVersionId!);
     const decipher = createDecryptStream(
       dek,
       Buffer.from(receipt!.encryptionIv!, "base64"),
       Buffer.from(receipt!.encryptionAuthTag!, "base64"),
+      Buffer.from(ORG_ID),
     );
     const chunks: Buffer[] = [];
     for await (const chunk of Readable.from(uploaded!).pipe(decipher)) {
@@ -265,12 +267,52 @@ describe("processGenerateReceipt — envelope encryption flag ON", () => {
 });
 
 describe("processRewrapReceiptDeks — KEK rotation sweep", () => {
+  beforeEach(async () => {
+    // The sweep is platform-wide by design, so give it a deterministic
+    // universe: purge every encrypted receipt row (this file's earlier
+    // generate tests + any stale fixtures from a crashed prior run).
+    // Only this feature writes encrypted rows, worker test files run
+    // sequentially, and the API package's own suite cleans up after
+    // itself — so the purge is safe and lets the assertions below be
+    // EXACT counts instead of >= lower bounds.
+    await db.execute(sql`DELETE FROM receipts WHERE encryption_scheme IS NOT NULL`);
+  });
+
   it("no-ops (loudly) when the flag is off", async () => {
     await setFlag(false);
     setLocalKekEnv();
 
     const result = await processRewrapReceiptDeks(makeMockJob({ requestedBy: "test" }));
     expect(result).toMatchObject({ skipped: true, scanned: 0, rewrapped: 0, failed: 0 });
+  });
+
+  it("force=true bypasses the flag gate — emergency rotation after the feature was turned off", async () => {
+    // Encrypted rows outlive the flag: generate one while ON…
+    await setFlag(true);
+    setLocalKekEnv();
+    const donationId = await createDonation();
+    await processGenerateReceipt(
+      makeMockJob({ donationId, orgId: ORG_ID, fiscalYear: 2026, locale: "en" }),
+    );
+
+    // …then turn the feature OFF and rotate the KEK under force.
+    await setFlag(false);
+    process.env.RECEIPT_ENCRYPTION_LOCAL_KEYRING = JSON.stringify({
+      v1: KEYRING_V1,
+      v2: KEYRING_V2,
+    });
+    process.env.RECEIPT_ENCRYPTION_LOCAL_ACTIVE_VERSION = "v2";
+
+    const result = await processRewrapReceiptDeks(
+      makeMockJob({ requestedBy: "test", force: true }),
+    );
+    expect(result).toMatchObject({ skipped: false, scanned: 1, rewrapped: 1, failed: 0 });
+
+    const [after] = await db
+      .select()
+      .from(receipts)
+      .where(and(eq(receipts.donationId, donationId), eq(receipts.orgId, ORG_ID)));
+    expect(after?.kekVersionId).toBe("v2");
   });
 
   it("re-wraps a v1-wrapped row onto the active v2 without touching S3", async () => {
@@ -297,12 +339,9 @@ describe("processRewrapReceiptDeks — KEK rotation sweep", () => {
     mockedUploadPlain.mockClear();
     mockedUploadEncrypted.mockClear();
     const result = await processRewrapReceiptDeks(makeMockJob({ requestedBy: "test" }));
-    expect(result.skipped).toBe(false);
-    // No totals assertion beyond ≥1: the shared test DB may hold
-    // encrypted fixture rows from other suites (wrapped under keyrings
-    // this sweep can't unwrap) — those log + count as failed without
-    // blocking OUR row.
-    expect(result.rewrapped).toBeGreaterThanOrEqual(1);
+    // Exact counts — the beforeEach purge guarantees this row is the
+    // only encrypted one in the DB.
+    expect(result).toMatchObject({ skipped: false, scanned: 1, rewrapped: 1, failed: 0 });
 
     const [after] = await db
       .select()
@@ -324,5 +363,61 @@ describe("processRewrapReceiptDeks — KEK rotation sweep", () => {
     const dekBefore = await provider.unwrap(before!.dekWrapped!, "v1");
     const dekAfter = await provider.unwrap(after!.dekWrapped!, "v2");
     expect(dekAfter.equals(dekBefore)).toBe(true);
+  });
+
+  it("isolates a row wrapped under a KEK version the keyring no longer holds and still terminates (T1)", async () => {
+    await setFlag(true);
+    // Healthy row: wrapped under v1, still unwrappable after rotation.
+    setLocalKekEnv();
+    const healthyDonationId = await createDonation();
+    await processGenerateReceipt(
+      makeMockJob({ donationId: healthyDonationId, orgId: ORG_ID, fiscalYear: 2026, locale: "en" }),
+    );
+
+    // Poison row: kek_version_id "v0" is unknown to the keyring — the
+    // realistic "old KEK version was removed too early" failure. Insert
+    // directly (owner pool) with a syntactically valid crypto tuple.
+    const poisonDonationId = await createDonation();
+    const poisonNumber = `REC-2026-POISON-${Date.now().toString(36)}`;
+    await db.insert(receipts).values({
+      orgId: ORG_ID,
+      donationId: poisonDonationId,
+      receiptNumber: poisonNumber,
+      fiscalYear: 2026,
+      s3Path: `${ORG_ID}/receipts/${poisonNumber}.pdf`,
+      status: "generated",
+      encryptionScheme: RECEIPT_ENCRYPTION_SCHEME_V1,
+      dekWrapped: Buffer.from(randomBytes(60)).toString("base64"),
+      kekVersionId: "v0",
+      encryptionIv: randomBytes(12).toString("base64"),
+      encryptionAuthTag: randomBytes(16).toString("base64"),
+      plaintextLength: 1234,
+    });
+
+    // Rotate: keyring holds v1 + v2, active v2 — v0 is gone.
+    process.env.RECEIPT_ENCRYPTION_LOCAL_KEYRING = JSON.stringify({
+      v1: KEYRING_V1,
+      v2: KEYRING_V2,
+    });
+    process.env.RECEIPT_ENCRYPTION_LOCAL_ACTIVE_VERSION = "v2";
+
+    // The sweep must terminate (no infinite loop on the sticky failed
+    // row — the keyset cursor structurally advances past it), re-wrap
+    // the healthy row, and leave the poison row untouched for a later
+    // sweep once the keyring is fixed.
+    const result = await processRewrapReceiptDeks(makeMockJob({ requestedBy: "test" }));
+    expect(result).toMatchObject({ skipped: false, scanned: 2, rewrapped: 1, failed: 1 });
+
+    const [healthy] = await db
+      .select()
+      .from(receipts)
+      .where(and(eq(receipts.donationId, healthyDonationId), eq(receipts.orgId, ORG_ID)));
+    expect(healthy?.kekVersionId).toBe("v2");
+
+    const [poison] = await db
+      .select()
+      .from(receipts)
+      .where(and(eq(receipts.donationId, poisonDonationId), eq(receipts.orgId, ORG_ID)));
+    expect(poison?.kekVersionId).toBe("v0");
   });
 });

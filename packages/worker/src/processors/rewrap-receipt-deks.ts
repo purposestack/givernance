@@ -23,7 +23,7 @@ import type { RewrapReceiptDeksJob } from "@givernance/shared/jobs";
 import type { KekProvider } from "@givernance/shared/lib/receipt-crypto";
 import { receipts } from "@givernance/shared/schema";
 import type { Job } from "bullmq";
-import { and, eq, isNotNull, ne, notInArray } from "drizzle-orm";
+import { and, eq, gt, isNotNull, ne } from "drizzle-orm";
 import { db } from "../lib/db.js";
 import { isFlagEnabled } from "../lib/flags.js";
 import { jobLogger } from "../lib/logger.js";
@@ -57,27 +57,50 @@ async function rewrapRow(kekProvider: KekProvider, row: SweepRow): Promise<void>
     .where(and(eq(receipts.id, row.id), eq(receipts.orgId, row.orgId)));
 }
 
+/**
+ * Defence-in-depth gate at pickup (feature-flag-first rule): if the
+ * envelope feature is off, the sweep is a loud no-op — an operator who
+ * enqueued it by mistake sees WHY nothing happened. `force` bypasses
+ * the gate for EMERGENCY rotation: encrypted rows keep existing (and
+ * keep needing rotatable KEKs) even after the flag is turned off, and a
+ * compromised-KEK response must not require re-enabling encryption
+ * platform-wide first. Returns whether the sweep may proceed.
+ */
+async function passesFlagGate(
+  job: Job,
+  log: ReturnType<typeof jobLogger>,
+  requestedBy: string | undefined,
+  force: boolean,
+): Promise<boolean> {
+  const enabled = await isFlagEnabled(FEATURE_FLAG_KEYS.DONATION_RECEIPT_ENVELOPE_ENCRYPTION);
+  if (enabled) return true;
+  if (force) {
+    log.warn(
+      { requestedBy },
+      "Receipt DEK re-wrap FORCED while the donation.receipt_envelope_encryption flag is off — emergency rotation path",
+    );
+    return true;
+  }
+  log.info(
+    { requestedBy },
+    "Receipt DEK re-wrap skipped — donation.receipt_envelope_encryption flag is off (pass force=true for emergency rotation)",
+  );
+  job.log("Skipped: donation.receipt_envelope_encryption flag is off (force=true bypasses)");
+  return false;
+}
+
 /** Sweep every encrypted receipt row onto the active KEK version. */
 export async function processRewrapReceiptDeks(
   job: Job<RewrapReceiptDeksJob["data"] & { traceparent?: string }>,
 ) {
-  const { requestedBy, traceparent } = job.data ?? {};
+  const { requestedBy, force = false, traceparent } = job.data ?? {};
   const log = jobLogger({
     tenantId: "platform",
     jobId: job.id,
     traceId: extractTraceId(traceparent),
   });
 
-  // Defence-in-depth gate at pickup (feature-flag-first rule): if the
-  // envelope feature is off, the sweep is a loud no-op — an operator
-  // who enqueued it by mistake sees WHY nothing happened.
-  const enabled = await isFlagEnabled(FEATURE_FLAG_KEYS.DONATION_RECEIPT_ENVELOPE_ENCRYPTION);
-  if (!enabled) {
-    log.info(
-      { requestedBy },
-      "Receipt DEK re-wrap skipped — donation.receipt_envelope_encryption flag is off",
-    );
-    job.log("Skipped: donation.receipt_envelope_encryption flag is off");
+  if (!(await passesFlagGate(job, log, requestedBy, force))) {
     return { skipped: true, scanned: 0, rewrapped: 0, failed: 0 };
   }
 
@@ -91,10 +114,16 @@ export async function processRewrapReceiptDeks(
   let scanned = 0;
   let rewrapped = 0;
   let failed = 0;
-  // Rows whose unwrap/re-wrap failed still match the sweep predicate;
-  // excluding them from subsequent batches guarantees forward progress
-  // (bounded memory: ids of failed rows only).
-  const failedIds: string[] = [];
+  // Keyset pagination: rows are walked in `id` order and the cursor only
+  // ever advances past what was scanned. Forward progress is structural
+  // — a successfully re-wrapped row stops matching the predicate, and a
+  // FAILED row is simply left behind the cursor (it keeps its old
+  // kek_version_id for the next sweep). O(1) memory and a constant bind
+  // count per batch, unlike a `NOT IN (failed ids)` exclusion list,
+  // which is O(n²) query cost and crashes into Postgres's 65 535 bind
+  // parameter cap in the realistic "old KEK version was removed too
+  // early, EVERY row fails" scenario.
+  let cursor: string | null = null;
 
   for (;;) {
     // CROSS-TENANT INTENTIONAL: platform-wide KEK rotation sweep. The
@@ -102,7 +131,7 @@ export async function processRewrapReceiptDeks(
     // every tenant's receipts by design (the KEK is a platform secret,
     // not tenant data). Each UPDATE below still carries the precise
     // `eq(receipts.id, …)` + `eq(receipts.orgId, …)` predicate.
-    const rows = await db
+    const rows: SweepRow[] = await db
       .select({
         id: receipts.id,
         orgId: receipts.orgId,
@@ -115,12 +144,15 @@ export async function processRewrapReceiptDeks(
           isNotNull(receipts.encryptionScheme),
           isNotNull(receipts.kekVersionId),
           ne(receipts.kekVersionId, activeVersion),
-          ...(failedIds.length > 0 ? [notInArray(receipts.id, failedIds)] : []),
+          ...(cursor !== null ? [gt(receipts.id, cursor)] : []),
         ),
       )
+      .orderBy(receipts.id)
       .limit(BATCH_SIZE);
 
     if (rows.length === 0) break;
+    // Rows are id-ordered, so the last one is the batch's high-water mark.
+    cursor = rows[rows.length - 1]?.id ?? cursor;
 
     for (const row of rows) {
       scanned += 1;
@@ -129,7 +161,6 @@ export async function processRewrapReceiptDeks(
         rewrapped += 1;
       } catch (err) {
         failed += 1;
-        failedIds.push(row.id);
         // No key material in the log line (pino redacts dekWrapped
         // anyway) — receiptId + old version + reason is what the
         // runbook needs.

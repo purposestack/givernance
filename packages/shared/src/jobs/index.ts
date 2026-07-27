@@ -369,6 +369,14 @@ export interface RewrapReceiptDeksJob {
   data: {
     /** Operator identity for the audit trail (runbook fills it in). */
     requestedBy?: string;
+    /**
+     * Bypass the `donation.receipt_envelope_encryption` flag gate —
+     * EMERGENCY rotation only. Encrypted rows outlive the flag (turning
+     * it off only stops encrypting NEW receipts), so a compromised-KEK
+     * response must be able to rotate without first re-enabling
+     * encryption platform-wide. The processor logs loudly when used.
+     */
+    force?: boolean;
     traceparent?: string;
   };
 }
