@@ -6,6 +6,13 @@ on:
   pull_request:
     branches: [main]
 
+# Cancel superseded runs of the same PR when new commits are pushed. On push
+# events (main) there is no PR number, so runs group by ref and are queued —
+# never cancelled — to keep every main commit verified.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   # Static gate: lint, types, i18n parity, build. No database — fast feedback
   # that's independent of which Postgres role the tests run under.
