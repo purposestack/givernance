@@ -59,6 +59,37 @@ export async function uploadReceiptPdf(
   return streamPdfToS3(env.S3_RECEIPTS_BUCKET, key, doc);
 }
 
+/**
+ * Upload an ENVELOPE-ENCRYPTED receipt (streamed) to the receipts
+ * bucket (issue #228). Same key shape as `uploadReceiptPdf` — the
+ * `receipts.encryption_scheme` column, not the key, is what marks the
+ * object as ciphertext. ContentType is `application/octet-stream` (NOT
+ * `application/pdf` — the object is AES-256-GCM ciphertext, and a
+ * misleading PDF content type would make any accidental direct serve
+ * render as a broken PDF instead of an obviously-opaque blob).
+ * SSE-S3 stays on as the at-rest inner layer (defence in depth).
+ */
+export async function uploadEncryptedReceiptPdf(
+  tenantId: string,
+  receiptNumber: string,
+  ciphertext: NodeJS.ReadableStream,
+): Promise<string> {
+  const key = `${tenantId}/receipts/${receiptNumber}.pdf`;
+  const upload = new Upload({
+    client: s3,
+    params: {
+      Bucket: env.S3_RECEIPTS_BUCKET,
+      Key: key,
+      Body: ciphertext as unknown as Readable,
+      ContentType: "application/octet-stream",
+      ServerSideEncryption: "AES256",
+      ACL: "private",
+    },
+  });
+  await upload.done();
+  return key;
+}
+
 /** Upload a campaign document PDF (streamed) to the campaigns bucket */
 export async function uploadCampaignPdf(
   tenantId: string,

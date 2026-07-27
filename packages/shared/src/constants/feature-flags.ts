@@ -307,6 +307,44 @@ export const FEATURE_FLAG_KEYS = {
   DONATIONS_ADVANCED_FILTERS: "donations.advanced_filters",
 
   /**
+   * Gates envelope encryption of tax-receipt PDFs (issue #228).
+   *
+   * Receipts are legal fiscal documents (CERFA) with a 7-year retention
+   * horizon — long enough that "the bucket got exposed once" must not
+   * mean "seven years of donor tax documents leaked". With the flag ON,
+   * the worker seals each NEWLY generated receipt PDF with its own
+   * fresh AES-256-GCM data key (DEK); the S3 object is pure ciphertext
+   * (IV + auth tag live on the `receipts` row) and the DEK is wrapped
+   * by a key-encryption key (KEK) held OUTSIDE the object store —
+   * Scaleway Key Manager in SaaS prod, a local keyring
+   * (`RECEIPT_ENCRYPTION_LOCAL_KEYRING`) on dev / staging /
+   * self-hosted. KEK rotation re-wraps DEKs in the DB only (the
+   * `receipts.rewrap_deks` sweep) — zero S3 rewrites.
+   *
+   * `scope='platform'`: this is an infrastructure posture, not a
+   * per-NPO preference — flipping it requires the KEK env vars to be
+   * deployed, so only Givernance staff control it. Enabling without
+   * `RECEIPT_ENCRYPTION_*` configured makes generation jobs FAIL
+   * (fail-closed by design — never a silent plaintext fallback).
+   *
+   * `public=false`: no tenant-visible surface changes; donors and
+   * operators download receipts exactly as before.
+   *
+   * Gate placement:
+   *   - Worker: `generate-receipt` checks at pickup — ON encrypts, OFF
+   *     keeps today's plaintext+SSE-S3 upload byte-for-byte.
+   *   - Worker: `receipts.rewrap_deks` (manual rotation sweep) no-ops
+   *     when OFF.
+   *   - API: the download route is NOT flag-gated — it decrypts any
+   *     row whose `encryption_scheme` says it is encrypted, so
+   *     flipping the flag OFF never bricks already-encrypted receipts.
+   *
+   * Emergency rollback: see `docs/runbooks/feature-flag-rollback.md`.
+   * Turning the flag off stops encrypting NEW receipts only.
+   */
+  DONATION_RECEIPT_ENVELOPE_ENCRYPTION: "donation.receipt_envelope_encryption",
+
+  /**
    * Gates custom fields on the campaign domain (Epic #539). See
    * `CONSTITUENTS_CUSTOM_FIELDS` for the per-domain kill-switch
    * rationale and rollout posture (same: tenant scope, staff-enabled,
@@ -484,6 +522,16 @@ export const FEATURE_FLAG_REGISTRY: ReadonlyArray<{
     scope: "tenant",
     tenantOverrideAllowed: false,
     public: true,
+  },
+  {
+    key: FEATURE_FLAG_KEYS.DONATION_RECEIPT_ENVELOPE_ENCRYPTION,
+    defaultEnabled: false,
+    label: "Receipt envelope encryption",
+    description:
+      "Strengthens how donation tax receipts are stored: each newly generated receipt PDF is sealed with its own encryption key, and those keys can be rotated centrally without touching the stored files. Managed by Givernance staff — turning it on requires encryption keys to be configured on the platform first. Existing receipts keep working unchanged.",
+    scope: "platform",
+    tenantOverrideAllowed: false,
+    public: false,
   },
   {
     key: FEATURE_FLAG_KEYS.CAMPAIGNS_CUSTOM_FIELDS,

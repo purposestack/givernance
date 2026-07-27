@@ -83,3 +83,36 @@ describe("PINO_REDACT_PATHS — custom-field value carriers", () => {
     expect(line).not.toContain(SECRET);
   });
 });
+
+describe("PINO_REDACT_PATHS — receipt envelope-encryption key material (issue #228)", () => {
+  const KEY_SECRET = "a2V5LW1hdGVyaWFsLXNlY3JldC1iYXNlNjQ=";
+
+  const carriers: Array<[string, Record<string, unknown>]> = [
+    ["raw dek", { dek: KEY_SECRET }],
+    ["nested raw dek", { job: { dek: KEY_SECRET } }],
+    ["wrapped dek (camel)", { dekWrapped: KEY_SECRET }],
+    ["nested wrapped dek (camel) — receipt row spread", { receipt: { dekWrapped: KEY_SECRET } }],
+    ["wrapped dek (snake)", { dek_wrapped: KEY_SECRET }],
+    ["nested wrapped dek (snake)", { row: { dek_wrapped: KEY_SECRET } }],
+    ["kek secret", { kekSecret: KEY_SECRET }],
+    ["nested kek secret", { provider: { kekSecret: KEY_SECRET } }],
+    ["local keyring", { keyring: { v1: KEY_SECRET } }],
+    ["nested local keyring — provider config spread", { config: { keyring: { v1: KEY_SECRET } } }],
+    ["plaintext key", { plaintextKey: KEY_SECRET }],
+    ["nested plaintext key", { kms: { plaintextKey: KEY_SECRET } }],
+  ];
+
+  for (const [name, context] of carriers) {
+    it(`redacts ${name}`, () => {
+      const line = emit(context);
+      expect(line).not.toContain(KEY_SECRET);
+      expect(line).toContain("[Redacted]");
+    });
+  }
+
+  it("keeps non-secret crypto metadata (kekVersionId) intact for ops greps", () => {
+    const line = emit({ kekVersionId: "v2", dekWrapped: KEY_SECRET });
+    expect(line).toContain('"kekVersionId":"v2"');
+    expect(line).not.toContain(KEY_SECRET);
+  });
+});

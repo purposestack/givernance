@@ -1,12 +1,22 @@
 /** Job processor — generate tax receipt PDF for a donation */
 
+import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
 import type { GenerateReceiptJob } from "@givernance/shared/jobs";
+import {
+  createByteCounter,
+  createEncryptStream,
+  generateDek,
+  type KekProvider,
+  RECEIPT_ENCRYPTION_SCHEME_V1,
+} from "@givernance/shared/lib/receipt-crypto";
 import { constituents, donations, receipts } from "@givernance/shared/schema";
 import type { Job } from "bullmq";
 import { and, eq, sql } from "drizzle-orm";
 import { withWorkerContext } from "../lib/db.js";
+import { isFlagEnabled } from "../lib/flags.js";
 import { jobLogger } from "../lib/logger.js";
-import { uploadReceiptPdf } from "../lib/s3.js";
+import { getReceiptKekProvider } from "../lib/receipt-kek.js";
+import { uploadEncryptedReceiptPdf, uploadReceiptPdf } from "../lib/s3.js";
 import { extractTraceId } from "../lib/trace-context.js";
 import { createReceiptPdfStream } from "../services/pdf.js";
 
@@ -52,6 +62,17 @@ export async function processGenerateReceipt(
   // Duplicate into BullBoard so operators poking at a single job still see progress.
   job.log(`Generating receipt for donation ${donationId} (org: ${orgId}, year: ${fiscalYear})`);
 
+  // Envelope encryption gate (issue #228) — evaluated at pickup, BEFORE any
+  // upload. Platform-scoped flag, so the global read is the full answer.
+  // With the flag ON, resolve the KEK provider NOW: a misconfigured KEK must
+  // fail the job here, before a receipt number is allocated and before any
+  // byte reaches S3 — NEVER fall back to a plaintext upload (fail-closed).
+  const envelopeOn = await isFlagEnabled(FEATURE_FLAG_KEYS.DONATION_RECEIPT_ENVELOPE_ENCRYPTION);
+  let kekProvider: KekProvider | null = null;
+  if (envelopeOn) {
+    kekProvider = getReceiptKekProvider();
+  }
+
   return withWorkerContext(orgId, async (tx) => {
     const [donation] = await tx
       .select()
@@ -88,7 +109,41 @@ export async function processGenerateReceipt(
       fiscalYear,
     });
 
-    const s3Path = await uploadReceiptPdf(orgId, receiptNumber, pdfStream);
+    let s3Path: string;
+    let encryptionColumns: {
+      encryptionScheme: string;
+      dekWrapped: string;
+      kekVersionId: string;
+      encryptionIv: string;
+      encryptionAuthTag: string;
+      plaintextLength: number;
+    } | null = null;
+
+    if (kekProvider) {
+      // Envelope path (issue #228): pdf → byte counter → AES-256-GCM
+      // cipher → S3, all streaming (nothing buffers the whole PDF). The
+      // S3 object is PURE ciphertext; IV + auth tag go into the receipts
+      // row. The auth tag only exists once `Upload` has fully consumed
+      // the cipher stream, so it's read strictly after the upload.
+      const dek = generateDek();
+      const { cipher, iv, getAuthTag } = createEncryptStream(dek);
+      const { counter, getCount } = createByteCounter();
+      const ciphertextStream = pdfStream.pipe(counter).pipe(cipher);
+      s3Path = await uploadEncryptedReceiptPdf(orgId, receiptNumber, ciphertextStream);
+      const { wrapped, kekVersionId } = await kekProvider.wrap(dek);
+      encryptionColumns = {
+        encryptionScheme: RECEIPT_ENCRYPTION_SCHEME_V1,
+        dekWrapped: wrapped,
+        kekVersionId,
+        encryptionIv: iv.toString("base64"),
+        encryptionAuthTag: getAuthTag().toString("base64"),
+        plaintextLength: getCount(),
+      };
+    } else {
+      // Flag off — byte-for-byte the pre-#228 behaviour (plaintext PDF,
+      // SSE-S3 at rest, encryption columns stay NULL).
+      s3Path = await uploadReceiptPdf(orgId, receiptNumber, pdfStream);
+    }
 
     await tx.insert(receipts).values({
       orgId,
@@ -97,6 +152,7 @@ export async function processGenerateReceipt(
       fiscalYear,
       s3Path,
       status: "generated",
+      ...(encryptionColumns ?? {}),
     });
 
     await tx
@@ -108,7 +164,10 @@ export async function processGenerateReceipt(
       })
       .where(and(eq(donations.id, donationId), eq(donations.orgId, orgId)));
 
-    log.info({ receiptNumber, s3Path }, "Receipt generated");
+    log.info(
+      { receiptNumber, s3Path, envelopeEncrypted: encryptionColumns !== null },
+      "Receipt generated",
+    );
     job.log(`Receipt ${receiptNumber} generated and uploaded to ${s3Path}`);
 
     return { receiptNumber, s3Path };

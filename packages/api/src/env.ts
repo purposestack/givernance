@@ -152,6 +152,29 @@ const EnvSchema = Type.Object({
    * configuration. Capped at 3600 (1h) by the route.
    */
   IMPERSONATION_IMPERSONATION_TTL_SECONDS: Type.Number({ default: 1800 }),
+
+  // ─── Receipt envelope encryption (issue #228) ─────────────────────────────
+  // All optional: the download route only needs them when it encounters a
+  // receipt row whose `encryption_scheme` is non-null. The KEK binding
+  // (`lib/receipt-kek.ts`) reads these lazily at request time and THROWS on
+  // absent/invalid config — the download 502s rather than ever streaming raw
+  // ciphertext (fail-closed). Keep values in lockstep with the worker's env.
+  /** KEK backend — 'local' (dev/staging/self-hosted keyring) or 'scaleway' (Key Manager, SaaS prod). */
+  RECEIPT_ENCRYPTION_KEK_PROVIDER: Type.Optional(
+    Type.Union([Type.Literal("local"), Type.Literal("scaleway")]),
+  ),
+  /** JSON keyring `{ "<versionId>": "<base64 32-byte key>", ... }` for the local provider. */
+  RECEIPT_ENCRYPTION_LOCAL_KEYRING: Type.Optional(Type.String({ minLength: 1 })),
+  /** Keyring version id new wraps use (must exist in the keyring). */
+  RECEIPT_ENCRYPTION_LOCAL_ACTIVE_VERSION: Type.Optional(Type.String({ minLength: 1 })),
+  /** Scaleway Key Manager key UUID. */
+  RECEIPT_ENCRYPTION_SCW_KEY_ID: Type.Optional(Type.String({ minLength: 1 })),
+  /** Scaleway IAM secret key (X-Auth-Token) for Key Manager calls. */
+  RECEIPT_ENCRYPTION_SCW_SECRET_KEY: Type.Optional(Type.String({ minLength: 1 })),
+  /** Scaleway region for Key Manager (default fr-par). */
+  RECEIPT_ENCRYPTION_SCW_REGION: Type.Optional(Type.String({ minLength: 1 })),
+  /** Scaleway API endpoint override (tests / private gateways). */
+  RECEIPT_ENCRYPTION_SCW_ENDPOINT: Type.Optional(Type.String({ minLength: 1 })),
 });
 
 export type ApiEnv = Static<typeof EnvSchema>;

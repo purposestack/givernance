@@ -1105,12 +1105,32 @@ export const receipts = pgTable(
     fiscalYear: integer("fiscal_year").notNull(),
     s3Path: varchar("s3_path", { length: 500 }).notNull(),
     status: receiptStatusEnum("status").notNull().default("pending"),
+    // ── Envelope encryption (issue #228, migration 0091) ────────────────────
+    // NULL scheme = legacy object (SSE-S3 only, plaintext PDF in the bucket).
+    // 'dek-aes256gcm.v1' = S3 object is pure AES-256-GCM ciphertext; the
+    // per-receipt DEK is wrapped by the KEK named in `kek_version_id` and
+    // IV/auth-tag live HERE, not in the object. See
+    // `@givernance/shared/lib/receipt-crypto`.
+    encryptionScheme: text("encryption_scheme"),
+    dekWrapped: text("dek_wrapped"),
+    kekVersionId: text("kek_version_id"),
+    /** base64-encoded 12-byte GCM IV */
+    encryptionIv: text("encryption_iv"),
+    /** base64-encoded 16-byte GCM auth tag */
+    encryptionAuthTag: text("encryption_auth_tag"),
+    /** Plaintext PDF size in bytes — the download route's Content-Length. */
+    plaintextLength: integer("plaintext_length"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     index("receipts_org_id_idx").on(table.orgId),
     index("receipts_donation_id_idx").on(table.donationId),
+    // Partial index feeding the KEK-rotation re-wrap sweep (`WHERE
+    // encryption_scheme IS NOT NULL AND kek_version_id != $active`).
+    index("receipts_kek_version_idx")
+      .on(table.kekVersionId)
+      .where(sql`encryption_scheme IS NOT NULL`),
     unique("receipts_org_fiscal_number_uniq").on(
       table.orgId,
       table.fiscalYear,

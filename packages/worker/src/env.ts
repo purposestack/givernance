@@ -113,6 +113,28 @@ const EnvSchema = Type.Object({
   SMTP_FROM: Type.Optional(Type.String({ minLength: 1 })),
   /** Public URL of the web app — used to build verification links sent by email */
   APP_URL: Type.String({ minLength: 1, default: "http://localhost:3000" }),
+
+  // ─── Receipt envelope encryption (issue #228) ─────────────────────────────
+  // All optional: only required once the `donation.receipt_envelope_encryption`
+  // flag is ON. The KEK binding (`lib/receipt-kek.ts`) reads these lazily at
+  // job time and THROWS on absent/invalid config — the job fails rather than
+  // silently uploading plaintext (fail-closed).
+  /** KEK backend — 'local' (dev/staging/self-hosted keyring) or 'scaleway' (Key Manager, SaaS prod). */
+  RECEIPT_ENCRYPTION_KEK_PROVIDER: Type.Optional(
+    Type.Union([Type.Literal("local"), Type.Literal("scaleway")]),
+  ),
+  /** JSON keyring `{ "<versionId>": "<base64 32-byte key>", ... }` for the local provider. */
+  RECEIPT_ENCRYPTION_LOCAL_KEYRING: Type.Optional(Type.String({ minLength: 1 })),
+  /** Keyring version id new wraps use (must exist in the keyring). */
+  RECEIPT_ENCRYPTION_LOCAL_ACTIVE_VERSION: Type.Optional(Type.String({ minLength: 1 })),
+  /** Scaleway Key Manager key UUID. */
+  RECEIPT_ENCRYPTION_SCW_KEY_ID: Type.Optional(Type.String({ minLength: 1 })),
+  /** Scaleway IAM secret key (X-Auth-Token) for Key Manager calls. */
+  RECEIPT_ENCRYPTION_SCW_SECRET_KEY: Type.Optional(Type.String({ minLength: 1 })),
+  /** Scaleway region for Key Manager (default fr-par). */
+  RECEIPT_ENCRYPTION_SCW_REGION: Type.Optional(Type.String({ minLength: 1 })),
+  /** Scaleway API endpoint override (tests / private gateways). */
+  RECEIPT_ENCRYPTION_SCW_ENDPOINT: Type.Optional(Type.String({ minLength: 1 })),
 });
 
 export type WorkerEnv = Static<typeof EnvSchema>;

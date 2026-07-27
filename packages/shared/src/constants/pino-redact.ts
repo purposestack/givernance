@@ -165,4 +165,23 @@ export const PINO_REDACT_PATHS: readonly string[] = [
   "*.donorCustomRaw",
   "_constituentCustom",
   "*._constituentCustom",
+
+  // ─── Receipt envelope-encryption key material (issue #228) ────────────────
+  // A raw DEK, a wrapped-DEK blob, the local keyring, or a KEK secret in a
+  // log line would defeat the whole envelope design — redact every carrier a
+  // careless `log.info({ ...receiptRow })` / provider-config spread could
+  // ride in on. (kek_version_id / IV / auth tag are deliberately NOT
+  // redacted: they are non-secret metadata the ops runbooks grep for.)
+  "dek",
+  "*.dek",
+  "dekWrapped",
+  "*.dekWrapped",
+  "dek_wrapped",
+  "*.dek_wrapped",
+  "kekSecret",
+  "*.kekSecret",
+  "keyring",
+  "*.keyring",
+  "plaintextKey",
+  "*.plaintextKey",
 ];

@@ -351,9 +351,42 @@ export interface CustomFieldOptionMergeUndoJob {
   };
 }
 
+/**
+ * Re-wrap receipt DEKs under the active KEK version (issue #228).
+ *
+ * Manual, runbook-triggered rotation sweep on the RECEIPTS queue (see
+ * `RECEIPT_JOBS.REWRAP_DEKS`): after the operator adds a new KEK
+ * version (new keyring entry / new Scaleway key) and flips the active
+ * version, this job walks every encrypted `receipts` row still wrapped
+ * under an older version, unwraps with the old KEK and re-wraps with
+ * the active one. DB-only — the S3 ciphertext (encrypted with the
+ * per-receipt DEK, which never changes) is untouched; that is the
+ * whole point of the envelope design. Enqueue via
+ * `packages/worker/scripts/trigger-rewrap-receipt-deks.ts`.
+ */
+export interface RewrapReceiptDeksJob {
+  name: "receipts.rewrap_deks";
+  data: {
+    /** Operator identity for the audit trail (runbook fills it in). */
+    requestedBy?: string;
+    traceparent?: string;
+  };
+}
+
+/**
+ * Job names inside the RECEIPTS queue. GENERATE predates this const
+ * (the literal "generate-receipt" is enqueued by the events router);
+ * REWRAP_DEKS is the manual KEK-rotation sweep (issue #228).
+ */
+export const RECEIPT_JOBS = {
+  GENERATE: "generate-receipt",
+  REWRAP_DEKS: "receipts.rewrap_deks",
+} as const;
+
 /** Union of all job types */
 export type JobDefinition =
   | GenerateReceiptJob
+  | RewrapReceiptDeksJob
   | SendBulkEmailJob
   | ExportDataJob
   | GdprErasureJob
