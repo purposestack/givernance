@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1086.0",
+    "@aws-sdk/client-s3": "^3.1094.0",
     "@givernance/shared": "workspace:*",
     "commander": "^15.0.0",
     "csv-parse": "^7.0.1",
