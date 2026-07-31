@@ -60,14 +60,14 @@ jobs:
           fi
 
       - name: Checkout code
-        uses: actions/checkout@v7.0.0
+        uses: actions/checkout@v7.0.1
 
       # `bundler-cache: true` reads the repo-root Gemfile.lock and caches
       # `vendor/bundle` between runs (same setup as deploy-staging.yml so
       # both flows share the cache). Bumping Kamal: edit the version in
       # the Gemfile, run `bundle update kamal`, commit both files.
       - name: Set up Ruby (for Kamal)
-        uses: ruby/setup-ruby@v1.317.0
+        uses: ruby/setup-ruby@v1.321.0
         with:
           ruby-version: '3.3'
           bundler-cache: true

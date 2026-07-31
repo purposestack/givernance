@@ -52,7 +52,7 @@ jobs:
       NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || '' }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7.0.0
+        uses: actions/checkout@v7.0.1
 
       # Detect whether this push touched Keycloak source files (the realm
       # JSON, the sync script) — combined with `gates.outputs.keycloak_changed`
@@ -208,7 +208,7 @@ jobs:
       # paying ~10-15s for `gem install kamal`. Cache hit/miss is logged
       # by the action.
       - name: Set up Ruby (for Kamal)
-        uses: ruby/setup-ruby@v1.317.0
+        uses: ruby/setup-ruby@v1.321.0
         with:
           ruby-version: '3.3'
           bundler-cache: true
