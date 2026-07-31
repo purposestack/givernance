@@ -19,7 +19,7 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@v7.0.1
 
       # Reads the pnpm version from `packageManager` in package.json.
       # v4 of pnpm/action-setup refuses to run when both `with.version`
@@ -105,7 +105,7 @@ jobs:
       ADMIN_SECRET: ci-test-admin-secret
 
     steps:
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@v7.0.1
 
       - uses: pnpm/action-setup@v6.0.9
 
@@ -148,6 +148,6 @@ jobs:
   compliance-versions-gate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@v7.0.1
       - name: Validate pinned image majors against compliance manifest
         run: ./scripts/check-compliance-versions.sh
