@@ -39,6 +39,7 @@ import { APP_DEFAULT_LOCALE, type Locale } from "@givernance/shared/i18n";
 import {
   auditLogs,
   invitations,
+  type OutboxMetadata,
   outboxEvents,
   platformAdmins,
   type platformAdmins as platformAdminsTable,
@@ -46,6 +47,7 @@ import {
   users,
 } from "@givernance/shared/schema";
 import { and, asc, desc, eq, gt, ilike, isNotNull, isNull, or, type SQL, sql } from "drizzle-orm";
+import type { FastifyRequest } from "fastify";
 import pino from "pino";
 import { systemDb } from "../../lib/db.js";
 import {
@@ -54,6 +56,7 @@ import {
   KeycloakUserExistsError,
   keycloakAdmin,
 } from "../../lib/keycloak-admin.js";
+import { buildOutboxMetadata } from "../../lib/trace-context.js";
 import { blocklistUser } from "../session/service.js";
 
 const logger = pino({ name: "platform-admins-service" });
@@ -375,8 +378,13 @@ export interface InviteResult {
  * different user" rejection). The Givernance-side accept page handles
  * the session-conflict UX gracefully, same posture as `team_invite`.
  */
-export async function invitePlatformAdmin(input: CreateInput): Promise<InviteResult> {
+export async function invitePlatformAdmin(
+  input: CreateInput,
+  request?: FastifyRequest,
+): Promise<InviteResult> {
   const email = input.email.trim().toLowerCase();
+  // W3C trace-context for the outbox insert (issue #55); null outside an HTTP request.
+  const metadata: OutboxMetadata | null = request ? buildOutboxMetadata(request) : null;
 
   // Identity invariant — ADR-022. A Keycloak person is either a platform
   // admin or a tenant member, never both. Reject regardless of soft-delete
@@ -481,6 +489,7 @@ export async function invitePlatformAdmin(input: CreateInput): Promise<InviteRes
         expiresAt: row.expiresAt.toISOString(),
         locale: inviteLocale,
       },
+      metadata,
     });
 
     await tx.execute(sql`SELECT set_config('app.current_organization_id', ${platformOrgId}, true)`);

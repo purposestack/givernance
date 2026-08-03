@@ -263,16 +263,19 @@ export async function platformAdminsRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const body = request.body as { email: string; firstName: string; lastName: string };
       try {
-        const result = await invitePlatformAdmin({
-          email: body.email,
-          firstName: body.firstName,
-          lastName: body.lastName,
-          ...actorContext(request),
-          // Invite email picks up the operator's locale — best signal
-          // for the invitee's language until they accept and pick their
-          // own (which then writes the KC `locale` user attribute).
-          locale: resolveRequestLocale(request),
-        });
+        const result = await invitePlatformAdmin(
+          {
+            email: body.email,
+            firstName: body.firstName,
+            lastName: body.lastName,
+            ...actorContext(request),
+            // Invite email picks up the operator's locale — best signal
+            // for the invitee's language until they accept and pick their
+            // own (which then writes the KC `locale` user attribute).
+            locale: resolveRequestLocale(request),
+          },
+          request,
+        );
         return reply.status(201).send({
           data: {
             invitationId: result.invitationId,

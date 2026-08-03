@@ -1,17 +1,10 @@
 /**
- * Worker-side W3C trace-context helpers — mirrors
- * `packages/api/src/lib/trace-context.ts` (issue #56 Platform #4).
+ * W3C trace-context helpers — thin re-export of the shared implementation
+ * (issue #55, follow-through of issue #56 Platform #4).
  *
- * Duplication is deliberate: the worker package must not import from the API
- * package (module layering, see monorepo setup). Keep the regex and trace-id
- * extraction behaviour identical between the two copies; a follow-up can
- * hoist to `@givernance/shared` once the outbox metadata shape stabilises.
+ * The single source of truth lives in `@givernance/shared/lib/trace-context`
+ * so the worker and the API's regex + trace-id extraction can't drift. Kept
+ * as a local module so existing `../lib/trace-context.js` imports don't
+ * churn.
  */
-
-const TRACEPARENT_RE = /^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$/;
-
-/** Extract the 32-hex trace-id component from a traceparent string. */
-export function extractTraceId(traceparent: string | undefined | null): string | undefined {
-  if (!traceparent || !TRACEPARENT_RE.test(traceparent)) return undefined;
-  return traceparent.split("-")[1];
-}
+export * from "@givernance/shared/lib/trace-context";

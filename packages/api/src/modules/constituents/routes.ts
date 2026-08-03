@@ -908,6 +908,7 @@ export async function constituentRoutes(app: FastifyInstance) {
           // never touches the column.
           customGate.enabled ? body : { ...body, custom: undefined },
           userId,
+          request,
         );
 
         if (!updated) {
@@ -954,7 +955,7 @@ export async function constituentRoutes(app: FastifyInstance) {
       }
 
       const { id } = request.params as { id: string };
-      const deleted = await deleteConstituent(orgId, id, userId);
+      const deleted = await deleteConstituent(orgId, id, userId, request);
 
       if (!deleted) {
         return reply.status(404).send(problemDetail(404, "Not Found", "Constituent not found"));
@@ -1012,6 +1013,7 @@ export async function constituentRoutes(app: FastifyInstance) {
           // merge_history snapshot records double-attribution (ADR-016 / #24).
           { userId, actorId: request.auth?.act?.sub ?? null },
           { ifMatch },
+          request,
         );
 
         if (!result) {

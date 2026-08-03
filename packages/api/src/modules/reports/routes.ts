@@ -54,6 +54,7 @@ export async function reportsRoutes(app: FastifyInstance) {
         query.year,
         { limit: query.limit ?? 100, offset: query.offset ?? 0 },
         userId,
+        request,
       );
       return { data };
     },
@@ -86,6 +87,7 @@ export async function reportsRoutes(app: FastifyInstance) {
         query.year,
         { limit: query.limit ?? 100, offset: query.offset ?? 0 },
         userId,
+        request,
       );
       return { data };
     },

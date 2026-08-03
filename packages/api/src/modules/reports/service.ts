@@ -1,8 +1,10 @@
 /** Reports service — donor lifecycle analytics (LYBUNT/SYBUNT) */
 
-import { outboxEvents } from "@givernance/shared/schema";
+import { type OutboxMetadata, outboxEvents } from "@givernance/shared/schema";
 import { sql } from "drizzle-orm";
+import type { FastifyRequest } from "fastify";
 import { withTenantContext } from "../../lib/db.js";
+import { buildOutboxMetadata } from "../../lib/trace-context.js";
 
 export interface LifecycleConstituent {
   id: string;
@@ -27,7 +29,10 @@ export async function getLybuntReport(
   referenceYear?: number,
   pagination?: ReportPagination,
   userId?: string,
+  request?: FastifyRequest,
 ) {
+  // W3C trace-context → outbox metadata (issue #55); null outside an HTTP request.
+  const metadata: OutboxMetadata | null = request ? buildOutboxMetadata(request) : null;
   const thisYear = referenceYear ?? new Date().getFullYear();
   const lastYear = thisYear - 1;
   const lastYearStart = `${lastYear}-01-01`;
@@ -75,6 +80,7 @@ export async function getLybuntReport(
         resultCount: results.length,
         exportedBy: userId,
       },
+      metadata,
     });
 
     return results;
@@ -90,7 +96,10 @@ export async function getSybuntReport(
   referenceYear?: number,
   pagination?: ReportPagination,
   userId?: string,
+  request?: FastifyRequest,
 ) {
+  // W3C trace-context → outbox metadata (issue #55); null outside an HTTP request.
+  const metadata: OutboxMetadata | null = request ? buildOutboxMetadata(request) : null;
   const thisYear = referenceYear ?? new Date().getFullYear();
   const thisYearStart = `${thisYear}-01-01`;
   const thisYearEnd = `${thisYear + 1}-01-01`;
@@ -134,6 +143,7 @@ export async function getSybuntReport(
         resultCount: results.length,
         exportedBy: userId,
       },
+      metadata,
     });
 
     return results;

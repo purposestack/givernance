@@ -12,6 +12,7 @@ import type { Job } from "bullmq";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { db, withWorkerContext } from "../lib/db.js";
 import { jobLogger } from "../lib/logger.js";
+import { synthesiseTraceparent } from "../lib/trace-context.js";
 
 /**
  * `tenant.provisional-admin-expire` — one pass across every org whose first
@@ -26,6 +27,11 @@ export async function processTenantLifecycle(job: Job): Promise<void> {
     log.warn({ name: job.name }, "Unknown tenant-lifecycle job name");
     return;
   }
+
+  // Cron-originated: no inbound trace context. Root one trace per expire
+  // pass (deterministic from the repeatable job id) so every confirmation
+  // emitted by this run is correlatable downstream (issue #55).
+  const traceparent = synthesiseTraceparent(job.id);
 
   const now = new Date();
   const candidates = await db
@@ -75,6 +81,7 @@ export async function processTenantLifecycle(job: Job): Promise<void> {
           tenantId: row.orgId,
           type: "tenant.provisional_admin_confirmed",
           payload: { tenantId: row.orgId, userId: row.userId },
+          metadata: { traceparent },
         });
 
         await tx.insert(auditLogs).values({

@@ -16,6 +16,7 @@ import {
   IdParams,
   UuidSchema,
 } from "../../lib/schemas.js";
+import { buildOutboxMetadata } from "../../lib/trace-context.js";
 import { getTenantSnapshot } from "./service.js";
 
 const CreateTenantBody = Type.Object({
@@ -267,6 +268,8 @@ export async function tenantRoutes(app: FastifyInstance) {
           tenantId: t.id,
           type: "tenant.created",
           payload: { tenantId: t.id, name: t.name, slug: t.slug },
+          // W3C trace-context for the relay → worker pipeline (issue #55).
+          metadata: buildOutboxMetadata(request),
         });
 
         return tenant;

@@ -36,6 +36,7 @@ import {
   problemDetail,
   UuidSchema,
 } from "../../lib/schemas.js";
+import { buildOutboxMetadata } from "../../lib/trace-context.js";
 import {
   claimDomain,
   confirmTenantOwnership,
@@ -260,6 +261,8 @@ function auditFromRequest(request: FastifyRequest) {
     actorUserId: request.auth?.userId ?? null,
     ipHash: hashIp(request.ip),
     userAgent: typeof ua === "string" ? ua.slice(0, 512) : undefined,
+    // W3C trace-context for outbox inserts (issue #55) — stamped by the service layer.
+    outboxMetadata: buildOutboxMetadata(request),
   };
 }
 

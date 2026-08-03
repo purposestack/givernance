@@ -651,6 +651,7 @@ export async function customizationRoutes(app: FastifyInstance) {
           {
             dryRun: dryRun ?? false,
           },
+          request,
         );
         if (!result) {
           return reply.status(404).send(NOT_FOUND);
@@ -708,7 +709,14 @@ export async function customizationRoutes(app: FastifyInstance) {
       };
       if (!(await resolveGatedDefinition(request, reply, orgId, id))) return reply;
       try {
-        const result = await undoOptionMerge(orgId, auditActor(request), id, optId, mergeId);
+        const result = await undoOptionMerge(
+          orgId,
+          auditActor(request),
+          id,
+          optId,
+          mergeId,
+          request,
+        );
         if (!result) {
           return reply.status(404).send(NOT_FOUND);
         }

@@ -14,6 +14,7 @@
 
 import {
   auditLogs,
+  type OutboxMetadata,
   outboxEvents,
   type TenantAdminDisputeResolution,
   type TenantDisputeState,
@@ -23,8 +24,10 @@ import {
   users,
 } from "@givernance/shared/schema";
 import { and, eq, isNull, sql } from "drizzle-orm";
+import type { FastifyRequest } from "fastify";
 import { systemDb, withTenantContext } from "../../lib/db.js";
 import { isUniqueViolation } from "../../lib/db-errors.js";
+import { buildOutboxMetadata } from "../../lib/trace-context.js";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -54,7 +57,10 @@ export interface OpenDisputeInput {
   };
 }
 
-export async function openDispute(input: OpenDisputeInput): Promise<OpenDisputeResult> {
+export async function openDispute(
+  input: OpenDisputeInput,
+  request?: FastifyRequest,
+): Promise<OpenDisputeResult> {
   if (!isUuid(input.orgId)) return { ok: false, error: "tenant_not_found" };
 
   const [tenant] = await systemDb
@@ -91,6 +97,9 @@ export async function openDispute(input: OpenDisputeInput): Promise<OpenDisputeR
     return { ok: false, error: "window_closed" };
   }
 
+  // W3C trace-context → outbox metadata (issue #55); null outside an HTTP request.
+  const metadata: OutboxMetadata | null = request ? buildOutboxMetadata(request) : null;
+
   try {
     const disputeId = await withTenantContext(input.orgId, async (tx) => {
       const [row] = await tx
@@ -114,6 +123,7 @@ export async function openDispute(input: OpenDisputeInput): Promise<OpenDisputeR
           disputerId: disputer.id,
           provisionalAdminId: provisional.id,
         },
+        metadata,
       });
 
       await tx.insert(auditLogs).values({
@@ -166,7 +176,10 @@ export interface ResolveDisputeInput {
  * transaction so the partial unique index can't reject mid-swap. Clears the
  * provisional_until window in all cases — post-resolution, no more dispute.
  */
-export async function resolveDispute(input: ResolveDisputeInput): Promise<ResolveDisputeResult> {
+export async function resolveDispute(
+  input: ResolveDisputeInput,
+  request?: FastifyRequest,
+): Promise<ResolveDisputeResult> {
   if (!isUuid(input.disputeId)) return { ok: false, error: "not_found" };
 
   const [dispute] = await systemDb
@@ -192,10 +205,10 @@ export async function resolveDispute(input: ResolveDisputeInput): Promise<Resolv
   const resolverUserId = resolverUser?.id ?? null;
 
   if (input.resolution === "replaced") {
-    return applyReplacedResolution(dispute, input, resolverUserId);
+    return applyReplacedResolution(dispute, input, resolverUserId, request);
   }
 
-  return applyKeptOrEscalatedResolution(dispute, input, resolverUserId);
+  return applyKeptOrEscalatedResolution(dispute, input, resolverUserId, request);
 }
 
 type DisputeRecord = {
@@ -209,6 +222,7 @@ async function applyReplacedResolution(
   dispute: DisputeRecord,
   input: ResolveDisputeInput,
   resolverUserId: string | null,
+  request?: FastifyRequest,
 ): Promise<ResolveDisputeResult> {
   if (!dispute.disputerId || !dispute.provisionalAdminId) {
     return { ok: false, error: "target_missing" };
@@ -220,6 +234,9 @@ async function applyReplacedResolution(
   if (resolverUserId && resolverUserId === dispute.disputerId) {
     return { ok: false, error: "self_resolve_forbidden" };
   }
+
+  // W3C trace-context → outbox metadata (issue #55); null outside an HTTP request.
+  const metadata: OutboxMetadata | null = request ? buildOutboxMetadata(request) : null;
 
   try {
     await withTenantContext(dispute.orgId, async (tx) => {
@@ -313,6 +330,7 @@ async function applyReplacedResolution(
           newAdminId: disputerUser.id,
           replacedAdminId: provisionalUser.id,
         },
+        metadata,
       });
 
       await tx.insert(auditLogs).values({
@@ -344,7 +362,11 @@ async function applyKeptOrEscalatedResolution(
   dispute: DisputeRecord,
   input: ResolveDisputeInput,
   resolverUserId: string | null,
+  request?: FastifyRequest,
 ): Promise<ResolveDisputeResult> {
+  // W3C trace-context → outbox metadata (issue #55); null outside an HTTP request.
+  const metadata: OutboxMetadata | null = request ? buildOutboxMetadata(request) : null;
+
   // `kept` / `escalated_to_support`: confirm the provisional admin, clear
   // the grace window (provisional is over), mark the dispute closed.
   await withTenantContext(dispute.orgId, async (tx) => {
@@ -375,6 +397,7 @@ async function applyKeptOrEscalatedResolution(
       tenantId: dispute.orgId,
       type: `tenant.dispute_${input.resolution}`,
       payload: { tenantId: dispute.orgId, disputeId: dispute.id },
+      metadata,
     });
 
     await tx.insert(auditLogs).values({

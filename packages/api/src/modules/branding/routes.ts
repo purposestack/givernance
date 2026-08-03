@@ -358,16 +358,17 @@ export async function brandingRoutes(app: FastifyInstance) {
       const originalKey = `${orgId}/logo/${assetId}/original.${extensionForMime(mime)}`;
       await putBrandingObject(originalKey, toStore, mime);
 
-      const traceparent = request.headers.traceparent as string | undefined;
-      const row = await createPendingAsset({
-        orgId,
-        assetType: "org_logo",
-        originalKey,
-        originalContentType: mime,
-        originalBytes: toStore.byteLength,
-        uploadedBy: request.auth?.userId ?? null,
-        traceparent,
-      });
+      const row = await createPendingAsset(
+        {
+          orgId,
+          assetType: "org_logo",
+          originalKey,
+          originalContentType: mime,
+          originalBytes: toStore.byteLength,
+          uploadedBy: request.auth?.userId ?? null,
+        },
+        request,
+      );
 
       // `brandingPipeline` discriminator (issue #290): `acceptedAt` is the
       // DB-clock `created_at` of the asset row — the same instant the
@@ -446,8 +447,7 @@ export async function brandingRoutes(app: FastifyInstance) {
       if (!orgId) {
         return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
       }
-      const traceparent = request.headers.traceparent as string | undefined;
-      const deleted = await softDeleteActiveLogo({ orgId, traceparent });
+      const deleted = await softDeleteActiveLogo({ orgId }, request);
       return reply.send({ data: { deleted } });
     },
   );

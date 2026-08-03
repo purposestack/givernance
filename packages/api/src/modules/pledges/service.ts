@@ -1,8 +1,15 @@
 /** Pledges service — business logic for pledge and installment operations */
 
-import { outboxEvents, pledgeInstallments, pledges } from "@givernance/shared/schema";
+import {
+  type OutboxMetadata,
+  outboxEvents,
+  pledgeInstallments,
+  pledges,
+} from "@givernance/shared/schema";
 import { and, eq } from "drizzle-orm";
+import type { FastifyRequest } from "fastify";
 import { withTenantContext } from "../../lib/db.js";
+import { buildOutboxMetadata } from "../../lib/trace-context.js";
 
 export interface PledgeInput {
   constituentId: string;
@@ -15,7 +22,15 @@ export interface PledgeInput {
 }
 
 /** Create a pledge and generate the first year of installments */
-export async function createPledge(orgId: string, userId: string, input: PledgeInput) {
+export async function createPledge(
+  orgId: string,
+  userId: string,
+  input: PledgeInput,
+  request?: FastifyRequest,
+) {
+  // W3C trace-context → outbox metadata (issue #55); null outside an HTTP request.
+  const metadata: OutboxMetadata | null = request ? buildOutboxMetadata(request) : null;
+
   return withTenantContext(orgId, async (tx) => {
     const [pledge] = await tx
       .insert(pledges)
@@ -72,6 +87,7 @@ export async function createPledge(orgId: string, userId: string, input: PledgeI
         frequency: input.frequency,
         createdBy: userId,
       },
+      metadata,
     });
 
     return pledge;

@@ -6,13 +6,16 @@
 
 import { SURVEY_EVENT_TYPES } from "@givernance/shared/jobs";
 import {
+  type OutboxMetadata,
   outboxEvents,
   surveyInvitations,
   surveyLaunches,
   surveys,
 } from "@givernance/shared/schema";
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
+import type { FastifyRequest } from "fastify";
 import { systemDb } from "../../../lib/db.js";
+import { buildOutboxMetadata } from "../../../lib/trace-context.js";
 import { resolveCohort } from "./survey-cohort.js";
 
 /**
@@ -74,14 +77,19 @@ async function findSurveyBySlug(slug: string) {
   return row;
 }
 
-export async function launchSurvey(input: {
-  slug: string;
-  channel: "email" | "in_app";
-  idempotencyKey: string;
-  launchedByPlatformAdminId: string;
-  now?: Date;
-}): Promise<LaunchResult | LaunchError> {
+export async function launchSurvey(
+  input: {
+    slug: string;
+    channel: "email" | "in_app";
+    idempotencyKey: string;
+    launchedByPlatformAdminId: string;
+    now?: Date;
+  },
+  request?: FastifyRequest,
+): Promise<LaunchResult | LaunchError> {
   const now = input.now ?? new Date();
+  // W3C trace-context for the outbox inserts (issue #55); null outside an HTTP request.
+  const metadata: OutboxMetadata | null = request ? buildOutboxMetadata(request) : null;
 
   const survey = await findSurveyBySlug(input.slug);
   if (!survey) {
@@ -209,6 +217,7 @@ export async function launchSurvey(input: {
           expiresAt: expiresAt.toISOString(),
           source: "superadmin.launch",
         },
+        metadata,
       });
     }
     invitedCount += 1;

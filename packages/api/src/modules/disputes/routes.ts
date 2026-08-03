@@ -140,12 +140,15 @@ export async function disputeRoutes(app: FastifyInstance) {
           .send(problemDetail(403, "Forbidden", "You are not a member of this tenant."));
       }
 
-      const res = await openDispute({
-        orgId,
-        disputerKeycloakSub: authClaims.userId,
-        reason: body.reason,
-        audit: audit(request),
-      });
+      const res = await openDispute(
+        {
+          orgId,
+          disputerKeycloakSub: authClaims.userId,
+          reason: body.reason,
+          audit: audit(request),
+        },
+        request,
+      );
 
       if (!res.ok) {
         const status = openDisputeStatus(res.error);
@@ -235,12 +238,15 @@ export async function disputeRoutes(app: FastifyInstance) {
           .send(problemDetail(401, "Unauthorized", "Authentication required."));
       }
 
-      const res = await resolveDispute({
-        disputeId: id,
-        resolution: body.resolution,
-        resolverUserKeycloakSub: authClaims.userId,
-        audit: audit(request),
-      });
+      const res = await resolveDispute(
+        {
+          disputeId: id,
+          resolution: body.resolution,
+          resolverUserKeycloakSub: authClaims.userId,
+          audit: audit(request),
+        },
+        request,
+      );
 
       if (!res.ok) {
         const { status, title, detail } = resolveDisputeErrorResponse(res.error);

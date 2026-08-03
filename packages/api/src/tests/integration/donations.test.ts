@@ -484,13 +484,18 @@ describe("Donations CRUD", () => {
 
   it("DonationCreated outbox event is emitted", async () => {
     const rows = await db.execute(
-      sql`SELECT type, payload FROM outbox_events
+      sql`SELECT type, payload, metadata FROM outbox_events
           WHERE tenant_id = ${ORG_A} AND type = 'donation.created'
           ORDER BY created_at DESC LIMIT 1`,
     );
 
     expect(rows.rows.length).toBe(1);
     expect((rows.rows[0] as { type: string }).type).toBe("donation.created");
+
+    // W3C trace-context carried into outbox metadata (issue #55) so the
+    // relay → BullMQ → worker pipeline can stitch logs back to the request.
+    const metadata = (rows.rows[0] as { metadata: { traceparent?: string } | null }).metadata;
+    expect(metadata?.traceparent).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$/);
   });
 });
 

@@ -104,7 +104,7 @@ export async function pledgeRoutes(app: FastifyInstance) {
         paymentGateway?: string;
       };
 
-      const pledge = await createPledge(orgId, userId, body);
+      const pledge = await createPledge(orgId, userId, body, request);
       if (pledge) {
         reply.header("Location", `/v1/pledges/${pledge.id}`);
       }

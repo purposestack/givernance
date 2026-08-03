@@ -180,7 +180,7 @@ export async function signupRoutes(app: FastifyInstance) {
           ? request.headers["user-agent"].slice(0, 512)
           : undefined;
 
-      const result = await signup({ ...body, ipHash, userAgent });
+      const result = await signup({ ...body, ipHash, userAgent }, request);
 
       if (!result.ok) {
         request.log.info({ reason: result.error.kind }, "signup.rejected");
@@ -260,7 +260,7 @@ export async function signupRoutes(app: FastifyInstance) {
           ? request.headers["user-agent"].slice(0, 512)
           : undefined;
 
-      const result = await openDomainDispute({ ...body, ipHash, userAgent });
+      const result = await openDomainDispute({ ...body, ipHash, userAgent }, request);
 
       if (!result.ok) {
         if (result.error === "no_conflict" || result.error === "invalid_email") {
@@ -354,7 +354,7 @@ export async function signupRoutes(app: FastifyInstance) {
           ? request.headers["user-agent"].slice(0, 512)
           : undefined;
 
-      const result = await verifySignup({ ...body, ipHash, userAgent });
+      const result = await verifySignup({ ...body, ipHash, userAgent }, {}, request);
 
       if (!result.ok) {
         // SEC-6: collapse all failure modes into one generic 410 to remove

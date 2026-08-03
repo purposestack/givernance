@@ -323,7 +323,7 @@ async function processDomainEvent(job: Job): Promise<void> {
   // GDPR erasure cascade (issue #439) — soft-error-only, runs
   // alongside the routing decision. The helper short-circuits on
   // non-`user.soft_deleted` events.
-  await fanoutSurveyErasure({ outboxId: id, tenantId, type, payload });
+  await fanoutSurveyErasure({ outboxId: id, tenantId, type, payload, traceparent });
 
   const decision = routeDomainEvent({ id, tenantId, type, payload, traceparent });
 
@@ -892,7 +892,8 @@ function startWorkers() {
       // (attempts exhausted → job is on its way to BullMQ's `failed` set).
       // The terminal case is a Dead-Letter event and demands an alert-worthy
       // log line so Loki/Sentry can fire on it. See docs/17 §DLQ and
-      // follow-up ADR drafted in issue #56.
+      // docs/adrs/adr-020-bullmq-dead-letter-strategy-failed-set-structured-alerting-for-phase-1.md
+      // (Accepted).
       const attemptsMade = job?.attemptsMade ?? 0;
       const maxAttempts = job?.opts?.attempts ?? 1;
       const terminal = attemptsMade >= maxAttempts;

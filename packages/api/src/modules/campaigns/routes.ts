@@ -428,6 +428,7 @@ export async function campaignRoutes(app: FastifyInstance) {
           orgId,
           { ...body, custom: customWrite.merged },
           userId,
+          request,
         );
         if (!campaign) {
           return reply
@@ -551,6 +552,7 @@ export async function campaignRoutes(app: FastifyInstance) {
           id,
           { ...body, custom: customWrite.patch, customValidator: customWrite.validator },
           userId,
+          request,
         );
 
         if (!updated) {
@@ -618,7 +620,7 @@ export async function campaignRoutes(app: FastifyInstance) {
 
       const { id } = request.params as { id: string };
       const [closed, serializer] = await Promise.all([
-        closeCampaign(orgId, id, userId),
+        closeCampaign(orgId, id, userId, request),
         buildCampaignCustomSerializer(request, orgId),
       ]);
 
@@ -716,7 +718,7 @@ export async function campaignRoutes(app: FastifyInstance) {
       const { id } = request.params as { id: string };
       const { constituentIds } = request.body as { constituentIds: string[] };
 
-      const result = await requestCampaignDocuments(orgId, userId, id, constituentIds);
+      const result = await requestCampaignDocuments(orgId, userId, id, constituentIds, request);
 
       if (!result) {
         return reply.status(404).send(problemDetail(404, "Not Found", "Campaign not found"));

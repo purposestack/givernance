@@ -22,7 +22,13 @@
  * surfaces the matched/no-match bit, so this isn't an enumeration oracle.
  */
 
-import { invitations, outboxEvents, tenants, users } from "@givernance/shared/schema";
+import {
+  invitations,
+  type OutboxMetadata,
+  outboxEvents,
+  tenants,
+  users,
+} from "@givernance/shared/schema";
 import { and, eq, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { APP_DEFAULT_LOCALE, isSupportedLocale, type Locale } from "../i18n/locales";
@@ -62,6 +68,8 @@ export async function resendSignupVerification(
   email: string,
   newToken: string,
   log?: MinimalLogger,
+  /** W3C trace-context for the outbox insert (issue #55) — callers with no trace pass null. */
+  metadata?: OutboxMetadata | null,
 ): Promise<ResendSignupResult> {
   const normalised = email.trim().toLowerCase();
 
@@ -130,6 +138,7 @@ export async function resendSignupVerification(
         expiresAt: expiresAt.toISOString(),
         locale: localeForResend,
       },
+      metadata: metadata ?? null,
     });
   });
 
