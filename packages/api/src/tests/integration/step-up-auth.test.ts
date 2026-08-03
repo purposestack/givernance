@@ -15,6 +15,7 @@ import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "../../lib/db.js";
+import { flagService } from "../../lib/flags/flag-service.js";
 import { createServer } from "../../server.js";
 import { authHeader, ensureTestTenants, ORG_A, signToken } from "../helpers/auth.js";
 
@@ -42,6 +43,16 @@ beforeAll(async () => {
   await app.ready();
   await ensureTestTenants();
 
+  // Enforcement of the step-up guard is gated by `security.bank_mutation_stepup`
+  // (default OFF — manual-test review finding #2). This suite exercises the 401
+  // step-up path, so it must turn enforcement ON.
+  await db.execute(
+    sql`INSERT INTO feature_flags (key, enabled, label, description, scope, tenant_override_allowed, public)
+        VALUES ('security.bank_mutation_stepup', TRUE, 'Bank-mutation step-up enforcement', 'test', 'platform', FALSE, FALSE)
+        ON CONFLICT (key) DO UPDATE SET enabled = TRUE`,
+  );
+  await flagService.invalidate();
+
   // Clean up to avoid IBAN uniqueness collision on re-runs
   await db.execute(
     sql`DELETE FROM bank_accounts WHERE org_id = ${ORG_A} AND label = 'Step-up Test Account'`,
@@ -49,6 +60,10 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await db.execute(
+    sql`UPDATE feature_flags SET enabled = FALSE WHERE key = 'security.bank_mutation_stepup'`,
+  );
+  await flagService.invalidate();
   await app.close();
 });
 

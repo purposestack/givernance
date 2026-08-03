@@ -433,6 +433,34 @@ export const FEATURE_FLAG_KEYS = {
    *   - Web: currency selector widget at checkout
    */
   DONATION_MULTI_CURRENCY: "donation.multi_currency",
+
+  /**
+   * Gates ENFORCEMENT of the bank-mutation step-up (MFA re-auth) on
+   * settlement-changing routes (manual-test review 2026-07-30 finding #2).
+   *
+   * The guard itself (`requireBankMutationAcr`, ADR-032 §2.7) is correct and
+   * ships unconditionally, but Keycloak does not yet emit a step-up ACR the
+   * client can obtain (Appendix B-1) — so with enforcement ON, NOBODY can add
+   * or edit a bank account, rebind a campaign/fund settlement account, or edit
+   * campaign-fund splits. Rather than weaken the control, we gate its
+   * ENFORCEMENT: with the flag OFF (default) the guard is a logged no-op, so
+   * the low-traffic launch phase can manage bank accounts; once the Keycloak
+   * step-up flow exists, staff flip this ON per environment and the already-
+   * shipped guard starts enforcing with zero code change.
+   *
+   * `scope='platform'` + `tenant_override_allowed=false`: this is a
+   * platform-wide security posture, not a tenant capability.
+   *
+   * `public=false`: purely server-side enforcement; no UI reads it.
+   *
+   * Surfaces gated by this key:
+   *   - API: `requireBankMutationAcr` no-ops when off — bank-accounts
+   *     POST/PATCH/DELETE, and the conditional campaign/fund settlement guards.
+   *
+   * Emergency rollback: flip off (Back Office or
+   * `docs/runbooks/feature-flag-rollback.md`) to immediately stop enforcing.
+   */
+  SECURITY_BANK_MUTATION_STEPUP: "security.bank_mutation_stepup",
 } as const;
 
 export type FeatureFlagKey = (typeof FEATURE_FLAG_KEYS)[keyof typeof FEATURE_FLAG_KEYS];
@@ -618,6 +646,17 @@ export const FEATURE_FLAG_REGISTRY: ReadonlyArray<{
     description:
       "Enables assigning multiple funds to a campaign with split percentages. " +
       "Required for multi-fund donation allocation.",
+    scope: "platform",
+    tenantOverrideAllowed: false,
+    public: false,
+  },
+  {
+    key: FEATURE_FLAG_KEYS.SECURITY_BANK_MUTATION_STEPUP,
+    defaultEnabled: false,
+    label: "Bank-mutation step-up enforcement",
+    description:
+      "Requires a fresh MFA re-authentication before a bank account can be added or edited, or a campaign/fund's settlement account changed. " +
+      "Off by default until the Keycloak step-up flow is available — while off, these actions do not require re-authentication.",
     scope: "platform",
     tenantOverrideAllowed: false,
     public: false,

@@ -8,6 +8,7 @@ import {
 } from "@givernance/shared/validators";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
+import { resolveEnabledCurrency } from "../../lib/currency.js";
 import { requireFlag } from "../../lib/flags/flag-guard.js";
 import { requireOrgAdmin } from "../../lib/guards.js";
 import {
@@ -115,7 +116,11 @@ const PublicPageResponse = Type.Object({
 
 const DonateBody = Type.Object({
   amountCents: Type.Integer({ minimum: 100, maximum: 1000000 }),
-  currency: PublicDonationCurrencySchema,
+  // Any ISO-4217 code, case-insensitive — the donor pays in a presentment
+  // currency the campaign advertises, NOT only the settlement currency. Validated
+  // against enabled `currency_metadata` in the handler (finding #5). A 3-literal
+  // union here rejected every non-EUR presentment currency at the schema layer.
+  currency: Type.String({ minLength: 3, maxLength: 3 }),
   email: Type.String({ format: "email" }),
   firstName: Type.String({ minLength: 1, maxLength: 255 }),
   lastName: Type.String({ minLength: 1, maxLength: 255 }),
@@ -302,7 +307,7 @@ export async function publicDonationRoutes(app: FastifyInstance) {
       const { id } = request.params as { id: string };
       const body = request.body as {
         amountCents: number;
-        currency: "EUR" | "GBP" | "CHF";
+        currency: string;
         email: string;
         firstName: string;
         lastName: string;
@@ -311,6 +316,18 @@ export async function publicDonationRoutes(app: FastifyInstance) {
       const idempotencyKey = (request.headers as Record<string, string | undefined>)[
         "idempotency-key"
       ];
+
+      // Normalise + validate the presentment currency against enabled
+      // currency_metadata (finding #5). Field-named 400 so the donor form can
+      // surface it under the currency selector (finding #8) rather than a generic
+      // toast. Normalised UPPERCASE code flows on to Stripe (service lowercases).
+      const resolvedCurrency = await resolveEnabledCurrency(body.currency);
+      if (!resolvedCurrency) {
+        return reply
+          .status(400)
+          .send(problemDetail(400, "invalid_currency", "This currency is not supported."));
+      }
+      body.currency = resolvedCurrency;
 
       // Verify the public page is published before accepting donations
       const page = await getPublicPage(id);

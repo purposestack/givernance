@@ -1,6 +1,7 @@
 /** Shared route guards — reusable preHandler hooks for auth and RBAC */
 
 import { timingSafeEqual } from "node:crypto";
+import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
 import type { FastifyReply, FastifyRequest } from "fastify";
 
 /**
@@ -263,6 +264,23 @@ export function requireBankMutationAcr(options?: {
     reply: FastifyReply,
   ): Promise<void> {
     if (options?.when && !options.when(request)) return;
+
+    // Enforcement gate (manual-test review finding #2). The step-up guard ships
+    // unconditionally, but only ENFORCES when security.bank_mutation_stepup is on.
+    // OFF (default) → no-op: Keycloak can't yet issue the required step-up ACR
+    // (Appendix B-1), so enforcing would 401 every bank mutation. Fail-OPEN on a
+    // flag-eval error is deliberate — matches the platform's "unknown flag → off"
+    // semantics and keeps bank management working during the low-traffic launch.
+    let enforce = false;
+    try {
+      enforce = await request.flagService.isEnabled(
+        FEATURE_FLAG_KEYS.SECURITY_BANK_MUTATION_STEPUP,
+        { orgId: request.auth?.orgId },
+      );
+    } catch {
+      enforce = false;
+    }
+    if (!enforce) return;
 
     const auth = request.auth;
 

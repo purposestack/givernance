@@ -122,6 +122,42 @@ describe("Donations CRUD", () => {
     donationId = body.data.id;
   });
 
+  it("POST /v1/donations honours a lowercase non-EUR currency (finding #9)", async () => {
+    // The manual form sends a lowercase code; the old uppercase-union schema
+    // silently dropped it and the row defaulted to EUR. It must persist as GBP.
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/donations",
+      headers: authHeader(signToken(app)),
+      payload: {
+        constituentId: constituentIdA,
+        amountCents: 10000,
+        currency: "gbp",
+        paymentMethod: "check",
+        paymentRef: `CHK-GBP-${Date.now()}-${Math.random()}`,
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json<{ data: { currency: string } }>().data.currency).toBe("GBP");
+  });
+
+  it("POST /v1/donations rejects a currency not enabled in currency_metadata (finding #11)", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/donations",
+      headers: authHeader(signToken(app)),
+      payload: {
+        constituentId: constituentIdA,
+        amountCents: 10000,
+        currency: "xyz",
+        paymentMethod: "check",
+        paymentRef: `CHK-XYZ-${Date.now()}-${Math.random()}`,
+      },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json<{ title: string }>().title).toBe("invalid_currency");
+  });
+
   it("POST /v1/donations creates a donation with allocations", async () => {
     const tokenA = signToken(app);
     const res = await app.inject({

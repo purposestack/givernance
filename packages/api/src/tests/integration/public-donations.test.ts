@@ -590,6 +590,61 @@ describe("POST /v1/public/campaigns/:id/donate", () => {
     );
   });
 
+  it("accepts a non-EUR presentment currency, case-insensitively (finding #5)", async () => {
+    const campaign = await createTestCampaign("Public Page Test Donate GBP");
+    const token = signToken(app);
+    await app.inject({
+      method: "PUT",
+      url: `/v1/campaigns/${campaign.id}/public-page`,
+      headers: authHeader(token),
+      payload: { title: "Donate Page", status: "published" },
+    });
+
+    // Lowercase "gbp" used to 400 against the 3-literal EUR/GBP/CHF union.
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/public/campaigns/${campaign.id}/donate`,
+      payload: {
+        amountCents: 5000,
+        currency: "gbp",
+        email: "donor@example.org",
+        firstName: "Jane",
+        lastName: "Doe",
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    // Stripe is always called with the lowercase ISO code.
+    expect(mockPaymentIntentsCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ currency: "gbp" }),
+      expect.any(Object),
+    );
+  });
+
+  it("rejects a currency not enabled in currency_metadata (finding #5)", async () => {
+    const campaign = await createTestCampaign("Public Page Test Donate Bad Currency");
+    const token = signToken(app);
+    await app.inject({
+      method: "PUT",
+      url: `/v1/campaigns/${campaign.id}/public-page`,
+      headers: authHeader(token),
+      payload: { title: "Donate Page", status: "published" },
+    });
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/public/campaigns/${campaign.id}/donate`,
+      payload: {
+        amountCents: 5000,
+        currency: "xyz",
+        email: "donor@example.org",
+        firstName: "Jane",
+        lastName: "Doe",
+      },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json<{ title: string }>().title).toBe("invalid_currency");
+  });
+
   it("returns 404 when campaign page is not published", async () => {
     const campaign = await createTestCampaign("Public Page Test Unpublished Donate");
     // No public page created → not published

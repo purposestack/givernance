@@ -715,6 +715,13 @@
       "when": 2148180000000,
       "tag": "0063_multi_currency_flags",
       "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 2158180000000,
+      "tag": "0094_seed_bank_mutation_stepup_flag",
+      "breakpoints": true
     }
   ]
 }
