@@ -65,7 +65,8 @@ export async function processSignupResendPayload(
     );
     return { matched: false };
   }
-  return resendSignupVerification(db, payload.email, randomUUID(), log);
+  // No traceparent in the resend job payload (enqueued as `{ email }` only) — pass null.
+  return resendSignupVerification(db, payload.email, randomUUID(), log, null);
 }
 
 /** BullMQ processor wrapper. */

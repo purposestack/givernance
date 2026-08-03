@@ -23,12 +23,15 @@ import { BRANDING_EVENT_TYPES } from "@givernance/shared/jobs";
 import {
   type BrandingAssetType,
   type OrgBrandingAsset,
+  type OutboxMetadata,
   orgBrandingAssets,
   outboxEvents,
   tenants,
 } from "@givernance/shared/schema";
 import { and, eq, isNull } from "drizzle-orm";
+import type { FastifyRequest } from "fastify";
 import { withTenantContext } from "../../lib/db.js";
+import { buildOutboxMetadata } from "../../lib/trace-context.js";
 
 /**
  * Insert a freshly-uploaded asset row in `pending` status and enqueue
@@ -36,15 +39,19 @@ import { withTenantContext } from "../../lib/db.js";
  * the worker layer: re-running the pipeline against a `ready` asset is
  * a no-op (see `branding-process-asset.ts`).
  */
-export async function createPendingAsset(input: {
-  orgId: string;
-  assetType: BrandingAssetType;
-  originalKey: string;
-  originalContentType: string;
-  originalBytes: number;
-  uploadedBy: string | null;
-  traceparent?: string;
-}): Promise<OrgBrandingAsset> {
+export async function createPendingAsset(
+  input: {
+    orgId: string;
+    assetType: BrandingAssetType;
+    originalKey: string;
+    originalContentType: string;
+    originalBytes: number;
+    uploadedBy: string | null;
+  },
+  request?: FastifyRequest,
+): Promise<OrgBrandingAsset> {
+  // W3C trace-context + impersonation audit fields (issue #55); null outside an HTTP request.
+  const metadata: OutboxMetadata | null = request ? buildOutboxMetadata(request) : null;
   return withTenantContext(input.orgId, async (tx) => {
     const [row] = await tx
       .insert(orgBrandingAssets)
@@ -74,7 +81,7 @@ export async function createPendingAsset(input: {
       tenantId: input.orgId,
       type: BRANDING_EVENT_TYPES.PROCESS_ASSET,
       payload: { assetId: row.id, orgId: input.orgId },
-      metadata: input.traceparent ? { traceparent: input.traceparent } : null,
+      metadata,
     });
 
     return row;
@@ -138,10 +145,12 @@ export async function getLatestLogoAsset(orgId: string): Promise<OrgBrandingAsse
  * Returns true when something was actually deleted, false when there
  * was no active logo (idempotent — no-op if the operator double-clicks).
  */
-export async function softDeleteActiveLogo(input: {
-  orgId: string;
-  traceparent?: string;
-}): Promise<boolean> {
+export async function softDeleteActiveLogo(
+  input: { orgId: string },
+  request?: FastifyRequest,
+): Promise<boolean> {
+  // W3C trace-context + impersonation audit fields (issue #55); null outside an HTTP request.
+  const metadata: OutboxMetadata | null = request ? buildOutboxMetadata(request) : null;
   return withTenantContext(input.orgId, async (tx) => {
     const [tenant] = await tx
       .select({ logoAssetId: tenants.logoAssetId })
@@ -183,7 +192,7 @@ export async function softDeleteActiveLogo(input: {
       tenantId: input.orgId,
       type: BRANDING_EVENT_TYPES.GC_ASSET,
       payload: { assetId: asset.id, orgId: input.orgId, prefix },
-      metadata: input.traceparent ? { traceparent: input.traceparent } : null,
+      metadata,
     });
 
     return true;

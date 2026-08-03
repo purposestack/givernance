@@ -133,13 +133,16 @@ export async function sessionRoutes(app: FastifyInstance) {
           );
       }
 
-      const res = await recordOrgSwitch({
-        keycloakSub: authClaims.userId,
-        targetOrgId: body.targetOrgId,
-        previousJti: request.jwtJti ?? undefined,
-        previousExp: request.jwtExp ?? undefined,
-        audit: audit(request),
-      });
+      const res = await recordOrgSwitch(
+        {
+          keycloakSub: authClaims.userId,
+          targetOrgId: body.targetOrgId,
+          previousJti: request.jwtJti ?? undefined,
+          previousExp: request.jwtExp ?? undefined,
+          audit: audit(request),
+        },
+        request,
+      );
 
       if (!res.ok) {
         const { status, title, detail } = switchOrgErrorResponse(res.error);

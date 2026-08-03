@@ -56,7 +56,8 @@
 import { auditLogs, surveyInvitations } from "@givernance/shared/schema";
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "../lib/db.js";
-import { logger } from "../lib/logger.js";
+import { jobLogger } from "../lib/logger.js";
+import { extractTraceId } from "../lib/trace-context.js";
 
 export interface SurveyErasureCascadeInput {
   /** Outbox event id — written into audit metadata for trace correlation. */
@@ -67,6 +68,8 @@ export interface SurveyErasureCascadeInput {
   type: string;
   /** Outbox event payload (untyped at the boundary). */
   payload: Record<string, unknown>;
+  /** W3C trace context for logger correlation. */
+  traceparent?: string;
 }
 
 export interface SurveyErasureCascadeResult {
@@ -189,9 +192,17 @@ const PAYLOAD_GUARD_PATTERN = /malformed payload|mismatch/i;
 
 export async function fanoutSurveyErasure(input: SurveyErasureCascadeInput): Promise<void> {
   if (input.type !== "user.soft_deleted") return;
+  // Same jobLogger shape as sibling processors — the outbox id doubles as
+  // the job id, and the traceparent (when the producing request carried one)
+  // binds the traceId so Loki stitches the erasure into the request trace.
+  const log = jobLogger({
+    tenantId: input.tenantId,
+    jobId: input.outboxId,
+    traceId: extractTraceId(input.traceparent),
+  });
   try {
     const result = await cascadeSurveyErasure(input);
-    logger.info(
+    log.info(
       {
         outboxId: input.outboxId,
         tenantId: input.tenantId,
@@ -203,7 +214,7 @@ export async function fanoutSurveyErasure(input: SurveyErasureCascadeInput): Pro
     const message = err instanceof Error ? err.message : String(err);
     if (PAYLOAD_GUARD_PATTERN.test(message)) {
       // Structurally bad event — skip; retry would just loop the relay.
-      logger.warn(
+      log.warn(
         { err, outboxId: input.outboxId, tenantId: input.tenantId },
         "survey-erasure-cascade skipped (payload guard tripped)",
       );
@@ -212,7 +223,7 @@ export async function fanoutSurveyErasure(input: SurveyErasureCascadeInput): Pro
     // Real failure (DB, network, constraint) — re-throw so the outbox
     // relay's retry/backoff policy fires. GDPR Art. 17 accountability
     // requires the cascade actually run.
-    logger.error(
+    log.error(
       { err, outboxId: input.outboxId, tenantId: input.tenantId },
       "survey-erasure-cascade failed — re-throwing for relay retry",
     );

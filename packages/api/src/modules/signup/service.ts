@@ -57,6 +57,7 @@ import { isSupportedLocale, type Locale, localeFromCountry } from "@givernance/s
 import {
   auditLogs,
   invitations,
+  type OutboxMetadata,
   outboxEvents,
   type TenantStatus,
   tenantDisputes,
@@ -66,6 +67,7 @@ import {
 } from "@givernance/shared/schema";
 import { validateTenantSlug } from "@givernance/shared/validators";
 import { and, eq, inArray, isNull, lt, sql } from "drizzle-orm";
+import type { FastifyRequest } from "fastify";
 import pino from "pino";
 import { db, systemDb } from "../../lib/db.js";
 import { isUniqueViolation } from "../../lib/db-errors.js";
@@ -75,6 +77,7 @@ import {
   KeycloakUserExistsError,
   keycloakAdmin,
 } from "../../lib/keycloak-admin.js";
+import { buildOutboxMetadata } from "../../lib/trace-context.js";
 
 /**
  * Postgres UUID v4 shape — mirrors the `tenants_keycloak_org_id_uuid_chk`
@@ -161,7 +164,7 @@ function generateVerificationToken(): string {
 
 // ─── Signup ─────────────────────────────────────────────────────────────────
 
-export async function signup(input: SignupInput): Promise<SignupResult> {
+export async function signup(input: SignupInput, request?: FastifyRequest): Promise<SignupResult> {
   const parsedEmail = splitEmail(input.email);
   if (!parsedEmail) {
     // Malformed email slipped past the route validator — treat as a generic
@@ -240,6 +243,9 @@ export async function signup(input: SignupInput): Promise<SignupResult> {
       ? input.locale
       : localeFromCountry(normalisedCountry);
 
+  // W3C trace-context for the outbox inserts (issue #55); null outside an HTTP request.
+  const metadata: OutboxMetadata | null = request ? buildOutboxMetadata(request) : null;
+
   try {
     const result = await db.transaction(async (tx) => {
       const [tenant] = await tx
@@ -283,6 +289,7 @@ export async function signup(input: SignupInput): Promise<SignupResult> {
             emailDomain: parsedEmail.domain,
             country: normalisedCountry,
           },
+          metadata,
         },
         {
           tenantId: t.id,
@@ -295,6 +302,7 @@ export async function signup(input: SignupInput): Promise<SignupResult> {
             expiresAt: expiresAt.toISOString(),
             locale: defaultLocale,
           },
+          metadata,
         },
       ]);
 
@@ -373,10 +381,13 @@ export interface VerifyDeps {
 export async function verifySignup(
   input: VerifyInput,
   deps: VerifyDeps = {},
+  request?: FastifyRequest,
 ): Promise<VerifyResult> {
   const firstName = input.firstName.trim();
   const lastName = input.lastName.trim();
   const kcAdmin = deps.keycloakAdmin ?? keycloakAdmin();
+  // W3C trace-context for the outbox inserts (issue #55); null outside an HTTP request.
+  const metadata: OutboxMetadata | null = request ? buildOutboxMetadata(request) : null;
 
   try {
     // Owner role: the verify request is unauthenticated, so we have no org
@@ -625,12 +636,14 @@ export async function verifySignup(
         tenantId: string;
         type: string;
         payload: Record<string, unknown>;
+        metadata: OutboxMetadata | null;
       }> = [];
       if (tenantWasFlipped) {
         eventsToEmit.push({
           tenantId: row.orgId,
           type: "tenant.verified",
           payload: { tenantId: row.orgId, slug: row.tenantSlug },
+          metadata,
         });
       }
       if (userWasInserted) {
@@ -638,6 +651,7 @@ export async function verifySignup(
           tenantId: row.orgId,
           type: "user.jit_provisioned",
           payload: { userId: u.id, orgId: row.orgId, firstAdmin: true },
+          metadata,
         });
       }
       if (eventsToEmit.length > 0) {
@@ -742,11 +756,14 @@ export interface OpenDomainDisputeInput {
 
 export async function openDomainDispute(
   input: OpenDomainDisputeInput,
+  request?: FastifyRequest,
 ): Promise<OpenDomainDisputeResult> {
   const parsed = splitEmail(input.email);
   if (!parsed || isPersonalEmailDomain(parsed.domain)) {
     return { ok: false, error: "invalid_email" };
   }
+  // W3C trace-context for the outbox insert (issue #55); null outside an HTTP request.
+  const metadata: OutboxMetadata | null = request ? buildOutboxMetadata(request) : null;
 
   // Find the tenant claiming this domain
   const [claimed] = await systemDb
@@ -799,6 +816,7 @@ export async function openDomainDispute(
         domain: parsed.domain,
         claimerEmail: input.email.trim().toLowerCase(),
       },
+      metadata,
     });
 
     await tx.insert(auditLogs).values({

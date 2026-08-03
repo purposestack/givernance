@@ -52,8 +52,16 @@
 import { randomUUID } from "node:crypto";
 import { PINO_REDACT_PATHS } from "@givernance/shared/constants";
 import { APP_DEFAULT_LOCALE, isSupportedLocale, type Locale } from "@givernance/shared/i18n";
-import { auditLogs, invitations, outboxEvents, tenants, users } from "@givernance/shared/schema";
+import {
+  auditLogs,
+  invitations,
+  type OutboxMetadata,
+  outboxEvents,
+  tenants,
+  users,
+} from "@givernance/shared/schema";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import type { FastifyRequest } from "fastify";
 import pino from "pino";
 import { systemDb, withTenantContext } from "../../lib/db.js";
 import {
@@ -63,6 +71,7 @@ import {
   keycloakAdmin,
 } from "../../lib/keycloak-admin.js";
 import { redis } from "../../lib/redis.js";
+import { buildOutboxMetadata } from "../../lib/trace-context.js";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -189,6 +198,7 @@ export type CreateInvitationError = { kind: "already_member" } | { kind: "alread
  */
 export async function createTeamInvitation(
   input: CreateInvitationInput,
+  request?: FastifyRequest,
 ): Promise<
   { ok: true; data: CreateInvitationResult } | { ok: false; error: CreateInvitationError }
 > {
@@ -229,6 +239,9 @@ export async function createTeamInvitation(
   }
 
   const expiresAt = new Date(Date.now() + INVITATION_TTL_DAYS * 24 * 60 * 60 * 1000);
+
+  // W3C trace-context → outbox metadata (issue #55); null outside an HTTP request.
+  const metadata: OutboxMetadata | null = request ? buildOutboxMetadata(request) : null;
 
   const result = await withTenantContext(input.orgId, async (tx) => {
     // Resolve inviter's `users.id` — `invitedById` references the
@@ -312,6 +325,7 @@ export async function createTeamInvitation(
         expiresAt: invite.expiresAt.toISOString(),
         locale,
       },
+      metadata,
     });
 
     await tx.insert(auditLogs).values({
@@ -583,6 +597,7 @@ async function acceptResendForInvitationEmail(email: string): Promise<boolean> {
  */
 export async function resendTeamInvitation(
   input: ResendInvitationInput,
+  request?: FastifyRequest,
 ): Promise<ResendInvitationResult> {
   // ── Phase 1: probe ──────────────────────────────────────────────────
   const probe = await withTenantContext(input.orgId, async (tx) => {
@@ -612,6 +627,9 @@ export async function resendTeamInvitation(
   if (!allowed) {
     return { ok: false as const, error: "rate_limited" as const };
   }
+
+  // W3C trace-context → outbox metadata (issue #55); null outside an HTTP request.
+  const metadata: OutboxMetadata | null = request ? buildOutboxMetadata(request) : null;
 
   // ── Phase 3: rotation tx ───────────────────────────────────────────
   return withTenantContext(input.orgId, async (tx) => {
@@ -675,6 +693,7 @@ export async function resendTeamInvitation(
         expiresAt: expiresAt.toISOString(),
         locale,
       },
+      metadata,
     });
 
     await tx.insert(auditLogs).values({
@@ -742,9 +761,12 @@ export type AcceptInvitationResult =
 export async function acceptTeamInvitation(
   input: AcceptInvitationInput,
   deps: AcceptInvitationDeps = {},
+  request?: FastifyRequest,
 ): Promise<AcceptInvitationResult> {
   const firstName = input.firstName.trim();
   const lastName = input.lastName.trim();
+  // W3C trace-context → outbox metadata (issue #55); null outside an HTTP request.
+  const metadata: OutboxMetadata | null = request ? buildOutboxMetadata(request) : null;
   // Lazily resolve the KC admin client AFTER the invitation lookup so a
   // bogus / expired token doesn't 500 in environments where the KC admin
   // client isn't configured (e.g. unit tests of the route's RBAC plumbing
@@ -1007,6 +1029,7 @@ export async function acceptTeamInvitation(
         tenantId: string;
         type: string;
         payload: Record<string, unknown>;
+        metadata: OutboxMetadata | null;
       }> = [
         {
           tenantId: row.orgId,
@@ -1017,6 +1040,7 @@ export async function acceptTeamInvitation(
             userId: u.id,
             role: row.role,
           },
+          metadata,
         },
       ];
       if (userWasInserted) {
@@ -1029,6 +1053,7 @@ export async function acceptTeamInvitation(
             role: row.role,
             firstAdmin: false,
           },
+          metadata,
         });
       }
       await tx.insert(outboxEvents).values(eventsToEmit);

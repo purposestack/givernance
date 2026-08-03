@@ -15,12 +15,20 @@
  * authority that authorises the switch and records it.
  */
 
-import { auditLogs, outboxEvents, tenants, users } from "@givernance/shared/schema";
+import {
+  auditLogs,
+  type OutboxMetadata,
+  outboxEvents,
+  tenants,
+  users,
+} from "@givernance/shared/schema";
 import { and, eq, sql } from "drizzle-orm";
+import type { FastifyRequest } from "fastify";
 import pino from "pino";
 import { env } from "../../env.js";
 import { systemDb, withTenantContext } from "../../lib/db.js";
 import { redis } from "../../lib/redis.js";
+import { buildOutboxMetadata } from "../../lib/trace-context.js";
 
 const logger = pino({ name: "session", level: env.LOG_LEVEL });
 
@@ -113,7 +121,10 @@ export interface SwitchOrgInput {
  * that — once the front-door auth middleware consults the blocklist — the
  * old cookie can no longer be used to read the previous tenant's data.
  */
-export async function recordOrgSwitch(input: SwitchOrgInput): Promise<SwitchOrgResult> {
+export async function recordOrgSwitch(
+  input: SwitchOrgInput,
+  request?: FastifyRequest,
+): Promise<SwitchOrgResult> {
   if (!UUID_RE.test(input.targetOrgId)) return { ok: false, error: "target_not_found" };
   if (input.isImpersonating) {
     // Per ADR-016 / doc 22 §8: switch-org terminates impersonation. We return
@@ -146,6 +157,9 @@ export async function recordOrgSwitch(input: SwitchOrgInput): Promise<SwitchOrgR
   if (target.status === "suspended") return { ok: false, error: "target_suspended" };
   if (target.status === "archived") return { ok: false, error: "target_archived" };
 
+  // W3C trace-context → outbox metadata (issue #55); null outside an HTTP request.
+  const metadata: OutboxMetadata | null = request ? buildOutboxMetadata(request) : null;
+
   await withTenantContext(target.orgId, async (tx) => {
     await tx
       .update(users)
@@ -167,6 +181,7 @@ export async function recordOrgSwitch(input: SwitchOrgInput): Promise<SwitchOrgR
       tenantId: target.orgId,
       type: "session.switched",
       payload: { userId: target.userId, targetSlug: target.slug },
+      metadata,
     });
   });
 

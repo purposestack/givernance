@@ -424,12 +424,15 @@ export async function superadminFinanceRoutes(app: FastifyInstance) {
         return reply.status(404).send(problemDetail(404, "Not Found", "Survey not found."));
       }
 
-      const result = await launchSurvey({
-        slug,
-        channel: body.channel,
-        idempotencyKey,
-        launchedByPlatformAdminId: platformAdminId,
-      });
+      const result = await launchSurvey(
+        {
+          slug,
+          channel: body.channel,
+          idempotencyKey,
+          launchedByPlatformAdminId: platformAdminId,
+        },
+        request,
+      );
 
       if ("kind" in result) {
         if (result.kind === "survey_not_found") {

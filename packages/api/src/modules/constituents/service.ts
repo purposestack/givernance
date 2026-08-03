@@ -11,6 +11,7 @@ import {
   constituents,
   donations,
   mergeHistory,
+  type OutboxMetadata,
   outboxEvents,
 } from "@givernance/shared/schema";
 import type { Pagination } from "@givernance/shared/types";
@@ -31,9 +32,11 @@ import {
   type SQL,
   sql,
 } from "drizzle-orm";
+import type { FastifyRequest } from "fastify";
 import { CustomFieldValidationError } from "../../lib/custom-field-values.js";
 import { withTenantContext } from "../../lib/db.js";
 import { sanitizeAuditDiff } from "../../lib/sanitize-audit-diff.js";
+import { buildOutboxMetadata } from "../../lib/trace-context.js";
 import { getActiveDefinitions } from "../customization/lib/value-service.js";
 import type { FieldRegistryBundle } from "./filters/field-registry.js";
 import { donationStatsJoin, FilterService } from "./filters/filter.service.js";
@@ -546,12 +549,16 @@ export async function updateConstituent(
   id: string,
   input: Partial<ConstituentInput>,
   userId: string,
+  request?: FastifyRequest,
 ) {
   // Catalog fetch opens its own tenant context — resolve before the tx.
   // No `enforceRequired` on updates: required is enforced on new writes
   // only, never retro-blocking.
   const validator =
     input.custom !== undefined ? await buildConstituentCustomValidator(orgId) : null;
+
+  // W3C trace-context → outbox metadata (issue #55); null outside an HTTP request.
+  const metadata: OutboxMetadata | null = request ? buildOutboxMetadata(request) : null;
 
   return withTenantContext(orgId, async (tx) => {
     const [existing] = await tx
@@ -588,6 +595,7 @@ export async function updateConstituent(
       // Custom values never enter the long-retention outbox/audit trail —
       // the change-set records `{ customKeysChanged: [keys] }` only.
       payload: { constituentId: id, changes: sanitizeAuditDiff(input), updatedBy: userId },
+      metadata,
     });
 
     return updated;
@@ -595,7 +603,15 @@ export async function updateConstituent(
 }
 
 /** Soft-delete a constituent */
-export async function deleteConstituent(orgId: string, id: string, userId: string) {
+export async function deleteConstituent(
+  orgId: string,
+  id: string,
+  userId: string,
+  request?: FastifyRequest,
+) {
+  // W3C trace-context → outbox metadata (issue #55); null outside an HTTP request.
+  const metadata: OutboxMetadata | null = request ? buildOutboxMetadata(request) : null;
+
   return withTenantContext(orgId, async (tx) => {
     const [existing] = await tx
       .select()
@@ -617,6 +633,7 @@ export async function deleteConstituent(orgId: string, id: string, userId: strin
       tenantId: orgId,
       type: "constituent.deleted",
       payload: { constituentId: id, deletedBy: userId },
+      metadata,
     });
 
     return deleted;
@@ -730,10 +747,14 @@ export async function mergeConstituents(
   duplicateId: string,
   actor: MergeActor,
   options: MergeOptions = {},
+  request?: FastifyRequest,
 ): Promise<{ merged: true; etag: string } | null> {
   if (primaryId === duplicateId) {
     throw new Error("Cannot merge a constituent into itself");
   }
+
+  // W3C trace-context → outbox metadata (issue #55); null outside an HTTP request.
+  const metadata: OutboxMetadata | null = request ? buildOutboxMetadata(request) : null;
 
   return withTenantContext(orgId, async (tx) => {
     // Lock the survivor row for the duration of the tx. Postgres runs
@@ -853,11 +874,13 @@ export async function mergeConstituents(
           mergedBy: actor.userId,
           mergedByActor: actor.actorId ?? null,
         },
+        metadata,
       },
       {
         tenantId: orgId,
         type: "constituent.deleted",
         payload: { constituentId: duplicateId, deletedBy: actor.userId, reason: "merged" },
+        metadata,
       },
     ]);
 

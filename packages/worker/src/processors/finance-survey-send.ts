@@ -37,6 +37,7 @@ import type { Job } from "bullmq";
 import { and, eq, inArray, isNull, not, sql } from "drizzle-orm";
 import { db } from "../lib/db.js";
 import { jobLogger } from "../lib/logger.js";
+import { synthesiseTraceparent } from "../lib/trace-context.js";
 
 /** JSONB matcher shape for `surveys.cohort_rule`. */
 export interface CohortRule {
@@ -211,6 +212,10 @@ async function sendInvitationsForSurvey(
     await db.insert(outboxEvents).values({
       tenantId: member.orgId,
       type: SURVEY_EVENT_TYPES.INVITATION_SEND_EMAIL,
+      // Cron-originated: no inbound trace context — synthesise one rooted
+      // at the invitation id so the email-send chain stays correlatable
+      // (issue #55).
+      metadata: { traceparent: synthesiseTraceparent(created.id) },
       payload: {
         invitationId: created.id,
         surveyId: survey.id,

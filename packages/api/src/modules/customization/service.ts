@@ -39,11 +39,14 @@ import {
   customFieldMergeUndo,
   customizationQuotaOverrides,
   donations,
+  type OutboxMetadata,
   outboxEvents,
   tenants,
 } from "@givernance/shared/schema";
 import { and, asc, eq, gt, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import type { FastifyRequest } from "fastify";
 import { withTenantContext } from "../../lib/db.js";
+import { buildOutboxMetadata } from "../../lib/trace-context.js";
 import { invalidateDefinitionsCache } from "./lib/value-service.js";
 
 type Tx = Parameters<Parameters<typeof withTenantContext>[1]>[0];
@@ -1041,7 +1044,11 @@ export async function mergeOption(
   sourceOptionId: string,
   targetOptionId: string,
   options: { dryRun: boolean },
+  request?: FastifyRequest,
 ): Promise<MergeOptionResult | null> {
+  // W3C trace-context → outbox metadata (issue #55); null outside an HTTP request.
+  const metadata: OutboxMetadata | null = request ? buildOutboxMetadata(request) : null;
+
   const result = await withTenantContext(orgId, async (tx) => {
     // Serialise against every other option mutation of this definition
     // (add / rename / undo) — a concurrent writer rebuilding the options
@@ -1135,6 +1142,7 @@ export async function mergeOption(
         targetOptionId,
         requestedBy: actor.userId || null,
       },
+      metadata,
     });
 
     return {
@@ -1172,7 +1180,11 @@ export async function undoOptionMerge(
   definitionId: string,
   sourceOptionId: string,
   mergeId: string,
+  request?: FastifyRequest,
 ): Promise<UndoMergeResult | null> {
+  // W3C trace-context → outbox metadata (issue #55); null outside an HTTP request.
+  const metadata: OutboxMetadata | null = request ? buildOutboxMetadata(request) : null;
+
   const result = await withTenantContext(orgId, async (tx) => {
     // Same per-definition advisory lock as addOption/mergeOption — option
     // mutations on one definition must serialise (read-modify-write array).
@@ -1240,6 +1252,7 @@ export async function undoOptionMerge(
         targetOptionId,
         requestedBy: actor.userId || null,
       },
+      metadata,
     });
 
     return { definition: next, mergeId };

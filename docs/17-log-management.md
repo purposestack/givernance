@@ -94,13 +94,11 @@ Every log line across all services follows this JSON schema:
 {
   "level": "info",
   "time": "2026-04-01T10:23:45.123Z",
-  "service": "givernance-api",
-  "correlationId": "019508d3-7b2a-7f00-8000-1a2b3c4d5e6f",
+  "service": "givernance-worker",
   "tenantId": "t_greenpeace_fr",
-  "userId": "u_abc123",
-  "msg": "donation recorded",
-  "traceId": "abc123def456...",
-  "spanId": "789ghi012..."
+  "jobId": "019508d3-7b2a-7f00-8000-1a2b3c4d5e6f",
+  "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "msg": "Processing domain event"
 }
 ```
 
@@ -111,47 +109,57 @@ Every log line across all services follows this JSON schema:
 | `level` | Pino (string label, not numeric) | Always |
 | `time` | Pino `isoTime` formatter | Always |
 | `service` | Logger `name` option | Always |
-| `correlationId` | `X-Request-Id` header or UUIDv7 | Always (API + Worker) |
+| `reqId` | Fastify request id (auto-bound on `req.log`) | Always (API) |
+| `traceId` | 32-hex trace-id extracted from the W3C `traceparent` in the job data (see §5); falls back to the outbox row id for pre-metadata jobs | Always (Worker domain-event jobs) |
 | `tenantId` | Auth middleware / job metadata | Always (after auth) |
 | `userId` | Auth middleware / job metadata | After authentication (null for system/webhook/health requests) |
 | `msg` | Explicit log message | Always |
-| `traceId` / `spanId` | OTel SDK (auto-injected) | When OTel is active |
+| `spanId` | OTel SDK (Phase 2–3, not yet installed) | When OTel is active |
 
-## 5. Correlation ID Flow
+## 5. Trace Context Flow (implemented — issue #56 / PR #54)
 
-The `correlationId` traces a single user action across all system boundaries:
+The cross-service correlator is the **W3C `traceparent`** string (`00-<32-hex traceId>-<16-hex spanId>-<2-hex flags>`). There is deliberately **no OTel SDK** in Phase 1 — the traceparent is shuttled around as a plain string, and `traceId` is the join key in Loki. There is no `X-Request-Id` header handling and no correlation-ID plugin; earlier drafts of this document described one, superseded by this design.
 
 ```
-User action (browser)
-  │
+User action (browser / OTel-instrumented upstream client)
+  │  optional W3C `traceparent` (+ `tracestate`) request header
   ▼
-Fastify API (onRequest hook)
-  ├─ Read X-Request-Id header or generate UUIDv7
-  ├─ req.correlationId = correlationId
-  ├─ req.log = logger.child({ correlationId, tenantId, userId })
-  ├─ Reply header: X-Request-Id: correlationId
-  │
-  ├─► Service layer (receives req.log as dependency)
-  │     ├─ Business logic logs use req.log → auto-includes correlation
-  │     ├─ Drizzle queries traced via OTel instrumentation-pg
-  │     └─ Enqueue BullMQ job:
-  │         job.data._meta = { correlationId, tenantId, userId }
-  │
-  ├─► Transactional outbox (outbox_events table):
-  │     outbox_events.payload must include _meta.correlationId from
-  │     the originating request. The outbox poller extracts this when
-  │     enqueuing the BullMQ job — never generates a fresh one.
-  │
-  └─► Response to client
+Fastify API — at every outbox insert site
+  ├─ buildOutboxMetadata(request)          packages/api/src/lib/trace-context.ts
+  │    ├─ Valid upstream `traceparent` header → preserved unchanged
+  │    │   (`tracestate` forwarded alongside when present)
+  │    └─ No/invalid header → synthesised traceparent: trace-id derived
+  │        deterministically from Fastify's request.id (hex-filtered,
+  │        trimmed/padded to 32 chars), random per-insert span-id
+  ├─ Metadata also carries impersonation context (issue #24):
+  │    impersonationSessionId / impersonationMode / impersonatorKeycloakId
+  └─ INSERT INTO outbox_events (…, metadata)   ← the carrier column
 
-BullMQ Worker (job processor)
-  ├─ Extract job.data._meta.correlationId
-  ├─ jobLogger = logger.child({ correlationId, tenantId, jobId, jobName })
-  ├─ All processing logs auto-include correlation
-  └─ DB queries traced via OTel
+Outbox Relay (packages/relay/src/relay.ts)
+  ├─ SELECT … FOR UPDATE SKIP LOCKED (batch of pending rows)
+  └─ eventsQueue.add(type, { id, tenantId, type, payload,
+       traceparent, tracestate, impersonation… })   ← metadata → job data
+
+BullMQ Worker (packages/worker/src/worker.ts)
+  ├─ traceId = extractTraceId(job.data.traceparent) ?? outbox row id
+  │    (fallback keeps pre-metadata / legacy jobs queryable by one correlator)
+  ├─ log = jobLogger({ tenantId, jobId, traceId })
+  ├─ Child jobs (receipts, emails, …) re-forward `traceparent` in their
+  │    job data so their jobLogger binds the SAME traceId
+  └─ Worker-originated outbox inserts forward the current job's
+       `traceparent` into the new row's metadata — the trace survives
+       multi-hop event chains (e.g. upload → process → activate → sync)
 ```
 
-### Context propagation: AsyncLocalStorage
+**Loki join**: every worker log line for a given user action carries the same `traceId`:
+
+```logql
+{service="givernance-worker"} | json | traceId="4bf92f3577b34da6a3ce929d0e0e4736"
+```
+
+On the API side, `req.log` carries Fastify's `reqId`. When the traceparent was synthesised (no upstream header), its trace-id is derived from that same request id, so an API request can be tied to its downstream worker activity via the outbox row's `metadata.traceparent`. When an upstream OTel client supplied the header, the trace-id additionally joins with the client's own tracing backend.
+
+### Context propagation: AsyncLocalStorage (planned — Phase 1 P1, §11)
 
 Use Node.js native `AsyncLocalStorage` (stable since Node 16) — no external dependency (`cls-hooked` is deprecated).
 
@@ -159,7 +167,7 @@ Use Node.js native `AsyncLocalStorage` (stable since Node 16) — no external de
 import { AsyncLocalStorage } from 'node:async_hooks';
 
 interface RequestContext {
-  correlationId: string;
+  traceId: string;
   tenantId: string;
   userId?: string;
   logger: pino.Logger;
@@ -422,8 +430,8 @@ This ensures PII never enters the `audit_logs` table, even if a developer forget
 | API request p99 | > 300 ms | > 1 000 ms | Fastify `reply.elapsedTime` |
 | DB query duration | > 500 ms | > 2 000 ms | OTel instrumentation-pg spans |
 | BullMQ job duration | > 30 s | > 120 s | `job.finishedOn - job.processedOn` |
-| Queue backlog (waiting) | > 1 000 | > 5 000 | `queue.getJobCounts()` periodic check |
-| Queue failed jobs | > 100 | > 500 | `queue.getJobCounts()` periodic check |
+| Queue backlog (waiting) | > 1 000 | > 5 000 | `queue.getJobCounts()` repeatable job (planned Phase 3 — §8.3) |
+| Queue failed jobs | > 100 | > 500 | `dlq: true` terminal-failure log lines (§8.4) + BullBoard |
 
 > **Threshold semantics**: Warn thresholds are aligned to doc-02 NFR targets. When warn fires, the NFR is breached. When error fires, the system is degraded.
 
@@ -433,7 +441,21 @@ OpenTelemetry `instrumentation-pg` auto-records query duration as span attribute
 
 ### 8.3 Queue health monitoring
 
-A BullMQ repeatable job runs every 60s, logs queue metrics at `info` level, and emits `warn` when thresholds are exceeded.
+A BullMQ repeatable job that samples `queue.getJobCounts()` every 60s, logs queue metrics at `info` level, and emits `warn` when thresholds are exceeded is **planned for Phase 3 (§11) and not yet implemented**. The implemented queue-health signal today is the dead-letter log line below (§8.4) plus BullBoard inspection.
+
+### 8.4 Dead-letter strategy (implemented — see ADR-020)
+
+Per [ADR-020](adrs/adr-020-bullmq-dead-letter-strategy-failed-set-structured-alerting-for-phase-1.md), there is **no separate dead-letter queue**: BullMQ's per-queue `failed` set is the DLQ, and structured logging is the alerting surface.
+
+- **Detection**: every worker registers an `on('failed', …)` handler ([`packages/worker/src/worker.ts`](../packages/worker/src/worker.ts)) that compares `attemptsMade >= opts.attempts`. A **terminal** failure (attempts exhausted, job headed for the `failed` set) logs at `error` with `dlq: true` and the fields `{ worker, jobId, jobName, tenantId, attemptsMade, maxAttempts, err, stack }`; a retryable failure logs at `warn` without the flag.
+- **Alerting**: Grafana alert on the Loki query from ADR-020:
+
+  ```logql
+  {service="givernance-worker"} | json | dlq=true
+  ```
+
+- **Retention**: `removeOnFail: { count: 50 }` per queue (ADR-020 default). **Deviation**: the relay enqueues events-queue jobs with `attempts: 5, removeOnFail: 5000` ([`packages/relay/src/relay.ts`](../packages/relay/src/relay.ts)) — the generic domain-event pipeline is higher-volume and gets a longer forensic window (see the Deviations note in ADR-020).
+- **Replay**: manual, via BullBoard's retry button.
 
 ## 9. Testing Observability
 
@@ -476,7 +498,7 @@ expect(JSON.stringify(auditLine)).not.toContain('donor@example.com'); // no PII 
 
 When a test is flaky:
 1. Re-run with `DEBUG=1` to capture full log output
-2. Check `correlationId` to trace the exact request flow
+2. Check `traceId` (worker) / `reqId` (API) to trace the exact request flow
 3. Check `tenantId` isolation — flaky tests often share state between tenants
 4. Check BullMQ job logs — race conditions between API response and async worker
 
@@ -500,7 +522,7 @@ The following rules should be added to existing agents to enforce logging standa
 | Rule | Description |
 |------|-------------|
 | Use `req.log` for all API route logging | Never create standalone Pino instances in route handlers |
-| Propagate `_meta` in BullMQ jobs | Always include `{ correlationId, tenantId, userId }` in job data |
+| Build outbox `metadata` via `buildOutboxMetadata(request)` | Every API outbox insert uses the helper (`packages/api/src/lib/trace-context.ts`) — never hand-roll the traceparent; worker-originated outbox inserts forward the current job's `traceparent` |
 | No `console.log` | Use injected logger everywhere |
 | Log business events at `info` | Donation recorded, contact created, campaign launched |
 | Log errors with `{ err }` object | `req.log.error({ err }, 'description')` — Pino serializes Error natively |
@@ -512,7 +534,7 @@ The following rules should be added to existing agents to enforce logging standa
 | Use `testLogger` from shared test utils | Silent by default, verbose with `DEBUG=1` |
 | Assert no PII in log output | Pipe Pino to stream, assert `JSON.stringify` has no email/phone/name |
 | Test audit log entries | Verify `audit_logs` table has correct entries after mutations |
-| Test correlation propagation | Verify child loggers carry `correlationId` through the chain |
+| Test trace propagation | Verify the worker's `jobLogger` binds the `traceId` extracted from the traceparent threaded API → outbox → relay → worker (and the outbox-row-id fallback) |
 
 ### Security Architect
 
@@ -536,8 +558,7 @@ The following rules should be added to existing agents to enforce logging standa
 
 | Rule | Description |
 |------|-------------|
-| `X-Request-Id` header in all API responses | Document in OpenAPI spec |
-| Error responses include `correlationId` | RFC 9457 `instance` field = correlation ID |
+| W3C `traceparent` request header accepted | Document in OpenAPI spec — a valid upstream traceparent is preserved unchanged into `outbox_events.metadata` (§5); there is no `X-Request-Id` handling |
 | No PII in error detail messages | Error messages are logged — PII would leak |
 
 ### Data Architect
@@ -552,7 +573,7 @@ The following rules should be added to existing agents to enforce logging standa
 
 | Phase | Scope | Priority |
 |-------|-------|----------|
-| **Phase 1 — Skeleton** | ~~Pino setup in shared package, Fastify logger config, correlation ID plugin, PII redact paths, `testLogger` util~~ **Done** — Pino with redaction implemented in API (`server.ts`), Worker (`lib/logger.ts`), and Relay (`lib/logger.ts`). TypeBox env validation in all three packages. | P0 ✅ |
+| **Phase 1 — Skeleton** | ~~Pino setup in shared package, Fastify logger config, trace-context propagation, PII redact paths, `testLogger` util~~ **Done** — Pino with redaction implemented in API (`server.ts`), Worker (`lib/logger.ts`), and Relay (`lib/logger.ts`). TypeBox env validation in all three packages. W3C `traceparent` propagation via `outbox_events.metadata` (§5, issue #56). | P0 ✅ |
 | **Phase 1 — Skeleton** | `audit_log` Drizzle schema + migration (canonical table name to be decided in Phase 1) | P0 |
 | **Phase 1 — Skeleton** | AsyncLocalStorage context propagation | P1 |
 | **Phase 2 — Core modules** | Audit log entries on all mutations (transactional outbox) | P0 |
@@ -608,5 +629,5 @@ The following items are not covered by this document and need separate specifica
 - **`givernance-migrate` ETL tool** — needs its own Pino setup, correlation ID strategy (no incoming HTTP requests to derive from), and structured progress logging for batch operations (rows imported, validation errors, elapsed time).
 - **Next.js SSR** — needs Pino configuration for server-side rendering, error boundary logging (React `ErrorBoundary` → Pino), and client-side error capture strategy.
 - **Outbound webhook delivery** — needs a logging spec covering delivery attempts, failures, retry counts, circuit-breaking state transitions, and response status codes.
-- **Cron / repeatable jobs** — need a `batchCorrelationId` strategy. These are system-initiated (not request-initiated), so there is no incoming `X-Request-Id`. Generate a UUIDv7 at job creation time and propagate through all downstream work.
+- **Cron / repeatable jobs** — need a trace-context strategy. These are system-initiated (not request-initiated), so there is no incoming `traceparent` and no Fastify request id to synthesise one from. Synthesise a traceparent at job creation time (the `jobLogger` outbox-row-id fallback covers domain events; repeatable jobs currently have no correlator) and propagate through all downstream work.
 - **OTel resource attributes** — should include `service.instance.id` (unique per replica) for multi-replica SaaS deployment on Scaleway. This enables per-instance log filtering in Grafana Cockpit when debugging replica-specific issues.

@@ -296,7 +296,7 @@ export async function postalCampaignRoutes(app: FastifyInstance) {
       const { id } = request.params as { id: string };
       const { constituentIds } = request.body as { constituentIds: string[] };
       try {
-        const result = await addCampaignMembers(orgId, userId, id, constituentIds);
+        const result = await addCampaignMembers(orgId, userId, id, constituentIds, request);
         if (!result) {
           return reply.status(404).send(problemDetail(404, "Not Found", "Campaign not found"));
         }
@@ -331,7 +331,7 @@ export async function postalCampaignRoutes(app: FastifyInstance) {
         id: string;
         constituentId: string;
       };
-      const result = await removeCampaignMember(orgId, userId, id, constituentId);
+      const result = await removeCampaignMember(orgId, userId, id, constituentId, request);
       if (!result) {
         return reply.status(404).send(problemDetail(404, "Not Found", "Campaign not found"));
       }
@@ -361,7 +361,7 @@ export async function postalCampaignRoutes(app: FastifyInstance) {
         return reply.status(401).send(problemDetail(401, "Unauthorized", "Missing auth context"));
       }
       const { id } = request.params as { id: string };
-      const result = await clearCampaignMembers(orgId, userId, id);
+      const result = await clearCampaignMembers(orgId, userId, id, request);
       if (!result) {
         return reply.status(404).send(problemDetail(404, "Not Found", "Campaign not found"));
       }
@@ -402,7 +402,7 @@ export async function postalCampaignRoutes(app: FastifyInstance) {
         format?: "zip" | "merged_pdf";
       };
       try {
-        const result = await startPostalExport(orgId, userId, id, mode, format ?? "zip");
+        const result = await startPostalExport(orgId, userId, id, mode, format ?? "zip", request);
         if (!result) {
           return reply.status(404).send(problemDetail(404, "Not Found", "Campaign not found"));
         }

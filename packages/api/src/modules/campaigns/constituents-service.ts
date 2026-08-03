@@ -9,12 +9,15 @@ import {
   campaigns,
   constituents,
   donations,
+  type OutboxMetadata,
   outboxEvents,
 } from "@givernance/shared/schema";
 import type { Pagination } from "@givernance/shared/types";
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import type { FastifyRequest } from "fastify";
 import { withTenantContext } from "../../lib/db.js";
 import { resolveInternalUserId } from "../../lib/resolve-user.js";
+import { buildOutboxMetadata } from "../../lib/trace-context.js";
 
 export class CampaignMembershipError extends Error {
   constructor(message: string) {
@@ -208,11 +211,15 @@ export async function addCampaignMembers(
   userId: string,
   campaignId: string,
   constituentIds: string[],
+  request?: FastifyRequest,
 ): Promise<AddMembersResult | null> {
   const uniqueIds = Array.from(new Set(constituentIds.filter(Boolean)));
   if (uniqueIds.length === 0) {
     return { added: 0, skipped: 0 };
   }
+
+  // W3C trace-context → outbox metadata (issue #55); null outside an HTTP request.
+  const metadata: OutboxMetadata | null = request ? buildOutboxMetadata(request) : null;
 
   return withTenantContext(orgId, async (tx) => {
     const [campaign] = await tx
@@ -285,6 +292,7 @@ export async function addCampaignMembers(
           skipped,
           addedBy: userId,
         },
+        metadata,
       });
     }
 
@@ -304,7 +312,11 @@ export async function clearCampaignMembers(
   orgId: string,
   userId: string,
   campaignId: string,
+  request?: FastifyRequest,
 ): Promise<{ removed: number } | null> {
+  // W3C trace-context → outbox metadata (issue #55); null outside an HTTP request.
+  const metadata: OutboxMetadata | null = request ? buildOutboxMetadata(request) : null;
+
   return withTenantContext(orgId, async (tx) => {
     const [campaign] = await tx
       .select({ id: campaigns.id })
@@ -334,6 +346,7 @@ export async function clearCampaignMembers(
           removed,
           clearedBy: userId,
         },
+        metadata,
       });
     }
 
@@ -347,7 +360,11 @@ export async function removeCampaignMember(
   userId: string,
   campaignId: string,
   constituentId: string,
+  request?: FastifyRequest,
 ): Promise<{ removed: boolean } | null> {
+  // W3C trace-context → outbox metadata (issue #55); null outside an HTTP request.
+  const metadata: OutboxMetadata | null = request ? buildOutboxMetadata(request) : null;
+
   return withTenantContext(orgId, async (tx) => {
     const [campaign] = await tx
       .select({ id: campaigns.id })
@@ -379,6 +396,7 @@ export async function removeCampaignMember(
         constituentId,
         removedBy: userId,
       },
+      metadata,
     });
 
     return { removed: true };

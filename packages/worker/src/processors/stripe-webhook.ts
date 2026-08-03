@@ -19,6 +19,7 @@ import Stripe from "stripe";
 import { env } from "../env.js";
 import { db, withWorkerContext } from "../lib/db.js";
 import { jobLogger } from "../lib/logger.js";
+import { synthesiseTraceparent } from "../lib/trace-context.js";
 
 /**
  * Type-safe coercion of the BullMQ-serialised payload back into a Stripe
@@ -350,6 +351,10 @@ async function handlePaymentIntentSucceeded(
     await tx.insert(outboxEvents).values({
       tenantId: orgId,
       type: "donation.created",
+      // Webhook-originated: no inbound traceparent — synthesise one rooted
+      // at the Stripe payment reference so downstream jobs stay correlated
+      // to the Stripe event (issue #55).
+      metadata: { traceparent: synthesiseTraceparent(paymentIntentId) },
       payload: {
         donationId,
         constituentId,
@@ -513,6 +518,9 @@ async function handleChargeRefunded(
     await tx.insert(outboxEvents).values({
       tenantId: orgId,
       type: "donation.refunded",
+      // Webhook-originated: no inbound traceparent — synthesise one rooted
+      // at the Stripe payment reference (issue #55).
+      metadata: { traceparent: synthesiseTraceparent(paymentIntentId) },
       payload: {
         donationId: donation.id,
         paymentRef: paymentIntentId,

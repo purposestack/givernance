@@ -197,17 +197,20 @@ export async function invitationRoutes(app: FastifyInstance) {
         locale?: "en" | "fr" | null;
       };
 
-      const result = await createTeamInvitation({
-        orgId,
-        email: body.email,
-        firstName: body.firstName,
-        lastName: body.lastName,
-        role: body.role,
-        locale: body.locale ?? null,
-        inviterKeycloakId: userId,
-        ipHash: hashIp(clientIp(request)),
-        userAgent: userAgent(request),
-      });
+      const result = await createTeamInvitation(
+        {
+          orgId,
+          email: body.email,
+          firstName: body.firstName,
+          lastName: body.lastName,
+          role: body.role,
+          locale: body.locale ?? null,
+          inviterKeycloakId: userId,
+          ipHash: hashIp(clientIp(request)),
+          userAgent: userAgent(request),
+        },
+        request,
+      );
 
       if (!result.ok) {
         const detail =
@@ -297,13 +300,16 @@ export async function invitationRoutes(app: FastifyInstance) {
       const orgId = request.auth?.orgId as string;
       const { id } = request.params as { id: string };
 
-      const result = await resendTeamInvitation({
-        orgId,
-        invitationId: id,
-        actorKeycloakId: userId,
-        ipHash: hashIp(clientIp(request)),
-        userAgent: userAgent(request),
-      });
+      const result = await resendTeamInvitation(
+        {
+          orgId,
+          invitationId: id,
+          actorKeycloakId: userId,
+          ipHash: hashIp(clientIp(request)),
+          userAgent: userAgent(request),
+        },
+        request,
+      );
 
       if (!result.ok) {
         if (result.error === "not_found") {
@@ -485,15 +491,19 @@ export async function invitationRoutes(app: FastifyInstance) {
         locale?: "en" | "fr";
       };
 
-      const result = await acceptTeamInvitation({
-        token,
-        firstName: body.firstName,
-        lastName: body.lastName,
-        password: body.password,
-        locale: body.locale,
-        ipHash: hashIp(clientIp(request)),
-        userAgent: userAgent(request),
-      });
+      const result = await acceptTeamInvitation(
+        {
+          token,
+          firstName: body.firstName,
+          lastName: body.lastName,
+          password: body.password,
+          locale: body.locale,
+          ipHash: hashIp(clientIp(request)),
+          userAgent: userAgent(request),
+        },
+        {},
+        request,
+      );
 
       if (!result.ok) {
         request.log.info({ event: "team_invite.accept_rejected" }, "accept rejected");

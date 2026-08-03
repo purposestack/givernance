@@ -21,6 +21,7 @@ import {
   problemDetail,
   UuidSchema,
 } from "../../lib/schemas.js";
+import { buildOutboxMetadata } from "../../lib/trace-context.js";
 import { blocklistUser, invalidateActiveUserCache } from "../session/service.js";
 
 const UserLocaleSchema = Type.Union(SUPPORTED_LOCALES.map((value) => Type.Literal(value)));
@@ -743,6 +744,8 @@ export async function userRoutes(app: FastifyInstance) {
           tenantId: orgId,
           type: "user.created",
           payload: { userId: user.id, email: user.email, orgId },
+          // W3C trace-context for the relay → worker pipeline (issue #55).
+          metadata: buildOutboxMetadata(request),
         });
 
         return user;
@@ -1001,6 +1004,8 @@ export async function userRoutes(app: FastifyInstance) {
           tenantId: orgId,
           type: USER_EVENT_TYPES.SOFT_DELETED,
           payload: { userId: updated.id, orgId },
+          // W3C trace-context for the relay → worker pipeline (issue #55).
+          metadata: buildOutboxMetadata(request),
         });
 
         return {

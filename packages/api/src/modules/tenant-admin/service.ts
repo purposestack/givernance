@@ -31,6 +31,7 @@ import { APP_DEFAULT_LOCALE, isSupportedLocale, type Locale } from "@givernance/
 import {
   auditLogs,
   invitations,
+  type OutboxMetadata,
   outboxEvents,
   type TenantCreatedVia,
   type TenantStatus,
@@ -64,6 +65,8 @@ export interface AuditContext {
   actorUserId: string | null;
   ipHash?: string;
   userAgent?: string;
+  /** W3C trace-context (+ impersonation audit fields) stamped on every outbox insert (issue #55). */
+  outboxMetadata?: OutboxMetadata | null;
 }
 
 // ─── Enterprise tenant creation (super-admin) ──────────────────────────────
@@ -141,6 +144,7 @@ export async function createEnterpriseTenant(
         tenantId: t.id,
         type: "tenant.enterprise_created",
         payload: { tenantId: t.id, slug: canonicalSlug, keycloakOrgId: org.id },
+        metadata: input.audit.outboxMetadata ?? null,
       });
 
       await tx.insert(auditLogs).values({
@@ -242,6 +246,7 @@ export async function claimDomain(input: DomainClaimInput): Promise<DomainClaimR
         tenantId: input.orgId,
         type: "tenant.domain_claimed",
         payload: { tenantId: input.orgId, domain: parsed.domain },
+        metadata: input.audit.outboxMetadata ?? null,
       });
 
       await tx.insert(auditLogs).values({
@@ -396,6 +401,7 @@ async function commitDomainVerification(
       tenantId: input.orgId,
       type: "tenant.domain_verified",
       payload: { tenantId: input.orgId, domain },
+      metadata: input.audit.outboxMetadata ?? null,
     });
 
     await tx.insert(auditLogs).values({
@@ -447,6 +453,7 @@ export async function revokeDomain(input: DomainVerifyInput): Promise<DomainRevo
       tenantId: input.orgId,
       type: "tenant.domain_revoked",
       payload: { tenantId: input.orgId, domain },
+      metadata: input.audit.outboxMetadata ?? null,
     });
 
     await tx.insert(auditLogs).values({
@@ -601,6 +608,7 @@ export async function provisionIdp(
       tenantId: input.orgId,
       type: "tenant.idp_provisioned",
       payload: { tenantId: input.orgId, alias, providerType: input.config.type },
+      metadata: input.audit.outboxMetadata ?? null,
     });
     await tx.insert(auditLogs).values({
       orgId: input.orgId,
@@ -651,6 +659,7 @@ export async function deleteIdp(
       tenantId: input.orgId,
       type: "tenant.idp_removed",
       payload: { tenantId: input.orgId, alias },
+      metadata: input.audit.outboxMetadata ?? null,
     });
     await tx.insert(auditLogs).values({
       orgId: input.orgId,
@@ -1091,6 +1100,7 @@ export async function transitionTenantStatus(input: {
       tenantId: input.orgId,
       type: `tenant.${input.next}`,
       payload: { tenantId: input.orgId, reason: input.reason },
+      metadata: input.audit.outboxMetadata ?? null,
     });
 
     await tx.insert(auditLogs).values({
@@ -1224,6 +1234,7 @@ export async function inviteFirstEnterpriseUser(input: {
       // user row yet (the invitee hasn't accepted) so the per-user layer
       // doesn't apply — the chain reduces to admin pick → tenant default.
       payload: { tenantId: input.orgId, invitationId: row?.id, locale: effectiveLocale },
+      metadata: input.audit.outboxMetadata ?? null,
     });
 
     await tx.insert(auditLogs).values({
@@ -1332,6 +1343,7 @@ export async function resendFirstEnterpriseInvitation(input: {
         resent: true,
         locale: effectiveLocale,
       },
+      metadata: input.audit.outboxMetadata ?? null,
     });
 
     await tx.insert(auditLogs).values({

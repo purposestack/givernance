@@ -17,6 +17,7 @@
     "./lib/s3-branding": "./src/lib/s3-branding.ts",
     "./lib/receipt-crypto": "./src/lib/receipt-crypto.ts",
     "./lib/lru-fetch-cache": "./src/lib/lru-fetch-cache.ts",
+    "./lib/trace-context": "./src/lib/trace-context.ts",
     "./i18n": "./src/i18n/locales.ts",
     "./contracts/branding": "./src/contracts/branding.ts",
     "./postal-export-mode": "./src/postal-export-mode.ts",

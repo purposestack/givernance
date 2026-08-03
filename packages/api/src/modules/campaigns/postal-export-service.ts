@@ -31,15 +31,18 @@ import {
   campaignPublicPages,
   campaigns,
   constituents,
+  type OutboxMetadata,
   outboxEvents,
   type PostalExportFormat,
   type PostalExportMode,
 } from "@givernance/shared/schema";
 import { classifyIban } from "@givernance/shared/validators";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import type { FastifyRequest } from "fastify";
 import { withTenantContext } from "../../lib/db.js";
 import { flagService } from "../../lib/flags/flag-service.js";
 import { resolveInternalUserId } from "../../lib/resolve-user.js";
+import { buildOutboxMetadata } from "../../lib/trace-context.js";
 
 /**
  * Structured error code for `startPostalExport` failures so the route
@@ -316,7 +319,11 @@ export async function startPostalExport(
   campaignId: string,
   mode: PostalExportMode,
   format: PostalExportFormat = "zip",
+  request?: FastifyRequest,
 ): Promise<PostalExportRow | null> {
+  // W3C trace-context → outbox metadata (issue #55); null outside an HTTP request.
+  const metadata: OutboxMetadata | null = request ? buildOutboxMetadata(request) : null;
+
   return withTenantContext(orgId, async (tx) => {
     const [campaign] = await tx
       .select({
@@ -457,6 +464,7 @@ export async function startPostalExport(
         // by the audit plugin from `request.auth.userId`.
         requestedBy: requestedByInternal,
       },
+      metadata,
     });
 
     return mapRow(inserted);

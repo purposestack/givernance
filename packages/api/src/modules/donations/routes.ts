@@ -878,10 +878,15 @@ export async function donationRoutes(app: FastifyInstance) {
       }
 
       try {
-        const donation = await createDonation(orgId, userId, {
-          ...body,
-          custom: customWrite.merged,
-        });
+        const donation = await createDonation(
+          orgId,
+          userId,
+          {
+            ...body,
+            custom: customWrite.merged,
+          },
+          request,
+        );
 
         if (!donation) {
           return reply.status(404).send({
@@ -1057,7 +1062,7 @@ export async function donationRoutes(app: FastifyInstance) {
 
       const { id } = request.params as { id: string };
       const stripe = getStripe();
-      const result = await refundDonation(orgId, id, stripe.refunds);
+      const result = await refundDonation(orgId, id, stripe.refunds, request);
 
       switch (result.kind) {
         case "ok":

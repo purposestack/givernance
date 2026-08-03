@@ -9,11 +9,11 @@ Worker jobs retry up to 3× with exponential backoff. After attempts exhaust, Bu
 
 ### Decision
 
-**Structured logging + Loki/Sentry alerting on terminal failure. Keep the BullMQ `failed` set as the operator inspection surface. Revisit if volume grows.**
+**Structured logging + Loki alerting on terminal failure. Keep the BullMQ `failed` set as the operator inspection surface. Revisit if volume grows.**
 
 - **Detection.** Every worker's `on('failed', ...)` handler compares `attemptsMade >= opts.attempts`. Terminal failures log at `error` with `{ dlq: true, tenantId, jobId, jobName, err, stack }`; retryable failures log at `warn`.
 - **Inspection.** BullBoard remains the UI. Retention: `removeOnFail: { count: 50 }` per queue — sufficient for Phase 1 volumes; operators triage within days.
-- **Alerting.** Loki query `{service="givernance-worker"} | json | dlq=true` drives a Grafana alert (operator setup). Sentry's pino transport captures error-level logs with `dlq: true` as breadcrumbs.
+- **Alerting.** Loki query `{service="givernance-worker"} | json | dlq=true` drives a Grafana alert (operator setup). The log line reaches Loki through the standard pipeline — pino → stdout → Loki (Scaleway Cockpit on SaaS; self-hosted Loki otherwise); no error-tracking SDK is involved (Sentry is not installed).
 - **Replay.** Manual via BullBoard's retry button. No programmatic retry endpoint yet.
 
 ### Why not heavier options
@@ -25,6 +25,10 @@ Worker jobs retry up to 3× with exponential backoff. After attempts exhaust, Bu
 
 - Worker code carries exactly one log-line branch — no new infra.
 - BullMQ retry-semantics changes could silently skip the terminal check; we pin the major version and need a follow-up integration test (tracked in issue #56 QA).
+
+### Deviation — events queue (outbox relay)
+
+The generic events queue is enqueued by the relay with `attempts: 5, removeOnFail: 5000` (`packages/relay/src/relay.ts`), not the `removeOnFail: { count: 50 }` default above. Accepted: every domain event funnels through this one queue, so a 50-item failed set could evict entries before an operator triages a burst; 5000 buys a longer forensic window at negligible Redis cost (failed jobs are small JSON envelopes). Terminal-failure detection is unaffected — the `on('failed', ...)` handler compares `attemptsMade` against the job's own `opts.attempts`, so the 5-attempt override is picked up automatically.
 
 ### Revisit criteria
 

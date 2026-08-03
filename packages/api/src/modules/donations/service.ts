@@ -11,6 +11,7 @@ import {
   donationAllocations,
   donations,
   funds,
+  type OutboxMetadata,
   outboxEvents,
   receipts,
   tenants,
@@ -30,8 +31,10 @@ import {
   or,
   sql,
 } from "drizzle-orm";
+import type { FastifyRequest } from "fastify";
 import { applyCustomPatchInTx } from "../../lib/custom-field-values.js";
 import { db, withTenantContext } from "../../lib/db.js";
+import { buildOutboxMetadata } from "../../lib/trace-context.js";
 import type { FilterQuery } from "../constituents/filters/types.js";
 import { ExchangeRateService } from "../finance/exchange-rate-service.js";
 import type { DonationFieldRegistryBundle } from "./filters/field-registry.js";
@@ -601,13 +604,21 @@ export async function getReceiptByDonation(orgId: string, donationId: string) {
 
 /** Create a donation with optional allocations, emitting DonationCreated event transactionally.
  *  Returns null if the constituent does not exist within the tenant context. */
-export async function createDonation(orgId: string, userId: string, input: DonationInput) {
+export async function createDonation(
+  orgId: string,
+  userId: string,
+  input: DonationInput,
+  request?: FastifyRequest,
+) {
   if (input.allocations && input.allocations.length > 0) {
     const allocSum = input.allocations.reduce((sum, a) => sum + a.amountCents, 0);
     if (allocSum !== input.amountCents) {
       throw new AllocationSumMismatchError(allocSum, input.amountCents);
     }
   }
+
+  // W3C trace-context → outbox metadata (issue #55); null outside an HTTP request.
+  const metadata: OutboxMetadata | null = request ? buildOutboxMetadata(request) : null;
 
   return withTenantContext(orgId, async (tx) => {
     // Verify constituent belongs to this tenant (FK check alone doesn't enforce RLS)
@@ -677,6 +688,7 @@ export async function createDonation(orgId: string, userId: string, input: Donat
         currency,
         createdBy: userId,
       },
+      metadata,
     });
 
     return donation;
@@ -793,7 +805,11 @@ export async function refundDonation(
       refund_application_fee?: boolean;
     }) => Promise<unknown>;
   },
+  request?: FastifyRequest,
 ): Promise<RefundDonationResult> {
+  // W3C trace-context → outbox metadata (issue #55); null outside an HTTP request.
+  const metadata: OutboxMetadata | null = request ? buildOutboxMetadata(request) : null;
+
   // Three-phase flow so we never hold a Postgres connection through a
   // network call to Stripe (PR #193 review, finding #2):
   //   1. Read-and-validate transaction (RLS-scoped, fast).
@@ -863,6 +879,7 @@ export async function refundDonation(
         paymentRef,
         source: "donation_refund_route",
       },
+      metadata,
     });
   });
 

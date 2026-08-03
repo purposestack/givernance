@@ -13,12 +13,15 @@ import {
   campaigns,
   donations,
   funds,
+  type OutboxMetadata,
   outboxEvents,
 } from "@givernance/shared/schema";
 import type { Pagination } from "@givernance/shared/types";
 import { and, asc, desc, eq, ilike, inArray, type SQL, sql } from "drizzle-orm";
+import type { FastifyRequest } from "fastify";
 import { applyCustomPatchInTx } from "../../lib/custom-field-values.js";
 import { withTenantContext } from "../../lib/db.js";
+import { buildOutboxMetadata } from "../../lib/trace-context.js";
 
 /**
  * Single source of truth for the campaigns sort whitelist (issue #218).
@@ -357,7 +360,15 @@ export class CampaignValidationError extends Error {
 }
 
 /** Create a new campaign */
-export async function createCampaign(orgId: string, input: CreateCampaignInput, userId?: string) {
+export async function createCampaign(
+  orgId: string,
+  input: CreateCampaignInput,
+  userId?: string,
+  request?: FastifyRequest,
+) {
+  // W3C trace-context → outbox metadata (issue #55); null outside an HTTP request.
+  const metadata: OutboxMetadata | null = request ? buildOutboxMetadata(request) : null;
+
   return withTenantContext(orgId, async (tx) => {
     // Validate parentId if provided
     if (input.parentId) {
@@ -413,6 +424,7 @@ export async function createCampaign(orgId: string, input: CreateCampaignInput, 
         campaignType: input.type,
         createdBy: userId,
       },
+      metadata,
     });
 
     // biome-ignore lint/style/noNonNullAssertion: insert().returning() always returns one row
@@ -517,7 +529,11 @@ export async function updateCampaign(
   id: string,
   input: UpdateCampaignInput,
   userId: string,
+  request?: FastifyRequest,
 ) {
+  // W3C trace-context → outbox metadata (issue #55); null outside an HTTP request.
+  const metadata: OutboxMetadata | null = request ? buildOutboxMetadata(request) : null;
+
   return withTenantContext(orgId, async (tx) => {
     // FOR UPDATE: the `custom` merge-patch below is read-modify-write, so
     // a concurrent update of the same campaign must block until this tx
@@ -591,6 +607,7 @@ export async function updateCampaign(
         },
         updatedBy: userId,
       },
+      metadata,
     });
 
     return updated ? getCampaignById(tx, orgId, updated.id) : null;
@@ -598,7 +615,15 @@ export async function updateCampaign(
 }
 
 /** Close (soft-delete) a campaign by setting status to 'closed' */
-export async function closeCampaign(orgId: string, id: string, userId: string) {
+export async function closeCampaign(
+  orgId: string,
+  id: string,
+  userId: string,
+  request?: FastifyRequest,
+) {
+  // W3C trace-context → outbox metadata (issue #55); null outside an HTTP request.
+  const metadata: OutboxMetadata | null = request ? buildOutboxMetadata(request) : null;
+
   return withTenantContext(orgId, async (tx) => {
     const [existing] = await tx
       .select()
@@ -621,6 +646,7 @@ export async function closeCampaign(orgId: string, id: string, userId: string) {
         campaignId: id,
         closedBy: userId,
       },
+      metadata,
     });
 
     return closed ? getCampaignById(tx, orgId, closed.id) : null;
@@ -737,7 +763,11 @@ export async function requestCampaignDocuments(
   userId: string,
   campaignId: string,
   constituentIds: string[],
+  request?: FastifyRequest,
 ) {
+  // W3C trace-context → outbox metadata (issue #55); null outside an HTTP request.
+  const metadata: OutboxMetadata | null = request ? buildOutboxMetadata(request) : null;
+
   return withTenantContext(orgId, async (tx) => {
     // Verify campaign exists and belongs to this org
     const [campaign] = await tx
@@ -783,6 +813,7 @@ export async function requestCampaignDocuments(
         campaignType: campaign.type,
         requestedBy: userId,
       },
+      metadata,
     });
 
     return { campaignId, documentCount: campaign.type === "door_drop" ? 1 : ids.length };
