@@ -43,17 +43,28 @@ describe("synthesiseTraceparent", () => {
   });
 
   it("derives a deterministic 32-hex trace-id from the request id", () => {
-    const a = extractTraceId(synthesiseTraceparent("abc123def456"));
-    const b = extractTraceId(synthesiseTraceparent("abc123def456"));
+    const a = extractTraceId(synthesiseTraceparent("req-1a2b"));
+    const b = extractTraceId(synthesiseTraceparent("req-1a2b"));
     expect(a).toBe(b);
     expect(a).toMatch(/^[0-9a-f]{32}$/);
-    // Non-hex chars are stripped, remainder right-padded with zeros.
-    expect(a).toBe("abc123def456".padEnd(32, "0"));
   });
 
-  it("truncates over-long hex inputs to 32 chars", () => {
-    const long = "f".repeat(64);
-    expect(extractTraceId(synthesiseTraceparent(long))).toBe("f".repeat(32));
+  it("keeps the full input entropy — ids differing only in non-hex chars don't collide", () => {
+    // Hex-filtering (the pre-#55 derivation) would collapse all of these
+    // onto the same trace-id: Fastify counters and Stripe base62 ids are
+    // mostly non-hex.
+    const traceIds = ["req-g", "req-h", "pi_3QwXYZ", "pi_3QwPQR"].map((id) =>
+      extractTraceId(synthesiseTraceparent(id)),
+    );
+    expect(new Set(traceIds).size).toBe(traceIds.length);
+  });
+
+  it("never yields the all-zero trace-id (invalid per W3C §2.3.2), even for hex-free inputs", () => {
+    for (const id of ["", "----", "pi_XYZ", "zzz"]) {
+      const traceId = extractTraceId(synthesiseTraceparent(id));
+      expect(traceId).toMatch(/^[0-9a-f]{32}$/);
+      expect(traceId).not.toBe("0".repeat(32));
+    }
   });
 
   it("still produces a valid traceparent when the request id is undefined", () => {

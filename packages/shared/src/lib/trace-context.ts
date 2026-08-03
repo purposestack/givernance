@@ -14,7 +14,7 @@
  * shuttle it around across the outbox → relay → BullMQ boundary.
  */
 
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 
 // Matches W3C trace-context §2.1: `00-<32-hex>-<16-hex>-<2-hex>`.
 export const TRACEPARENT_RE = /^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$/;
@@ -32,9 +32,9 @@ export function extractTraceId(traceparent: string | undefined | null): string |
 
 /**
  * Synthesize a W3C traceparent. The trace-id is deterministic from the
- * given request/correlation id (hashed, padded) so logs and audits can
- * still be joined without losing the request↔trace link; the span-id is
- * random per call so concurrent events don't share spans.
+ * given request/correlation id (SHA-256, truncated to 128 bits) so logs and
+ * audits can still be joined without losing the request↔trace link; the
+ * span-id is random per call so concurrent events don't share spans.
  */
 export function synthesiseTraceparent(requestId: string | undefined): string {
   const traceId = requestIdToTraceId(requestId);
@@ -44,9 +44,10 @@ export function synthesiseTraceparent(requestId: string | undefined): string {
 
 function requestIdToTraceId(requestId: string | undefined): string {
   const base = requestId ?? randomBytes(16).toString("hex");
-  // 32 hex chars. Trim or right-pad with a hash of itself so every input
-  // produces a stable, 128-bit-looking trace-id.
-  const hex = base.replace(/[^0-9a-f]/gi, "").toLowerCase();
-  if (hex.length >= 32) return hex.slice(0, 32);
-  return hex.padEnd(32, "0");
+  // SHA-256, truncated to 128 bits. Hashing (rather than hex-filtering the
+  // input) keeps the full entropy of low-hex-density ids — Fastify's default
+  // `req-<base36>` counters and Stripe `pi_…` base62 ids would otherwise
+  // collide after filtering, and an id with no hex chars at all would yield
+  // the all-zero trace-id that W3C §2.3.2 declares invalid.
+  return createHash("sha256").update(base).digest("hex").slice(0, 32);
 }

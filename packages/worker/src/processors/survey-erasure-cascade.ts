@@ -198,7 +198,9 @@ export async function fanoutSurveyErasure(input: SurveyErasureCascadeInput): Pro
   const log = jobLogger({
     tenantId: input.tenantId,
     jobId: input.outboxId,
-    traceId: extractTraceId(input.traceparent),
+    // Same fallback semantics as worker.ts's processDomainEvent: unstamped
+    // (pre-#55) events still get a correlator — the outbox row id.
+    traceId: extractTraceId(input.traceparent) ?? input.outboxId,
   });
   try {
     const result = await cascadeSurveyErasure(input);

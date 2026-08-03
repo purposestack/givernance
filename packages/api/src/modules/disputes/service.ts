@@ -12,6 +12,7 @@
  * Every state transition emits audit + outbox for downstream notifications.
  */
 
+import { synthesiseTraceparent } from "@givernance/shared/lib/trace-context";
 import {
   auditLogs,
   type OutboxMetadata,
@@ -650,6 +651,9 @@ export async function runExpireJob(now = new Date()): Promise<ExpireJobResult> {
         tenantId: row.orgId,
         type: "tenant.provisional_admin_confirmed",
         payload: { tenantId: row.orgId, userId: row.userId },
+        // Cron-shaped path, no inbound trace: synthesise one per row so the
+        // downstream chain is still correlatable (issue #55).
+        metadata: { traceparent: synthesiseTraceparent(row.userId) },
       });
 
       await tx.insert(auditLogs).values({
