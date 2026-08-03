@@ -88,3 +88,19 @@ Campaign ROI is a **read-model, never a stored field**.
 
 ---
 
+### Node-only `shared/lib/*` subpaths (2026-08-03, issue #576)
+
+The `@givernance/shared` package grew `./lib/*` subpath exports shared between API and worker. Several are **server-only** — they import `node:crypto` / `node:stream` builtins or Node-only third-party deps (`jsdom`, `@aws-sdk/client-s3`) — yet the original deny-list above only covered the root barrel, `schema`, `events`, and `jobs`. Nothing structurally prevented a future web import of e.g. `@givernance/shared/lib/receipt-crypto` from landing in a browser bundle.
+
+The web-scoped `noRestrictedImports` override (which lives in the **root `biome.json`** `overrides` block scoped to `packages/web/src/**`, not in a per-package config) now also denies:
+
+| Subpath | Why server-only |
+|---|---|
+| `@givernance/shared/lib/receipt-crypto` | `node:crypto` AES-256-GCM streams (ADR-037 envelope encryption) |
+| `@givernance/shared/lib/s3-branding` | `@aws-sdk/client-s3` + `node:stream` |
+| `@givernance/shared/lib/svg-sanitiser` | `jsdom` (DOMPurify host) |
+| `@givernance/shared/lib/trace-context` | `node:crypto` W3C traceparent generation (forward-declared for PR #574) |
+
+`@givernance/shared/lib/lru-fetch-cache` is deliberately **not** denied — it is pure isomorphic JS (only `lru-cache`) by design, per its module header.
+
+**Parity enforcement**: `packages/shared/src/lib/web-import-guard.test.ts` scans every `./lib/*` export for Node-only import specifiers (`node:*`, `jsdom`, `@aws-sdk/*`) and fails CI if any such module lacks a deny entry in the web override — same lockstep pattern as the migrations-journal and feature-flag parity tests. A deny entry without a matching export (forward declaration) stays legal. When `shared` gains a new server-only dependency, extend the detector's specifier list in the same PR.
