@@ -72,7 +72,11 @@
                   "@givernance/shared": "Importing the @givernance/shared root barrel in packages/web is forbidden (ADR-013). Use a specific subpath like @givernance/shared/validators or @givernance/shared/constants.",
                   "@givernance/shared/schema": "Importing Drizzle schema in packages/web is forbidden (ADR-013). Use @/models/ for API response types.",
                   "@givernance/shared/events": "Importing domain events in packages/web is forbidden (ADR-013). Events are backend-only.",
-                  "@givernance/shared/jobs": "Importing job definitions in packages/web is forbidden (ADR-013). Jobs are backend-only."
+                  "@givernance/shared/jobs": "Importing job definitions in packages/web is forbidden (ADR-013). Jobs are backend-only.",
+                  "@givernance/shared/lib/receipt-crypto": "Importing lib/receipt-crypto in packages/web is forbidden (ADR-013). It uses node:crypto streams — server-only; receipts reach the browser via signed download URLs.",
+                  "@givernance/shared/lib/s3-branding": "Importing lib/s3-branding in packages/web is forbidden (ADR-013). It pulls @aws-sdk/client-s3 + node:stream into the bundle — server-only; branding assets are public-read URLs.",
+                  "@givernance/shared/lib/svg-sanitiser": "Importing lib/svg-sanitiser in packages/web is forbidden (ADR-013). It depends on jsdom (Node-only); sanitisation happens API-side at upload time.",
+                  "@givernance/shared/lib/trace-context": "Importing lib/trace-context in packages/web is forbidden (ADR-013). W3C traceparent generation uses node:crypto — backend-only outbox plumbing."
                 }
               }
             }
