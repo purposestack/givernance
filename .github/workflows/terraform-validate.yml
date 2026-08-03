@@ -10,7 +10,7 @@
 # CI has no cloud credentials, by design. Known blind spot: with
 # `-backend=false` the `backend "s3"` block is NOT schema-checked here —
 # it is only validated at the operator's real `terraform init` (see the
-# ADR-037 consequences section).
+# ADR-038 consequences section).
 name: Terraform validate
 
 # The job needs nothing beyond reading the repo, and it executes provider
