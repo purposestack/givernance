@@ -40,7 +40,7 @@ Frontend-specific API response models live in `packages/web/src/models/` as plai
 | Mechanism | Layer | Description |
 |---|---|---|
 | Subpath exports | Package level | `@givernance/shared/package.json` declares explicit `"exports"` — only listed subpaths are resolvable |
-| Lint rule | CI/IDE | Biome `noRestrictedImports` rule in `packages/web/biome.json` bans `@givernance/shared/schema`, `@givernance/shared/events`, `@givernance/shared/jobs` with actionable error messages |
+| Lint rule | CI/IDE | Biome `noRestrictedImports` rule in the root `biome.json` (override scoped to `packages/web/src/**`) bans `@givernance/shared/schema`, `@givernance/shared/events`, `@givernance/shared/jobs` with actionable error messages — extended to server-only subpaths by the 2026-08-03 addendum below |
 | Code review | Process | PR reviews verify no new Drizzle imports in `packages/web/` |
 | Source maps | Build config | Production builds (`next.config.ts`) MUST disable source maps (`productionBrowserSourceMaps: false`) to prevent exposing internal architecture via client-side JavaScript |
 
@@ -100,7 +100,13 @@ The web-scoped `noRestrictedImports` override (which lives in the **root `biome.
 | `@givernance/shared/lib/s3-branding` | `@aws-sdk/client-s3` + `node:stream` |
 | `@givernance/shared/lib/svg-sanitiser` | `jsdom` (DOMPurify host) |
 | `@givernance/shared/lib/trace-context` | `node:crypto` W3C traceparent generation (forward-declared for PR #574) |
+| `@givernance/shared/signup` | Runtime-imports the Drizzle schema (`invitations`, `outboxEvents`, `tenants`, `users`) + server-side signup-recovery predicates |
+| `@givernance/shared/finance/reporting` | Runtime-imports the Drizzle schema and `drizzle-orm`; super-admin finance aggregation SQL |
+
+The last two were caught by the PR-#577 review: Biome's `noRestrictedImports` matches only the **literal specifier written in the importing file**, so an allowed subpath that internally runtime-imports `@givernance/shared/schema` silently bypasses the `schema` deny — and because `drizzle-orm` core is isomorphic JS, the web build succeeds with the full DB topology in the donor bundle instead of failing loudly.
 
 `@givernance/shared/lib/lru-fetch-cache` is deliberately **not** denied — it is pure isomorphic JS (only `lru-cache`) by design, per its module header.
 
-**Parity enforcement**: `packages/shared/src/lib/web-import-guard.test.ts` scans every `./lib/*` export for Node-only import specifiers (`node:*`, `jsdom`, `@aws-sdk/*`) and fails CI if any such module lacks a deny entry in the web override — same lockstep pattern as the migrations-journal and feature-flag parity tests. A deny entry without a matching export (forward declaration) stays legal. When `shared` gains a new server-only dependency, extend the detector's specifier list in the same PR.
+**Parity enforcement**: `packages/shared/src/lib/web-import-guard.test.ts` scans **every** subpath export of `@givernance/shared` (except the four the override already denies wholesale: root barrel, `schema`, `events`, `jobs`), following transitive **relative** imports and dynamic `import(...)` calls, ignoring statement-level type-only imports (erased at build). Any export whose closure reaches a server-only specifier (`node:*`, `jsdom`, `@aws-sdk/*`, `drizzle-orm`, a runtime `@givernance/shared/schema`) must have a deny entry, or CI fails — same lockstep pattern as the migrations-journal and feature-flag parity tests. A positive-control assertion pins the known server-only set so a silent detector regression cannot make the test pass vacuously. A deny entry without a matching export (forward declaration) stays legal. When `shared` gains a new server-only dependency, extend the detector's specifier list in the same PR.
+
+**Residual risk (accepted)**: `noRestrictedImports` matches import specifiers, not resolved files — a deep **relative** import from web into `packages/shared/src/**` would evade the deny-list. It is structurally discouraged (the exports map has exact keys only, web's tsconfig has no `@givernance/shared/*` alias, and a cross-package relative path sits outside web's `rootDir`/transpile scope), so treat any relative import crossing a package boundary as a review red flag.
