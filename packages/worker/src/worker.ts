@@ -891,7 +891,7 @@ function startWorkers() {
       // Distinguish TRANSIENT failures (will be retried) from TERMINAL failures
       // (attempts exhausted → job is on its way to BullMQ's `failed` set).
       // The terminal case is a Dead-Letter event and demands an alert-worthy
-      // log line so Loki/Sentry can fire on it. See docs/17 §DLQ and
+      // log line so Loki can fire on it. See docs/17 §DLQ and
       // docs/adrs/adr-020-bullmq-dead-letter-strategy-failed-set-structured-alerting-for-phase-1.md
       // (Accepted).
       const attemptsMade = job?.attemptsMade ?? 0;

@@ -124,6 +124,11 @@ describe("processStripeWebhook", () => {
 
     expect(event).toBeTruthy();
     expect(event?.type).toBe("donation.created");
+    // Webhook-originated chain: a traceparent is synthesised from the
+    // payment-intent id so downstream jobs stay correlated (issue #55).
+    expect((event?.metadata as { traceparent?: string })?.traceparent).toMatch(
+      /^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$/,
+    );
 
     // Verify webhook event status was updated
     const [webhookEvt] = await db

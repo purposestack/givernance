@@ -52,6 +52,7 @@ import {
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { withWorkerContext } from "../lib/db.js";
 import { jobLogger } from "../lib/logger.js";
+import { extractTraceId } from "../lib/trace-context.js";
 
 export interface FanoutInput {
   /** Outbox event id (logged for correlation). */
@@ -196,7 +197,11 @@ export function planFanout(input: FanoutInput): FanoutPlanEntry[] {
 const FANOUT_TIMEOUT_MS = 2_000;
 
 export async function fanoutNotifications(input: FanoutInput): Promise<void> {
-  const log = jobLogger({ tenantId: input.tenantId, jobId: input.outboxId });
+  const log = jobLogger({
+    tenantId: input.tenantId,
+    jobId: input.outboxId,
+    traceId: extractTraceId(input.traceparent) ?? input.outboxId,
+  });
 
   const plan = planFanout(input);
   if (plan.length === 0) {

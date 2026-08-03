@@ -140,6 +140,10 @@ describe("processSurveySend", () => {
     expect(payload?.surveyId).toBe(SURVEY_QUARTERLY);
     expect(payload?.userId).toBe(ORG_ADMIN_ID);
     expect(payload?.email).toBe("admin-436@example.org");
+    // Cron-originated chain: traceparent synthesised per invitation (issue #55).
+    expect((matchingEvent?.metadata as { traceparent?: string })?.traceparent).toMatch(
+      /^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$/,
+    );
 
     // next_scheduled_at advanced by cadence_days.
     const [s] = await db
