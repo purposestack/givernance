@@ -18,6 +18,7 @@
 import {
   extractTraceId,
   isValidTraceparent,
+  isValidTracestate,
   synthesiseTraceparent,
 } from "@givernance/shared/lib/trace-context";
 import type { OutboxMetadata } from "@givernance/shared/schema";
@@ -25,13 +26,6 @@ import type { FastifyRequest } from "fastify";
 
 const TRACEPARENT_HEADER = "traceparent";
 const TRACESTATE_HEADER = "tracestate";
-// W3C trace-context §3.3.1.1: receivers MUST support at least 512 chars and
-// MAY discard beyond that. The header is client-controlled and persisted
-// (outbox jsonb → Redis job data) on unauthenticated routes too (signup), so
-// cap it and require the header's printable-ASCII grammar — anything else is
-// dropped rather than stored.
-const TRACESTATE_MAX_LENGTH = 512;
-const TRACESTATE_RE = /^[\x20-\x7e]+$/;
 
 // Re-export so in-package callers can keep importing `OutboxMetadata` and
 // `extractTraceId` from the trace-context helper if they prefer.
@@ -57,10 +51,9 @@ export function buildOutboxMetadata(
   const incoming = request.headers[TRACEPARENT_HEADER];
   if (typeof incoming === "string" && isValidTraceparent(incoming)) {
     const tracestate = request.headers[TRACESTATE_HEADER];
-    const validTracestate =
-      typeof tracestate === "string" &&
-      tracestate.length <= TRACESTATE_MAX_LENGTH &&
-      TRACESTATE_RE.test(tracestate);
+    // Cap + printable-ASCII grammar per W3C §3.3.1.1 — see
+    // `isValidTracestate` in `@givernance/shared/lib/trace-context`.
+    const validTracestate = typeof tracestate === "string" && isValidTracestate(tracestate);
     return {
       traceparent: incoming,
       ...(validTracestate ? { tracestate } : {}),

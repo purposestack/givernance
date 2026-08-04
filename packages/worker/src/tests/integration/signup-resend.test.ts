@@ -258,6 +258,32 @@ describe("processSignupResendPayload", () => {
     expect(rows[0]?.metadata?.tracestate).toBe("vendor=resend-test");
   });
 
+  it("projects an allowlist — oversized tracestate and forged impersonation fields are dropped", async () => {
+    const traceparent = `00-${"ef".repeat(16)}-${"ab".repeat(8)}-01`;
+    // Uses EMAIL_NO_KC (2nd of 3 allowed hits) — EMAIL_PENDING's SEC-10
+    // budget is already exhausted by the three tests above.
+    const result = await processSignupResendPayload({
+      email: EMAIL_NO_KC,
+      metadata: {
+        traceparent,
+        // Over the 512-char W3C cap the API ingest enforces — a forged
+        // Redis job must not smuggle it past the worker either.
+        tracestate: "x".repeat(10_000),
+        impersonationSessionId: "forged-session",
+        impersonatorKeycloakId: "forged-admin",
+      },
+    });
+    expect(result.matched).toBe(true);
+
+    const { rows } = await db.execute<{ metadata: Record<string, unknown> | null }>(
+      sql`SELECT metadata FROM outbox_events
+          WHERE tenant_id = ${ORG_NO_KC_USER} AND type = 'tenant.signup_verification_resent'
+          ORDER BY created_at DESC LIMIT 1`,
+    );
+    // Exact-shape assertion: traceparent survives, nothing else does.
+    expect(rows[0]?.metadata).toEqual({ traceparent });
+  });
+
   it("refuses to persist an invalid payload traceparent (second trust boundary)", async () => {
     const result = await processSignupResendPayload({
       email: EMAIL_PENDING,
