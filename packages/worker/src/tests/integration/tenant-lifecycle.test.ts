@@ -33,6 +33,12 @@ const ORG_DISPUTED = "00000000-0000-0000-0000-0000000000e3";
 const USER_DISPUTED = "00000000-0000-0000-0000-0000000000e4";
 const ORG_FUTURE = "00000000-0000-0000-0000-0000000000e5";
 const USER_FUTURE = "00000000-0000-0000-0000-0000000000e6";
+// Second expired org — proves the trace is rooted once per PASS, not once
+// per row: both confirmations must share the identical full traceparent
+// (trace-id AND span-id), which a per-row synthesis regression would break
+// (same deterministic trace-id, different random span-id).
+const ORG_EXPIRED_2 = "00000000-0000-0000-0000-0000000000e7";
+const USER_EXPIRED_2 = "00000000-0000-0000-0000-0000000000e8";
 
 const PAST = new Date(Date.now() - 24 * 60 * 60 * 1000);
 const FUTURE = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
@@ -53,6 +59,10 @@ async function seedOrg(orgId: string, userId: string, provisionalUntil: Date): P
         VALUES (${orgId}, 'Lifecycle NGO', ${`lifecycle-${randomUUID().slice(0, 8)}`}, 'active', 'self_serve', now())
         ON CONFLICT (id) DO NOTHING`,
   );
+  // Upsert (not do-nothing) so an interrupted previous run — killed after
+  // the confirm pass cleared `provisional_until` but before `afterAll`
+  // deleted the fixtures — is healed on the next run instead of leaving
+  // this file permanently red until a manual purge.
   await db
     .insert(users)
     .values({
@@ -65,11 +75,12 @@ async function seedOrg(orgId: string, userId: string, provisionalUntil: Date): P
       firstAdmin: true,
       provisionalUntil,
     })
-    .onConflictDoNothing();
+    .onConflictDoUpdate({ target: users.id, set: { provisionalUntil } });
 }
 
 beforeAll(async () => {
   await seedOrg(ORG_EXPIRED, USER_EXPIRED, PAST);
+  await seedOrg(ORG_EXPIRED_2, USER_EXPIRED_2, PAST);
   await seedOrg(ORG_DISPUTED, USER_DISPUTED, PAST);
   await seedOrg(ORG_FUTURE, USER_FUTURE, FUTURE);
 
@@ -89,7 +100,7 @@ afterAll(async () => {
   // (same justification as the other worker-test cleanup hooks).
   await db.transaction(async (tx) => {
     await tx.execute(sql`SET LOCAL session_replication_role = 'replica'`);
-    for (const orgId of [ORG_EXPIRED, ORG_DISPUTED, ORG_FUTURE]) {
+    for (const orgId of [ORG_EXPIRED, ORG_EXPIRED_2, ORG_DISPUTED, ORG_FUTURE]) {
       await tx.delete(auditLogs).where(eq(auditLogs.orgId, orgId));
       await tx.delete(outboxEvents).where(eq(outboxEvents.tenantId, orgId));
       await tx.delete(tenantAdminDisputes).where(eq(tenantAdminDisputes.orgId, orgId));
@@ -136,6 +147,16 @@ describe("processTenantLifecycle", () => {
     const expectedTraceId = createHash("sha256").update(JOB_ID).digest("hex").slice(0, 32);
     expect(extractTraceId(traceparent)).toBe(expectedTraceId);
 
+    // One trace per PASS, not per row: the second expired org's confirmation
+    // must carry the IDENTICAL full traceparent (same span-id). A regression
+    // to per-row synthesis keeps the trace-id (deterministic from the job
+    // id) but rolls a fresh random span-id — this assertion catches it.
+    const [event2] = await db
+      .select({ metadata: outboxEvents.metadata })
+      .from(outboxEvents)
+      .where(eq(outboxEvents.tenantId, ORG_EXPIRED_2));
+    expect(event2?.metadata?.traceparent).toBe(traceparent);
+
     const { rows: audit } = await db.execute<{ action: string; resource_id: string }>(
       sql`SELECT action, resource_id FROM audit_logs
           WHERE org_id = ${ORG_EXPIRED} ORDER BY created_at DESC LIMIT 1`,
@@ -145,6 +166,10 @@ describe("processTenantLifecycle", () => {
   });
 
   it("is idempotent — a second pass emits no duplicate outbox event (DATA-7)", async () => {
+    // Two passes INSIDE this test so it stays meaningful under `.only` or
+    // reordering — relying on the previous test's pass would let a
+    // duplicate-emit regression slip through silently (review F4).
+    await processTenantLifecycle(makeJob());
     await processTenantLifecycle(makeJob());
 
     const events = await db

@@ -9,7 +9,11 @@
  * comparing response latencies.
  */
 
-import { QUEUE_NAMES, TENANT_LIFECYCLE_JOBS } from "@givernance/shared/jobs";
+import {
+  QUEUE_NAMES,
+  type SignupResendJobPayload,
+  TENANT_LIFECYCLE_JOBS,
+} from "@givernance/shared/jobs";
 import type { OutboxMetadata } from "@givernance/shared/schema";
 import { Queue } from "bullmq";
 import { redis } from "../../lib/redis.js";
@@ -41,13 +45,15 @@ export async function enqueueSignupResend(
    */
   metadata?: OutboxMetadata | null,
 ): Promise<void> {
-  await tenantLifecycleQueue.add(
-    TENANT_LIFECYCLE_JOBS.SIGNUP_RESEND,
-    { email: email.trim().toLowerCase(), metadata: metadata ?? null },
-    {
-      attempts: 1,
-      removeOnComplete: 1000,
-      removeOnFail: 5000,
-    },
-  );
+  // Typed against the shared job contract so this producer and the worker's
+  // processor cannot drift shape without a type error (issue #575 review F9).
+  const payload: SignupResendJobPayload = {
+    email: email.trim().toLowerCase(),
+    metadata: metadata ?? null,
+  };
+  await tenantLifecycleQueue.add(TENANT_LIFECYCLE_JOBS.SIGNUP_RESEND, payload, {
+    attempts: 1,
+    removeOnComplete: 1000,
+    removeOnFail: 5000,
+  });
 }

@@ -467,9 +467,17 @@ describe("POST /v1/public/signup/resend", () => {
       .where(eq(invitations.email, email));
     expect(invBefore).toBeDefined();
 
+    // Send a valid traceparent header: the route must build the trace
+    // metadata (`buildOutboxMetadata`) and hand it to `enqueueSignupResend`
+    // — the mock above threads it through to the real shared helper, so
+    // asserting the outbox row pins the route→payload leg (issue #575
+    // review F3: without this, reverting the route to the 1-arg
+    // `enqueueSignupResend(email)` would leave every test green).
+    const incomingTraceparent = `00-${"5a".repeat(16)}-${"6b".repeat(8)}-01`;
     const res = await app.inject({
       method: "POST",
       url: "/v1/public/signup/resend",
+      headers: { traceparent: incomingTraceparent },
       payload: { email },
     });
     expect(res.statusCode).toBe(204);
@@ -479,6 +487,16 @@ describe("POST /v1/public/signup/resend", () => {
       .from(invitations)
       .where(eq(invitations.email, email));
     expect(invAfter?.token).not.toBe(invBefore?.token);
+
+    const { rows: outboxRows } = await db.execute<{
+      metadata: { traceparent?: string } | null;
+    }>(
+      sql`SELECT metadata FROM outbox_events
+          WHERE type = 'tenant.signup_verification_resent'
+            AND tenant_id = (SELECT id FROM tenants WHERE slug = ${slugR})
+          ORDER BY created_at DESC LIMIT 1`,
+    );
+    expect(outboxRows[0]?.metadata?.traceparent).toBe(incomingTraceparent);
   });
 
   it("returns 204 even when the email is unknown (no enumeration oracle)", async () => {

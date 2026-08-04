@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { TRACEPARENT_RE } from "@givernance/shared/lib/trace-context";
 import { auditLogs, outboxEvents, tenantDomains, tenants } from "@givernance/shared/schema";
 import { eq, inArray, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
@@ -224,7 +225,7 @@ describe("POST /v1/tenants/:orgId/domains — outbox trace metadata", () => {
 
     expect(res.statusCode).toBe(201);
     const metadata = await latestDomainClaimedMetadata(tenantId);
-    expect(metadata?.traceparent).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$/);
+    expect(metadata?.traceparent).toMatch(TRACEPARENT_RE);
     expect(metadata?.tracestate).toBeUndefined();
   });
 
@@ -250,7 +251,7 @@ describe("POST /v1/tenants/:orgId/domains — outbox trace metadata", () => {
 
     expect(res.statusCode).toBe(201);
     const metadata = await latestDomainClaimedMetadata(tenantId);
-    expect(metadata?.traceparent).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$/);
+    expect(metadata?.traceparent).toMatch(TRACEPARENT_RE);
     expect(metadata?.traceparent).not.toBe("not-a-traceparent");
     // tracestate is only meaningful alongside a preserved upstream
     // traceparent — the synthesise branch must not carry it.

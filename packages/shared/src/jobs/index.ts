@@ -1,5 +1,7 @@
 /** BullMQ job type definitions */
 
+import type { OutboxMetadata } from "../schema";
+
 /** Generate a tax receipt PDF for a donation */
 export interface GenerateReceiptJob {
   name: "generate-receipt";
@@ -189,8 +191,24 @@ export interface SignupResendJob {
   data: {
     /** Email submitted to `POST /v1/public/signup/resend` (lowercased / trimmed). */
     email: string;
+    /**
+     * W3C trace-context built by the API route (issue #575). Rides in the
+     * job payload because this flow enqueues BullMQ directly (F3
+     * constant-time 204) instead of going through the outbox; the worker
+     * re-validates it (`sanitiseJobMetadata`) before stamping it onto the
+     * `tenant.signup_verification_resent` outbox insert. Absent on jobs
+     * enqueued by pre-#575 builds.
+     */
+    metadata?: OutboxMetadata | null;
   };
 }
+
+/**
+ * The signup-resend payload as consumed by the worker processor and
+ * produced by the API's `enqueueSignupResend` — a single named alias so
+ * the two packages cannot drift shape without a type error.
+ */
+export type SignupResendJobPayload = SignupResendJob["data"];
 
 /**
  * Generate the monthly platform finance report PDF (issue #443).

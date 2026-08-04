@@ -30,6 +30,21 @@ export function extractTraceId(traceparent: string | undefined | null): string |
   return traceparent.split("-")[1];
 }
 
+// W3C trace-context §3.3.1.1: receivers MUST support at least 512 chars and
+// MAY discard beyond that. The header is client-controlled and persisted
+// (outbox jsonb → Redis job data) on unauthenticated routes too (signup), so
+// cap it and require the header's printable-ASCII grammar — anything else is
+// dropped rather than stored. Hoisted here (issue #575) so the API ingest
+// (`buildOutboxMetadata`) and the worker's Redis-payload re-validation
+// (`sanitiseJobMetadata`) apply the exact same constraints.
+export const TRACESTATE_MAX_LENGTH = 512;
+const TRACESTATE_RE = /^[\x20-\x7e]+$/;
+
+/** Whether `s` is an acceptable tracestate value (≤512 printable-ASCII chars). */
+export function isValidTracestate(s: string): boolean {
+  return s.length <= TRACESTATE_MAX_LENGTH && TRACESTATE_RE.test(s);
+}
+
 /**
  * Synthesize a W3C traceparent. The trace-id is deterministic from the
  * given request/correlation id (SHA-256, truncated to 128 bits) so logs and
