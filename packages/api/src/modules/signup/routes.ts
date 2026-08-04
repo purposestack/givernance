@@ -29,6 +29,7 @@ import {
   problemDetail,
   UuidSchema,
 } from "../../lib/schemas.js";
+import { buildOutboxMetadata } from "../../lib/trace-context.js";
 import { enqueueSignupResend } from "./queue.js";
 import { lookupTenantForEmail, openDomainDispute, signup, verifySignup } from "./service.js";
 
@@ -317,7 +318,10 @@ export async function signupRoutes(app: FastifyInstance) {
       // path) would re-open the timing asymmetry the BullMQ hand-off
       // was meant to close. The Fastify per-IP rate-limiter on this
       // route bounds queue fan-out from any single source.
-      await enqueueSignupResend(email);
+      // Carry the request's trace context in the job payload (issue #575) —
+      // this flow has no outbox leg of its own until the worker inserts the
+      // `tenant.signup_verification_resent` event.
+      await enqueueSignupResend(email, buildOutboxMetadata(request));
       return reply.status(204).send();
     },
   );

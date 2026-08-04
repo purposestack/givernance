@@ -10,6 +10,7 @@
  */
 
 import { QUEUE_NAMES, TENANT_LIFECYCLE_JOBS } from "@givernance/shared/jobs";
+import type { OutboxMetadata } from "@givernance/shared/schema";
 import { Queue } from "bullmq";
 import { redis } from "../../lib/redis.js";
 
@@ -29,10 +30,20 @@ const tenantLifecycleQueue = new Queue(QUEUE_NAMES.TENANT_LIFECYCLE, { connectio
  * "Try a different email" path are the recovery channels; we'd rather
  * drop a single resend than ship a stale-token email.
  */
-export async function enqueueSignupResend(email: string): Promise<void> {
+export async function enqueueSignupResend(
+  email: string,
+  /**
+   * W3C trace-context of the originating HTTP request (issue #55 / #575).
+   * This flow bypasses the outbox (direct BullMQ enqueue for the F3
+   * constant-time 204), so the metadata rides in the job payload instead
+   * and the worker stamps it onto the `tenant.signup_verification_resent`
+   * outbox insert — without this the email leg of the trace goes dark.
+   */
+  metadata?: OutboxMetadata | null,
+): Promise<void> {
   await tenantLifecycleQueue.add(
     TENANT_LIFECYCLE_JOBS.SIGNUP_RESEND,
-    { email: email.trim().toLowerCase() },
+    { email: email.trim().toLowerCase(), metadata: metadata ?? null },
     {
       attempts: 1,
       removeOnComplete: 1000,
