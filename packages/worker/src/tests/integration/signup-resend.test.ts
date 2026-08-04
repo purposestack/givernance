@@ -12,6 +12,7 @@ import { invitations, outboxEvents, tenants, users } from "@givernance/shared/sc
 import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "../../lib/db.js";
+import { redis } from "../../lib/redis.js";
 import { processSignupResendPayload } from "../../processors/signup-resend.js";
 
 // Distinct ID prefixes so this file doesn't collide with signup-email.test.ts
@@ -43,6 +44,13 @@ const EMAIL_DONE = "done@resend.test";
 const FUTURE = () => new Date(Date.now() + 24 * 60 * 60 * 1000);
 
 beforeAll(async () => {
+  // Reset the SEC-10 per-email rate-limit buckets — EMAIL_PENDING is now
+  // exercised three times in this file (rotate + the two issue-#575
+  // metadata tests), which is exactly the hourly cap; without this reset a
+  // second local run inside the TTL window would be silently rate-limited.
+  const rateKeys = await redis.keys("signup:resend:email:*resend.test");
+  if (rateKeys.length > 0) await redis.del(...rateKeys);
+
   // Pending-verify tenant: provisional, no users row, no KC org.
   await db.execute(
     sql`INSERT INTO tenants (id, name, slug, status, created_via)
@@ -226,5 +234,42 @@ describe("processSignupResendPayload", () => {
       email: `unknown-${randomUUID()}@resend.test`,
     });
     expect(result.matched).toBe(false);
+  });
+
+  // Issue #575 — this flow bypasses the outbox at enqueue time (F3 direct
+  // BullMQ add), so the trace context rides in the job payload and must
+  // land on the `tenant.signup_verification_resent` outbox insert.
+  it("stamps a valid payload traceparent onto the outbox event", async () => {
+    const traceparent = `00-${"12".repeat(16)}-${"34".repeat(8)}-01`;
+    const result = await processSignupResendPayload({
+      email: EMAIL_PENDING,
+      metadata: { traceparent, tracestate: "vendor=resend-test" },
+    });
+    expect(result.matched).toBe(true);
+
+    const { rows } = await db.execute<{
+      metadata: { traceparent?: string; tracestate?: string } | null;
+    }>(
+      sql`SELECT metadata FROM outbox_events
+          WHERE tenant_id = ${ORG_PENDING} AND type = 'tenant.signup_verification_resent'
+          ORDER BY created_at DESC LIMIT 1`,
+    );
+    expect(rows[0]?.metadata?.traceparent).toBe(traceparent);
+    expect(rows[0]?.metadata?.tracestate).toBe("vendor=resend-test");
+  });
+
+  it("refuses to persist an invalid payload traceparent (second trust boundary)", async () => {
+    const result = await processSignupResendPayload({
+      email: EMAIL_PENDING,
+      metadata: { traceparent: "garbage-from-redis" },
+    });
+    expect(result.matched).toBe(true);
+
+    const { rows } = await db.execute<{ metadata: { traceparent?: string } | null }>(
+      sql`SELECT metadata FROM outbox_events
+          WHERE tenant_id = ${ORG_PENDING} AND type = 'tenant.signup_verification_resent'
+          ORDER BY created_at DESC LIMIT 1`,
+    );
+    expect(rows[0]?.metadata).toBeNull();
   });
 });

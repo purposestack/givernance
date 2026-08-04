@@ -50,7 +50,10 @@ import { db, systemDb } from "../helpers/db.js";
 // + lookup logic lives in
 // `packages/worker/src/tests/integration/signup-resend.test.ts`.
 vi.mock("../../modules/signup/queue.js", () => ({
-  enqueueSignupResend: async (email: string) => {
+  enqueueSignupResend: async (
+    email: string,
+    metadata?: import("@givernance/shared/schema").OutboxMetadata | null,
+  ) => {
     const normalised = email.trim().toLowerCase();
     const key = `signup:resend:email:${normalised}`;
     const hits = await redis.incr(key);
@@ -61,7 +64,7 @@ vi.mock("../../modules/signup/queue.js", () => ({
       // Worker-side rate-limit cap exhausted — silent drop, no DB writes.
       return;
     }
-    await resendSignupVerification(systemDb, normalised, randomUUID());
+    await resendSignupVerification(systemDb, normalised, randomUUID(), undefined, metadata ?? null);
   },
 }));
 
@@ -227,6 +230,14 @@ afterEach(async () => {
       await tx.execute(sql`SET LOCAL session_replication_role = 'replica'`);
       await tx.delete(auditLogs).where(inArray(auditLogs.orgId, ids));
       await tx.delete(outboxEvents).where(inArray(outboxEvents.tenantId, ids));
+      // `replica` mode also disables FK enforcement, so deleting `tenants`
+      // without these two used to silently leak orphan users/invitations
+      // rows into the shared test DB — which later broke every
+      // `runExpireJob` test (audit insert FK-fails on the vanished org)
+      // once the leaked provisional windows fell into the past (issue #575
+      // run, 2026-08-04).
+      await tx.delete(invitations).where(inArray(invitations.orgId, ids));
+      await tx.delete(users).where(inArray(users.orgId, ids));
       await tx.delete(tenants).where(inArray(tenants.id, ids));
     });
   }
