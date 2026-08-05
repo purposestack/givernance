@@ -160,6 +160,26 @@ describe("token cache", () => {
     expect(calls.at(-1)?.init.headers).toMatchObject({ Authorization: "Bearer tok-b" });
   });
 
+  it("clamps the cache TTL to 1s when expires_in is shorter than the 30s margin", async () => {
+    // Without the Math.max(…, 1_000) clamp a short-lived token would get a
+    // NEGATIVE TTL — silently re-fetching a token on every single request.
+    enqueue(() => tokenResponse({ access_token: "tok-short", expires_in: 10 }));
+    enqueue(() => okJson(org()));
+    enqueue(() => okJson(org()));
+
+    await kc.getOrganization("kc-org-1");
+    nowMs += 500; // within the clamped 1s TTL — must still be cached
+    await kc.getOrganization("kc-org-1");
+
+    expect(tokenCalls()).toHaveLength(1);
+
+    enqueue(() => tokenResponse({ access_token: "tok-next", expires_in: 10 }));
+    enqueue(() => okJson(org()));
+    nowMs += 600; // past the clamped 1s TTL — must re-fetch
+    await kc.getOrganization("kc-org-1");
+    expect(tokenCalls()).toHaveLength(2);
+  });
+
   it("prefers KEYCLOAK_ADMIN_URL over KEYCLOAK_URL for the admin base", async () => {
     envMock.env.KEYCLOAK_ADMIN_URL = "http://kc-admin.test";
     enqueue(() => tokenResponse());
@@ -170,6 +190,19 @@ describe("token cache", () => {
     expect(tokenCalls()[0]?.url).toContain("http://kc-admin.test/realms/");
     expect(orgCalls()[0]?.url).toBe(
       "http://kc-admin.test/admin/realms/givernance/organizations/kc-org-1",
+    );
+  });
+
+  it("falls back to KEYCLOAK_INTERNAL_URL when KEYCLOAK_ADMIN_URL is unset", async () => {
+    envMock.env.KEYCLOAK_INTERNAL_URL = "http://kc-internal.test";
+    enqueue(() => tokenResponse());
+    enqueue(() => okJson(org()));
+
+    await kc.getOrganization("kc-org-1");
+
+    expect(tokenCalls()[0]?.url).toContain("http://kc-internal.test/realms/");
+    expect(orgCalls()[0]?.url).toBe(
+      "http://kc-internal.test/admin/realms/givernance/organizations/kc-org-1",
     );
   });
 
@@ -216,6 +249,31 @@ describe("admin-API 401 rotation", () => {
 
     await expect(kc.getOrganization("kc-org-1")).rejects.toThrow(/→ 401/);
     expect(orgCalls()).toHaveLength(2);
+  });
+
+  it("re-sends the identical PUT body on the rotated retry and handles its 204", async () => {
+    // Pins two prod-critical slices at once: (a) the retry re-serialises the
+    // SAME body — a retry that dropped it would replace the whole KC org with
+    // an empty document; (b) the 204 guard exists on the retry path too — a
+    // rotated retry answering 204 must not explode in retry.json().
+    enqueue(() => tokenResponse({ expires_in: 300 }));
+    enqueue(() => okJson(org({ org_slug: ["acme"] })));
+    enqueue(() => new Response(null, { status: 401 }));
+    enqueue(() => tokenResponse({ access_token: "tok-fresh", expires_in: 300 }));
+    enqueue(() => noContent());
+
+    const result = await kc.updateOrganization("kc-org-1", {
+      attributes: { logo_url: ["https://cdn.test/x.webp"] },
+    });
+
+    expect(result).toEqual({ changed: true });
+    const puts = orgCalls().filter((c) => c.init.method === "PUT");
+    expect(puts).toHaveLength(2);
+    expect(String(puts[1]?.init.body)).toBe(String(puts[0]?.init.body));
+    expect(puts[1]?.init.headers).toMatchObject({
+      Authorization: "Bearer tok-fresh",
+      "Content-Type": "application/json",
+    });
   });
 
   it("treats a 404 on the rotated retry as null (idempotence survives rotation)", async () => {
@@ -278,7 +336,15 @@ describe("404 idempotence", () => {
 describe("updateOrganization GET-then-PUT merge", () => {
   it("merges updated attributes over the current ones and preserves top-level fields", async () => {
     enqueue(() => tokenResponse({ expires_in: 300 }));
-    enqueue(() => okJson(org({ org_slug: ["acme"], logo_url: ["https://cdn.test/old.webp"] })));
+    enqueue(() =>
+      okJson({
+        ...org({ org_slug: ["acme"], logo_url: ["https://cdn.test/old.webp"] }),
+        // KC's PUT is a full-document replace: any top-level field the merge
+        // drops (instead of spreading `...current`) is destroyed server-side —
+        // for `domains`, that means de-verifying the org's email domains.
+        domains: [{ name: "acme.org", verified: true }],
+      }),
+    );
     enqueue(() => noContent());
 
     const result = await kc.updateOrganization("kc-org-1", {
@@ -293,11 +359,27 @@ describe("updateOrganization GET-then-PUT merge", () => {
       id: "kc-org-1",
       name: "Acme NPO",
       alias: "acme",
+      domains: [{ name: "acme.org", verified: true }], // spread-preserved, not rebuilt
       attributes: {
         org_slug: ["acme"], // untouched key preserved, not replaced
         logo_url: ["https://cdn.test/new.webp"],
       },
     });
+  });
+
+  it("propagates a PUT failure after a successful GET (job must not report success)", async () => {
+    // The processor test mocks updateOrganization entirely, so this is the
+    // only harness that can catch a swallowed PUT error — which would mark
+    // the BullMQ job green while Keycloak never received the write.
+    enqueue(() => tokenResponse({ expires_in: 300 }));
+    enqueue(() => okJson(org()));
+    enqueue(() => new Response("boom", { status: 500 }));
+
+    await expect(
+      kc.updateOrganization("kc-org-1", {
+        attributes: { logo_url: ["https://cdn.test/x.webp"] },
+      }),
+    ).rejects.toThrow(/KC admin PUT \/organizations\/kc-org-1 → 500/);
   });
 
   it("reports changed:true when the org had no attributes at all", async () => {
