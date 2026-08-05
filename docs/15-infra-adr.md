@@ -40,3 +40,4 @@ This document serves as an index for the Givernance Architecture Decision Record
 - [ADR-036: Custom Fields — Per-Org JSONB Column + Registry over EAV, Per-Tenant DDL, and Custom Objects](./adrs/adr-036-custom-fields-jsonb-registry.md)
 - [ADR-037: Receipt Envelope Encryption — Per-Receipt DEK + Rotatable KEK over Storage-Native SSE Alone](./adrs/adr-037-receipt-envelope-encryption.md)
 - [ADR-038: Terraform for Durable Cloud Resources — Terraform/Kamal Boundary + S3 State Backend](./adrs/adr-038-terraform-for-durable-cloud-resources-kamal-boundary.md)
+- [ADR-039: Keycloak Admin Client Fork — Lockstep Duplicate vs. Extracted `@givernance/keycloak-admin` Package](./adrs/adr-039-keycloak-admin-client-fork-extraction-trigger.md)

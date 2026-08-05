@@ -13,6 +13,13 @@
  *
  * Behaviour parity with the api copy: token cache with safety margin,
  * GET-then-PUT for attribute merges, idempotent on 404.
+ *
+ * ⚠ LOCKSTEP FORK — ADR-039. Behavioural changes (token handling, retry
+ * shape, error mapping) made here or in the api copy MUST be mirrored in
+ * the counterpart, or the PR must state why the copies may diverge.
+ * Extraction into `@givernance/keycloak-admin` becomes MANDATORY when a
+ * third consumer lands OR a second two-file KC fix occurs — see
+ * docs/adrs/adr-039-keycloak-admin-client-fork-extraction-trigger.md.
  */
 
 import { assertSafeOrgAttributes } from "@givernance/shared/constants";

@@ -32,6 +32,15 @@
  * Organization-specific endpoints are Keycloak 26+; they are exercised by
  * stubbed-fetch unit tests in `keycloak-admin.test.ts`. The real e2e smoke
  * test ships with issue #114 once the realm is upgraded.
+ *
+ * ⚠ LOCKSTEP FORK — ADR-039. A stripped-down copy of this client lives in
+ * `packages/worker/src/lib/keycloak-admin.ts` (token cache + 401 rotation +
+ * getOrganization/updateOrganization only). Behavioural changes (token
+ * handling, retry shape, error mapping) MUST be mirrored there, or the PR
+ * must state why the copies may diverge. Extraction into
+ * `@givernance/keycloak-admin` becomes MANDATORY when a third consumer
+ * lands OR a second two-file KC fix occurs — see
+ * docs/adrs/adr-039-keycloak-admin-client-fork-extraction-trigger.md.
  */
 
 import { assertSafeOrgAttributes, PINO_REDACT_PATHS } from "@givernance/shared/constants";
