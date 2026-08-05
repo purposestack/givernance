@@ -7,7 +7,7 @@
 
 The Keycloak Admin REST client exists **twice** in the codebase, by design:
 
-- `packages/api/src/lib/keycloak-admin.ts` (~940 lines) — the **canonical** client. Full-featured: `client_credentials` token caching with early-refresh margin, in-flight request deduplication, conservative retry policy (5xx/429/network on idempotent methods only; POST never retried on 5xx), a circuit breaker, and structured pino logging with secret redaction. Consumed by the signup, invitations, tenant-admin, and platform-admins modules.
+- `packages/api/src/lib/keycloak-admin.ts` (~940 lines) — the **canonical** client. Full-featured: `client_credentials` token caching with early-refresh margin, in-flight request deduplication, conservative retry policy (429 and 401-rotate retried on **all** methods including POST; 5xx/network retried on idempotent methods only — POST is never retried on 5xx), a circuit breaker, and structured pino logging with secret redaction. Consumed by the signup, invitations, tenant-admin, platform-admins, and users modules.
 - `packages/worker/src/lib/keycloak-admin.ts` (~175 lines) — a **stripped-down fork** added by PR #287 (Epic #286, org-logo sync). It reproduces only the slice the `keycloak.sync_org_logo` processor needs: token cache with safety margin, retry-once-on-401 token rotation, and the `getOrganization` + `updateOrganization` GET-then-PUT attribute merge, idempotent on 404. No circuit breaker, no in-flight dedup, no retry-on-5xx.
 
 The fork exists because neither "obvious" de-duplication is available:
@@ -15,7 +15,7 @@ The fork exists because neither "obvious" de-duplication is available:
 - **The worker cannot import from `packages/api/*`** — the dependency direction is api → worker via queues, never worker → api. A static cross-package import would also break TypeScript project references (same TS6059 mechanism ADR-025 leans on for the PDF parity test).
 - **The client cannot be hoisted to `@givernance/shared`** — ADR-013 forbids Node-only runtime code in the one package the web bundle imports. An HTTP admin client carrying `env` access and admin-credential handling is exactly what must never be tree-shaken into a browser bundle.
 
-The **security-critical slice is already un-forked**: `SAFE_ORG_ATTRIBUTES` + `assertSafeOrgAttributes` (the allowlist that keeps secrets out of Keycloak Organization attributes — issue #114) live in `@givernance/shared/constants/keycloak-org-attributes` and are imported by both copies. The guard cannot drift; only the transport/behaviour layer around it can.
+The **security-critical slice is already un-forked**: `SAFE_ORG_ATTRIBUTES` + `assertSafeOrgAttributes` (the allowlist that keeps secrets out of Keycloak Organization attributes — issue #114) live in `@givernance/shared/constants/keycloak-org-attributes` and are imported by both copies. The allowlist *definition* cannot drift; its *invocation* is still per-copy — every attribute-write path must call the guard itself (see the drift-guard rule below) — and the transport/behaviour layer around it can drift freely.
 
 What *can* drift is real, though: the 401-rotate-retry shape, the token-cache safety margin, 404-idempotence semantics, and any future KC quirk fixed on one side only (e.g. a 401-then-rotate edge case patched in the api client after an incident, silently absent from the worker copy until the next `sync_org_logo` failure).
 
@@ -26,7 +26,7 @@ What *can* drift is real, though: the 401-rotate-retry shape, the token-cache sa
 **Extract into a new `@givernance/keycloak-admin` package when either trigger fires:**
 
 1. **A third consumer of the KC Admin API lands** — e.g. a CLI tool, the migrate package needing org provisioning, or a separate service; or
-2. **A KC-related bug needs a two-file fix** for the *second* time — i.e. the second occasion on which the same behavioural change must be applied to both copies. (The first two-file fix is tolerable; the second proves the fork is drifting faster than the convention can hold, same logic as ADR-025's "parity test fails twice in six months" criterion.)
+2. **A KC-related bug needs a two-file fix** for the *second* time — i.e. the second occasion on which the same behavioural change must be applied to both copies. (The first two-file fix is tolerable; the second proves the fork is drifting faster than the convention can hold, same logic as ADR-025's "parity test fails twice in six months" criterion. Issue #292's wording — "the second time the fork drifts visibly" — admitted a stricter first-fix reading; this ADR deliberately resolves it to the second fix, consistent with the ADR-025 precedent.)
 
 When the trigger fires, the extraction target is:
 
@@ -47,8 +47,9 @@ The extracted package ships the **full-featured** behaviour (circuit breaker, de
 #### Drift-guard strategy until then
 
 - **Top-of-file banner** in each copy naming its counterpart, this ADR, and the two-condition trigger — so the engineer making the *first* two-file fix knows they are one fix away from mandatory extraction.
-- **Shared allowlist stays shared.** Any new attribute-safety or input-validation logic goes into `@givernance/shared/constants`, never into either fork copy. Pure, web-safe validation code is the one slice that must never be duplicated.
-- **PR discipline**: a PR changing KC admin *behaviour* (token handling, retry shape, error mapping — not endpoint additions the other side doesn't need) in one file MUST either apply it to the counterpart or state in the PR description why the copies are allowed to diverge. Endpoint surface is expected to differ (the worker needs 2 of the api's ~15 operations); cross-cutting behaviour is not.
+- **Shared allowlist stays shared, and every write path invokes it.** Any new attribute-safety or input-validation logic goes into `@givernance/shared/constants`, never into either fork copy. And because the guard's invocation is per-copy, **any new operation that writes Organization attributes — in either copy — MUST call `assertSafeOrgAttributes` before the request**, even though endpoint additions are otherwise exempt from mirroring. A write path without the guard is a security bug (issue #114), not a tolerable divergence.
+- **PR discipline**: a PR changing KC admin *behaviour* (token handling, retry shape, error mapping — not endpoint additions the other side doesn't need) in one file MUST either apply it to the counterpart or state in the PR description why the copies are allowed to diverge. Endpoint surface is expected to differ (the worker needs 2 of the api's ~20 operations); cross-cutting behaviour is not.
+- **Test asymmetry is a known gap (issue #581).** The api client has an exhaustive stubbed-fetch suite (`keycloak-admin.test.ts`); the worker copy currently has none — its only consumer test mocks it out entirely. A byte-parity harness à la ADR-025 is infeasible here (the copies are behaviour-divergent by design), but a stubbed-fetch **contract test** on the worker copy — pinning the shared behavioural slice (token-cache margin, 401-rotate-once, 404-idempotence, GET-then-PUT merge, the `assertSafeOrgAttributes` call) — is the proportionate mechanical guard. Until #581 lands, mirrored fixes have no worker-side harness to land RED/GREEN into, and the drift-guard is social-only.
 
 ### Rationale
 
@@ -81,3 +82,4 @@ Reopen this ADR when:
 - Either **extraction trigger fires** (third consumer, or second two-file behavioural fix) — the decision flips to "extract now".
 - **Keycloak is replaced or its Admin API is dropped** (e.g. a move off KC Organizations) — the fork and the trigger both dissolve.
 - **The worker's KC surface grows past attribute sync** (member management, IdP operations) — a widening worker slice weighs like a third consumer even if package count stays at two.
+- **The impersonation token exchange is consolidated** — `packages/api/src/lib/impersonation/keycloak-exchange.ts` hand-rolls its own fetch to the KC *token* endpoint (not the Admin REST API, so it is not a consumer for trigger purposes), but an extracted `@givernance/keycloak-admin` token layer could absorb that third independent KC credential-handling call site.
