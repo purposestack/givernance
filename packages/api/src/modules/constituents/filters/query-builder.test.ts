@@ -181,7 +181,6 @@ describe("core-date bounds are UTC-explicit (issue #582)", () => {
         "2025-12-31",
       ]);
       expect(condition).toBeDefined();
-      // biome-ignore lint/style/noNonNullAssertion: asserted above
       const { params } = dialect.sqlToQuery(condition!);
       const iso = params.map(isoOf);
       expect(iso).toContain("2025-01-01T00:00:00.000Z");
