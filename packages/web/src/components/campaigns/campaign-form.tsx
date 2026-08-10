@@ -58,6 +58,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
 import { ApiProblem } from "@/lib/api";
 import { createClientApiClient } from "@/lib/api/client-browser";
+import { SETTLEMENT_CURRENCIES } from "@/lib/format";
 import type { BankAccount } from "@/models/bank-account";
 import type {
   Campaign,
@@ -75,7 +76,6 @@ const CAMPAIGN_TYPES: readonly CampaignType[] = [
   "door_drop",
   "digital",
 ] as const;
-const CAMPAIGN_CURRENCIES: readonly CampaignCurrency[] = ["EUR", "GBP", "CHF"] as const;
 
 interface CampaignFormValues {
   name: string;
@@ -385,7 +385,7 @@ export function CampaignForm(props: CampaignFormProps) {
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {CAMPAIGN_CURRENCIES.map((currency) => (
+                      {SETTLEMENT_CURRENCIES.map((currency) => (
                         <SelectItem key={currency} value={currency}>
                           {currency}
                         </SelectItem>
@@ -858,7 +858,7 @@ function SwissQrBillFields({
                 <SelectItem value={EMPTY_BANK_ACCOUNT}>{t("fields.bankAccountNone")}</SelectItem>
                 {bankAccountOptions.map((account) => (
                   <SelectItem key={account.id} value={account.id}>
-                    {`${account.bankName} · ${formatIbanForDisplay(account.iban)} · ${account.currency}`}
+                    {`${account.bankName ?? "—"} · ${formatIbanForDisplay(account.iban)} · ${account.currency}`}
                   </SelectItem>
                 ))}
               </SelectContent>

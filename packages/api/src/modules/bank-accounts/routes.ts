@@ -7,13 +7,10 @@
  * pair lands in `audit_logs` per the URL parser in `plugins/audit.ts`.
  */
 
-import {
-  BANK_ACCOUNT_CURRENCY_VALUES,
-  BANK_ACCOUNT_IBAN_KIND_VALUES,
-} from "@givernance/shared/schema";
+import { BANK_ACCOUNT_IBAN_KIND_VALUES } from "@givernance/shared/schema";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
-import { requireAuth, requireOrgAdmin } from "../../lib/guards.js";
+import { requireAuth, requireBankMutationAcr, requireOrgAdmin } from "../../lib/guards.js";
 import {
   DataArrayResponse,
   DataResponse,
@@ -39,9 +36,12 @@ import {
 
 // ─── Schemas ────────────────────────────────────────────────────────────────
 
-const BankAccountCurrencySchema = Type.Union(
-  BANK_ACCOUNT_CURRENCY_VALUES.map((v) => Type.Literal(v)),
-);
+/** ISO 4217 alpha-3 settlement currency — open-ended, validated for length only. */
+const BankAccountCurrencySchema = Type.String({
+  minLength: 3,
+  maxLength: 3,
+  pattern: "^[A-Z]{3}$",
+});
 
 const BankAccountIbanKindSchema = Type.Union(
   BANK_ACCOUNT_IBAN_KIND_VALUES.map((v) => Type.Literal(v)),
@@ -50,6 +50,7 @@ const BankAccountIbanKindSchema = Type.Union(
 const BankAccountResponse = Type.Object({
   id: UuidSchema,
   orgId: UuidSchema,
+  label: Type.String(),
   holderName: Type.String(),
   /** IG QR-bill v2.4 S-shape: street name (`StrtNm`). */
   holderStreet: Type.String(),
@@ -62,8 +63,9 @@ const BankAccountResponse = Type.Object({
   iban: Type.String(),
   ibanKind: BankAccountIbanKindSchema,
   bic: Type.Union([Type.String(), Type.Null()]),
-  bankName: Type.String(),
+  bankName: Type.Union([Type.String(), Type.Null()]),
   currency: BankAccountCurrencySchema,
+  isActive: Type.Boolean(),
   deletedAt: Type.Union([Type.String(), Type.Null()]),
   createdAt: Type.String(),
   updatedAt: Type.String(),
@@ -73,6 +75,8 @@ const BankAccountResponse = Type.Object({
 // readiness gate doesn't fire on a row the API accepted. See
 // `bank_accounts` migration column widths.
 const BankAccountCreateBody = Type.Object({
+  /** Human-readable label for the operator UI (e.g. "PostFinance CHF"). */
+  label: Type.String({ minLength: 1, maxLength: 255 }),
   holderName: Type.String({ minLength: 1, maxLength: 70 }),
   holderStreet: Type.String({ minLength: 1, maxLength: 70 }),
   holderBuildingNumber: Type.Optional(Type.Union([Type.String({ maxLength: 16 }), Type.Null()])),
@@ -82,12 +86,14 @@ const BankAccountCreateBody = Type.Object({
   /** Free-form input — service canonicalises (strips whitespace, uppercases). */
   iban: Type.String({ minLength: 5, maxLength: 42 }),
   bic: Type.Optional(Type.Union([Type.String({ maxLength: 13 }), Type.Null()])),
-  bankName: Type.String({ minLength: 1, maxLength: 100 }),
-  currency: Type.Optional(BankAccountCurrencySchema),
+  bankName: Type.Optional(Type.String({ minLength: 1, maxLength: 100 })),
+  /** ISO 4217 alpha-3 settlement currency — operators must explicitly choose (no default). */
+  currency: BankAccountCurrencySchema,
 });
 
 const BankAccountUpdateBody = Type.Object(
   {
+    label: Type.Optional(Type.String({ minLength: 1, maxLength: 255 })),
     holderName: Type.Optional(Type.String({ minLength: 1, maxLength: 70 })),
     holderStreet: Type.Optional(Type.String({ minLength: 1, maxLength: 70 })),
     holderBuildingNumber: Type.Optional(Type.Union([Type.String({ maxLength: 16 }), Type.Null()])),
@@ -95,8 +101,11 @@ const BankAccountUpdateBody = Type.Object(
     holderTown: Type.Optional(Type.String({ minLength: 1, maxLength: 35 })),
     holderCountryCode: Type.Optional(Type.String({ minLength: 2, maxLength: 2 })),
     bic: Type.Optional(Type.Union([Type.String({ maxLength: 13 }), Type.Null()])),
-    bankName: Type.Optional(Type.String({ minLength: 1, maxLength: 100 })),
+    bankName: Type.Optional(
+      Type.Union([Type.String({ minLength: 1, maxLength: 100 }), Type.Null()]),
+    ),
     currency: Type.Optional(BankAccountCurrencySchema),
+    isActive: Type.Optional(Type.Boolean()),
   },
   { minProperties: 1 },
 );
@@ -120,6 +129,10 @@ const BankAccountUsageResponse = Type.Object({
 // ─── Routes ────────────────────────────────────────────────────────────────
 
 export async function bankAccountRoutes(app: FastifyInstance) {
+  // Step-up guard instance — bound once per plugin registration so the
+  // factory overhead (if any) is not repeated per request.
+  const bankMutationAcr = requireBankMutationAcr();
+
   app.get(
     "/bank-accounts",
     {
@@ -159,7 +172,10 @@ export async function bankAccountRoutes(app: FastifyInstance) {
   app.post(
     "/bank-accounts",
     {
-      preHandler: requireOrgAdmin,
+      // Guard order: auth → step-up ACR → role. The step-up check fires
+      // only for authenticated callers (requireAuth is first); role check
+      // confirms org_admin on an already-valid session.
+      preHandler: [requireAuth, bankMutationAcr, requireOrgAdmin],
       schema: {
         tags: ["Bank Accounts"],
         body: BankAccountCreateBody,
@@ -249,7 +265,7 @@ export async function bankAccountRoutes(app: FastifyInstance) {
   app.patch(
     "/bank-accounts/:id",
     {
-      preHandler: requireOrgAdmin,
+      preHandler: [requireAuth, bankMutationAcr, requireOrgAdmin],
       schema: {
         tags: ["Bank Accounts"],
         params: IdParams,
@@ -292,7 +308,7 @@ export async function bankAccountRoutes(app: FastifyInstance) {
   app.delete(
     "/bank-accounts/:id",
     {
-      preHandler: requireOrgAdmin,
+      preHandler: [requireAuth, bankMutationAcr, requireOrgAdmin],
       schema: {
         tags: ["Bank Accounts"],
         params: IdParams,

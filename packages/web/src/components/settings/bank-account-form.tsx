@@ -31,10 +31,13 @@ import {
 import { toast } from "@/components/ui/toast";
 import { ApiProblem } from "@/lib/api";
 import { createClientApiClient } from "@/lib/api/client-browser";
-import type { BankAccount, BankAccountCurrency } from "@/models/bank-account";
+import { BANK_ACCOUNT_CURRENCIES } from "@/lib/format";
+import type { BankAccount } from "@/models/bank-account";
 import { BankAccountService } from "@/services/BankAccountService";
 
 interface BankAccountFormValues {
+  /** Human-readable label (e.g. "PostFinance CHF", "UBS EUR"). */
+  label: string;
   holderName: string;
   holderStreet: string;
   holderBuildingNumber: string;
@@ -44,7 +47,8 @@ interface BankAccountFormValues {
   iban: string;
   bic: string;
   bankName: string;
-  currency: BankAccountCurrency;
+  /** ISO 4217 alpha-3 settlement currency. */
+  currency: string;
 }
 
 type CreateMode = { mode: "create"; bankAccount?: undefined };
@@ -56,7 +60,6 @@ interface BankAccountFormBaseProps {
 
 export type BankAccountFormProps = BankAccountFormBaseProps & (CreateMode | EditMode);
 
-const CURRENCIES: readonly BankAccountCurrency[] = ["CHF", "EUR"];
 const COUNTRIES: readonly { value: string; key: string }[] = [
   { value: "CH", key: "CH" },
   { value: "LI", key: "LI" },
@@ -71,6 +74,7 @@ export function BankAccountForm(props: BankAccountFormProps) {
   const form = useForm<BankAccountFormValues>({
     mode: "onBlur",
     defaultValues: {
+      label: props.bankAccount?.label ?? "",
       holderName: props.bankAccount?.holderName ?? "",
       holderStreet: props.bankAccount?.holderStreet ?? "",
       holderBuildingNumber: props.bankAccount?.holderBuildingNumber ?? "",
@@ -99,6 +103,7 @@ export function BankAccountForm(props: BankAccountFormProps) {
     try {
       if (mode === "create") {
         await BankAccountService.createBankAccount(createClientApiClient(), {
+          label: values.label.trim(),
           holderName: values.holderName.trim(),
           holderStreet: values.holderStreet.trim(),
           holderBuildingNumber: values.holderBuildingNumber.trim() || null,
@@ -107,13 +112,14 @@ export function BankAccountForm(props: BankAccountFormProps) {
           holderCountryCode: values.holderCountryCode,
           iban: values.iban.trim(),
           bic: values.bic.trim() || null,
-          bankName: values.bankName.trim(),
+          bankName: values.bankName.trim() || null,
           currency: values.currency,
         });
         toast.success(t("success.created"));
       } else {
         // IBAN is immutable on edit (financial-record integrity).
         await BankAccountService.updateBankAccount(createClientApiClient(), props.bankAccount.id, {
+          label: values.label.trim(),
           holderName: values.holderName.trim(),
           holderStreet: values.holderStreet.trim(),
           holderBuildingNumber: values.holderBuildingNumber.trim() || null,
@@ -121,7 +127,7 @@ export function BankAccountForm(props: BankAccountFormProps) {
           holderTown: values.holderTown.trim(),
           holderCountryCode: values.holderCountryCode,
           bic: values.bic.trim() || null,
-          bankName: values.bankName.trim(),
+          bankName: values.bankName.trim() || null,
           currency: values.currency,
         });
         toast.success(t("success.updated"));
@@ -169,6 +175,24 @@ export function BankAccountForm(props: BankAccountFormProps) {
           <div className="grid gap-5 md:grid-cols-2">
             <FormField
               control={form.control}
+              name="label"
+              rules={{
+                required: t("errors.labelRequired"),
+                maxLength: { value: 255, message: t("errors.labelTooLong") },
+              }}
+              render={({ field }) => (
+                <FormItem className="md:col-span-2">
+                  <FormLabel required>{t("fields.label")}</FormLabel>
+                  <FormControl>
+                    <Input {...field} placeholder={t("fields.labelPlaceholder")} maxLength={255} />
+                  </FormControl>
+                  <FormDescription>{t("fields.labelHint")}</FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
               name="iban"
               rules={{
                 required: t("errors.ibanRequired"),
@@ -204,12 +228,11 @@ export function BankAccountForm(props: BankAccountFormProps) {
               control={form.control}
               name="bankName"
               rules={{
-                required: t("errors.bankNameRequired"),
                 maxLength: { value: 100, message: t("errors.bankNameTooLong") },
               }}
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel required>{t("fields.bankName")}</FormLabel>
+                  <FormLabel>{t("fields.bankName")}</FormLabel>
                   <FormControl>
                     <Input
                       {...field}
@@ -248,17 +271,14 @@ export function BankAccountForm(props: BankAccountFormProps) {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel required>{t("fields.currency")}</FormLabel>
-                  <Select
-                    value={field.value}
-                    onValueChange={(value) => field.onChange(value as BankAccountCurrency)}
-                  >
+                  <Select value={field.value} onValueChange={(value) => field.onChange(value)}>
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {CURRENCIES.map((c) => (
+                      {BANK_ACCOUNT_CURRENCIES.map((c) => (
                         <SelectItem key={c} value={c}>
                           {c}
                         </SelectItem>

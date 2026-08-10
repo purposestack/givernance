@@ -275,6 +275,8 @@ The full rationale for these matrix decisions, including rejected alternatives (
 
 ## 2. Domain model
 
+> **Schema file organisation**: `bank_accounts` is defined in `packages/shared/src/schema/bank-account.ts` — extracted from `swiss-qr-bill.ts` because it is now referenced by the funds module, the campaign editor, and the Settings › Bank Accounts UI, well beyond the QR-bill rail. The Swiss QR-bill rail tables (`swiss_qr_references`, `camt_statements`, `camt_credit_entries`, `camt_unreconciled_entries`) remain in `swiss-qr-bill.ts` and import `bankAccounts` from `./bank-account`. All symbols are re-exported through `schema/index.ts`; no consumer outside `packages/shared/` is affected.
+
 ```mermaid
 erDiagram
     tenants ||--o{ bank_accounts : "owns"

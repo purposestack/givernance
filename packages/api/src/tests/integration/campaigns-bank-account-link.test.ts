@@ -27,6 +27,13 @@ import {
 } from "../helpers/auth.js";
 import { db } from "../helpers/db.js";
 
+/**
+ * Settlement-changing routes (campaign/fund bank links, campaign-funds routing)
+ * now require the same MFA step-up as a bank-account mutation (B5), so the test
+ * tokens carry acr=2 + a fresh auth_time.
+ */
+const stepUp = () => ({ acr: "2", auth_time: Math.floor(Date.now() / 1000) - 60 });
+
 let app: FastifyInstance;
 
 // Same canonical PostFinance test IBAN used in the bank-accounts test
@@ -55,16 +62,35 @@ beforeAll(async () => {
   // Fresh slate for both bank-account scopes — re-runs against a
   // persistent DB would otherwise collide on the partial unique
   // (org_id, iban) WHERE deleted_at IS NULL.
+  // campaign-funds-routing.test.ts runs first and leaves funds that
+  // reference bank accounts; delete them before attempting to delete
+  // bank_accounts to avoid a FK constraint violation.
+  await db.execute(sql`DELETE FROM campaign_funds WHERE org_id IN (${ORG_A}, ${ORG_B})`);
+  await db.execute(
+    sql`DELETE FROM donation_allocations WHERE fund_id IN (SELECT id FROM funds WHERE org_id IN (${ORG_A}, ${ORG_B}))`,
+  );
+  await db.execute(sql`DELETE FROM funds WHERE org_id IN (${ORG_A}, ${ORG_B})`);
   await db.execute(sql`DELETE FROM bank_accounts WHERE org_id IN (${ORG_A}, ${ORG_B})`);
 
   // Seed: two bank accounts on ORG_A (one regular, one QR-IBAN) + one
   // on ORG_B for the cross-tenant test.
-  const tokenA = signToken(app);
+  // Bank account mutations require the step-up ACR claim.
+  const bankAcrClaims = {
+    acr: "2",
+    auth_time: Math.floor(Date.now() / 1000) - 60,
+  };
+  const tokenA = signToken(app, bankAcrClaims);
   const createA = await app.inject({
     method: "POST",
     url: "/v1/bank-accounts",
     headers: authHeader(tokenA),
-    payload: { ...BASE_HOLDER, iban: VALID_CH_IBAN, bankName: "PostFinance", currency: "CHF" },
+    payload: {
+      ...BASE_HOLDER,
+      label: "PostFinance Regular ORG_A",
+      iban: VALID_CH_IBAN,
+      bankName: "PostFinance",
+      currency: "CHF",
+    },
   });
   bankAccountA = createA.json<{ data: { id: string } }>().data.id;
 
@@ -72,16 +98,28 @@ beforeAll(async () => {
     method: "POST",
     url: "/v1/bank-accounts",
     headers: authHeader(tokenA),
-    payload: { ...BASE_HOLDER, iban: VALID_QR_IBAN, bankName: "UBS Switzerland", currency: "CHF" },
+    payload: {
+      ...BASE_HOLDER,
+      label: "UBS QR-IBAN ORG_A",
+      iban: VALID_QR_IBAN,
+      bankName: "UBS Switzerland",
+      currency: "CHF",
+    },
   });
   qrIbanBankAccountA = createQrIban.json<{ data: { id: string } }>().data.id;
 
-  const tokenB = signTokenB(app);
+  const tokenB = signTokenB(app, bankAcrClaims);
   const createB = await app.inject({
     method: "POST",
     url: "/v1/bank-accounts",
     headers: authHeader(tokenB),
-    payload: { ...BASE_HOLDER, iban: VALID_CH_IBAN, bankName: "PostFinance", currency: "CHF" },
+    payload: {
+      ...BASE_HOLDER,
+      label: "PostFinance Regular ORG_B",
+      iban: VALID_CH_IBAN,
+      bankName: "PostFinance",
+      currency: "CHF",
+    },
   });
   bankAccountB = createB.json<{ data: { id: string } }>().data.id;
 });
@@ -94,7 +132,7 @@ describe("Campaign × bank-account link (Epic #318)", () => {
   let campaignId: string;
 
   it("POST /v1/campaigns persists `bankAccountId` + defaults `qrReferenceMode` to auto", async () => {
-    const token = signToken(app);
+    const token = signToken(app, stepUp());
     const res = await app.inject({
       method: "POST",
       url: "/v1/campaigns",
@@ -117,7 +155,7 @@ describe("Campaign × bank-account link (Epic #318)", () => {
   });
 
   it("GET /v1/campaigns/:id surfaces the link to the operator UI", async () => {
-    const token = signToken(app);
+    const token = signToken(app, stepUp());
     const res = await app.inject({
       method: "GET",
       url: `/v1/campaigns/${campaignId}`,
@@ -131,7 +169,7 @@ describe("Campaign × bank-account link (Epic #318)", () => {
   });
 
   it("PATCH /v1/campaigns/:id can flip the link to a different (same-tenant) account", async () => {
-    const token = signToken(app);
+    const token = signToken(app, stepUp());
     const res = await app.inject({
       method: "PATCH",
       url: `/v1/campaigns/${campaignId}`,
@@ -147,7 +185,7 @@ describe("Campaign × bank-account link (Epic #318)", () => {
   });
 
   it("PATCH /v1/campaigns/:id can unlink (NULL = back to standard mode)", async () => {
-    const token = signToken(app);
+    const token = signToken(app, stepUp());
     const res = await app.inject({
       method: "PATCH",
       url: `/v1/campaigns/${campaignId}`,
@@ -168,7 +206,7 @@ describe("Campaign × bank-account link (Epic #318)", () => {
   });
 
   it("rejects a cross-tenant `bankAccountId` (ADR-019)", async () => {
-    const token = signToken(app);
+    const token = signToken(app, stepUp());
     const res = await app.inject({
       method: "PATCH",
       url: `/v1/campaigns/${campaignId}`,
@@ -182,13 +220,19 @@ describe("Campaign × bank-account link (Epic #318)", () => {
 
   it("rejects a soft-deleted `bankAccountId` at link-time", async () => {
     // Create a throwaway account, soft-delete it, then try to link.
-    const token = signToken(app);
+    // Bank account mutations need the step-up ACR; campaign PATCH does not.
+    const bankToken = signToken(app, {
+      acr: "2",
+      auth_time: Math.floor(Date.now() / 1000) - 60,
+    });
+    const token = signToken(app, stepUp());
     const tempCreate = await app.inject({
       method: "POST",
       url: "/v1/bank-accounts",
-      headers: authHeader(token),
+      headers: authHeader(bankToken),
       payload: {
         ...BASE_HOLDER,
+        label: "Throwaway Test Account",
         iban: "CH3208387000001080173", // SIX-published test (regular CH)
         bankName: "Test",
         currency: "CHF",
@@ -200,7 +244,7 @@ describe("Campaign × bank-account link (Epic #318)", () => {
     await app.inject({
       method: "DELETE",
       url: `/v1/bank-accounts/${tempId}`,
-      headers: authHeader(token),
+      headers: authHeader(bankToken),
     });
 
     const res = await app.inject({

@@ -29,7 +29,17 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { createClientApiClient } from "@/lib/api/client-browser";
-import { formatMonthName, formatMonthYear } from "@/lib/format";
+import {
+  FINANCE_FILTER_CURRENCIES,
+  type FinanceFilterCurrency,
+  formatCurrency,
+  formatCurrencyRounded,
+  formatDecimal,
+  formatMonthName,
+  formatMonthYear,
+  formatNumber,
+  PLATFORM_BASE_CURRENCY,
+} from "@/lib/format";
 import type {
   FinancePeriod,
   FinanceSummary,
@@ -53,40 +63,6 @@ const PERIOD_VALUES = [
   { value: "90d" as FinancePeriod, key: "period.90d" as const },
   { value: "ytd" as FinancePeriod, key: "period.ytd" as const },
 ];
-
-function formatCents(cents: number, currency = "EUR", showCents = true): string {
-  const amount = cents / 100;
-  return new Intl.NumberFormat("fr-FR", {
-    style: "currency",
-    currency,
-    minimumFractionDigits: showCents ? 2 : 0,
-    maximumFractionDigits: showCents ? 2 : 0,
-  }).format(amount);
-}
-
-function splitCurrency(cents: number, currency = "EUR"): { main: string; suffix: string } {
-  const formatted = formatCents(cents, currency);
-  const match = formatted.match(/^(.+)([,.])(\d{2})\s*(.*)$/);
-  if (!match) return { main: formatted, suffix: "" };
-  return { main: match[1] ?? formatted, suffix: `${match[2]}${match[3]}` };
-}
-
-function formatPercent(value: number, digits = 1): string {
-  return new Intl.NumberFormat("fr-FR", {
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-  }).format(value);
-}
-
-function formatNumber(value: number): string {
-  return new Intl.NumberFormat("fr-FR").format(value);
-}
-
-function formatShortDate(iso: string): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  return d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
-}
 
 function deltaPillVariant(percent: number, isCost = false): "up" | "down" | "flat" | "cost" {
   if (Math.abs(percent) < 0.05) return "flat";
@@ -120,7 +96,7 @@ function heroGradeClass(grade: string | null): string {
 }
 
 interface FinanceFilters {
-  currency: "all" | "EUR" | "GBP" | "CHF";
+  currency: FinanceFilterCurrency;
   tenantId: "all" | string;
 }
 
@@ -133,6 +109,43 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
   const [error, setError] = useState<boolean>(initialError);
   const [flushing, setFlushing] = useState(false);
   const t = useTranslations("admin.finance");
+  const locale = useLocale();
+
+  // Display currency for cross-currency aggregates: the selected filter when a
+  // single currency is picked, otherwise the platform reporting base.
+  const displayCurrency = filters.currency === "all" ? PLATFORM_BASE_CURRENCY : filters.currency;
+
+  // Locale-bound formatters (replace the former module-scope helpers that were
+  // hardcoded to "fr-FR" + "EUR"). Function declarations hoist, so they are
+  // callable from the derived values below.
+  function formatCents(
+    cents: number,
+    currency: string = displayCurrency,
+    showCents = true,
+  ): string {
+    return (showCents ? formatCurrency : formatCurrencyRounded)(cents, locale, currency);
+  }
+
+  function splitCurrency(
+    cents: number,
+    currency: string = displayCurrency,
+  ): { main: string; suffix: string } {
+    const formatted = formatCents(cents, currency);
+    const match = formatted.match(/^(.+)([,.])(\d{2})\s*(.*)$/);
+    if (!match) return { main: formatted, suffix: "" };
+    return { main: match[1] ?? formatted, suffix: `${match[2]}${match[3]}` };
+  }
+
+  // Percentages carry their own `%` glyph in the surrounding JSX, so this is a
+  // plain fixed-digit number format — not lib/format's `formatPercent`.
+  function formatPercent(value: number, digits = 1): string {
+    return formatDecimal(value, locale, digits);
+  }
+
+  function formatShortDate(iso: string): string {
+    if (!iso) return "";
+    return new Date(iso).toLocaleDateString(locale, { day: "numeric", month: "short" });
+  }
 
   const periodOptions: Array<{ value: FinancePeriod; label: string }> = PERIOD_VALUES.map(
     ({ value, key }) => ({ value, label: t(key) }),
@@ -463,13 +476,13 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
     // it's not referenced inside.
     void summary;
     const now = new Date();
-    return now.toLocaleString("fr-FR", {
+    return now.toLocaleString(locale, {
       day: "numeric",
       month: "short",
       hour: "2-digit",
       minute: "2-digit",
     });
-  }, [summary]);
+  }, [summary, locale]);
 
   const staleSourcesCount = useMemo(() => {
     if (!summary) return 0;
@@ -893,10 +906,11 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
             value={filters.currency}
             onChange={(e) => handleCurrencyChange(e.target.value as FinanceFilters["currency"])}
           >
-            <option value="all">{t("filters.currencyAll")}</option>
-            <option value="EUR">EUR</option>
-            <option value="GBP">GBP</option>
-            <option value="CHF">CHF</option>
+            {FINANCE_FILTER_CURRENCIES.map((code) => (
+              <option key={code} value={code}>
+                {code === "all" ? t("filters.currencyAll") : code}
+              </option>
+            ))}
           </select>
           <select
             className="form-select"
@@ -1020,7 +1034,7 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
               {formatPercent(volumeDelta, 1)}%
             </span>
             <span className="kpi-foot">
-              {t("kpisExtra.volumeFoot", { count: formatNumber(kpis.donorCount) })}
+              {t("kpisExtra.volumeFoot", { count: formatNumber(kpis.donorCount, locale) })}
             </span>
           </div>
         </article>
@@ -1156,8 +1170,8 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
               revenueLabel: t("chartLabels.revenueLabel"),
               formatVolumeTick: (v) => `€${Math.round(v / 1000)}k`,
               formatRevenueTick: (v) => `€${Math.round(v)}`,
-              formatVolume: (v) => formatCents(Math.round(v * 100), "EUR", false),
-              formatRevenue: (v) => formatCents(Math.round(v * 100), "EUR", false),
+              formatVolume: (v) => formatCents(Math.round(v * 100), displayCurrency, false),
+              formatRevenue: (v) => formatCents(Math.round(v * 100), displayCurrency, false),
             }}
           />
         ) : (
@@ -1464,7 +1478,7 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
                       </span>
                     </span>
                     <span className="tenant-amount">
-                      {formatCents(tenant.volumeCents, "EUR", false)}
+                      {formatCents(tenant.volumeCents, displayCurrency, false)}
                       <small>
                         {t("topTenantsCard.donationsCountSuffix", {
                           count: tenant.donationCount,
@@ -1510,7 +1524,7 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
             </div>
             <p className="kpi-foot" style={{ marginTop: "var(--space-3)" }}>
               {t("refundCard.amountSuffix", {
-                amount: formatCents(kpis.refundedVolumeCents, "EUR", false),
+                amount: formatCents(kpis.refundedVolumeCents, displayCurrency, false),
               })}
             </p>
           </div>
@@ -1550,7 +1564,7 @@ export function FinanceDashboard({ initialSummary, initialError }: FinanceDashbo
                         }}
                       />
                       <span className="c">{c.currency}</span>
-                      <span className="a">{formatCents(c.volumeCents, "EUR", false)}</span>
+                      <span className="a">{formatCents(c.volumeCents, c.currency, false)}</span>
                       <span className="s">{formatPercent(sharePct, 1)}%</span>
                     </div>
                   );

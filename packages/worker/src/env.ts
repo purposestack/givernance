@@ -87,6 +87,17 @@ const EnvSchema = Type.Object({
   STRIPE_SECRET_KEY: Type.Optional(Type.String({ minLength: 1 })),
   /** ExchangeRate-API key used for currency conversion refreshes */
   EXCHANGE_RATE_API_KEY: Type.Optional(Type.String({ minLength: 1 })),
+  /**
+   * Fixer.io API key — used by the FX-rate cache refresh and backfill jobs
+   * (ADR-032 §2.1, Epic #416 Tasks 9–11). Optional — when absent, the
+   * FxRateService skips live calls and returns rate: null (fx_pending fallback).
+   */
+  FIXER_API_KEY: Type.Optional(Type.String({ minLength: 1 })),
+  /**
+   * Number of fx_pending donations processed per backfill_fx_rate batch
+   * (Epic #416 Task 11). Defaults to 100.
+   */
+  BACKFILL_FX_BATCH_SIZE: Type.Integer({ minimum: 1, maximum: 1000, default: 100 }),
   /** Outbound email backend — `mailpit` (SMTP / dev) or `resend` (HTTP API / staging+prod) */
   EMAIL_PROVIDER: EmailProvider,
   /**

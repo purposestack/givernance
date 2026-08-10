@@ -15,6 +15,8 @@ import {
   numeric,
   pgEnum,
   pgTable,
+  primaryKey,
+  smallint,
   text,
   timestamp,
   unique,
@@ -297,6 +299,15 @@ export const users = pgTable(
      * different from the tenant default at acceptance time (issue #153).
      */
     locale: varchar("locale", { length: 10 }).$type<Locale>(),
+    /**
+     * Personal display currency override (ADR-032 §2.8, Epic #416 Task 7).
+     * NULL means "use the org's baseCurrency as the display currency".
+     * When set, must reference a `currency_metadata.code` WHERE enabled = true.
+     * The PATCH /v1/users/me endpoint validates the value against
+     * currency_metadata at write time and returns 422 if the currency is not
+     * found or not enabled.
+     */
+    displayCurrency: varchar("display_currency", { length: 3 }),
     /**
      * Soft-delete marker (ADR-021). Set when an org_admin removes a
      * member; cleared on rejoin. Listing endpoints, /me, and PATCH all
@@ -685,6 +696,29 @@ export {
   type NewCustomizationQuotaOverrideRow,
 } from "./customization";
 
+// ─── Currency metadata (ADR-032 §2.9, Epic #416) ──────────────────────────────
+
+export {
+  type CurrencyMetadata,
+  currencyMetadata,
+  type NewCurrencyMetadata,
+} from "./currency-metadata";
+
+// ─── Bank accounts ────────────────────────────────────────────────────────────
+//
+// `bank-account.ts` uses a lazy `references(() => tenants.id)` callback back
+// into this file (same circular-import pattern as `swiss-qr-bill.ts`).
+import { bankAccounts } from "./bank-account";
+
+export {
+  BANK_ACCOUNT_IBAN_KIND_VALUES,
+  type BankAccount,
+  type BankAccountIbanKind,
+  bankAccountIbanKindEnum,
+  bankAccounts,
+  type NewBankAccount,
+} from "./bank-account";
+
 // ─── Swiss QR-bill foundation (Epic #318) ────────────────────────────────────
 //
 // The cross-table FKs `campaigns.bank_account_id`, `donations.swiss_qr_reference_id`,
@@ -693,7 +727,6 @@ export {
 // lazy `references((): AnyPgColumn => ...)` callbacks — the table definitions
 // in `swiss-qr-bill.ts` themselves only use lazy refs back into this file.
 import {
-  bankAccounts,
   campaignQrReferenceModeEnum,
   camtCreditEntries,
   donationPaymentSourceEnum,
@@ -701,14 +734,6 @@ import {
 } from "./swiss-qr-bill";
 
 export {
-  BANK_ACCOUNT_CURRENCY_VALUES,
-  BANK_ACCOUNT_IBAN_KIND_VALUES,
-  type BankAccount,
-  type BankAccountCurrency,
-  type BankAccountIbanKind,
-  bankAccountCurrencyEnum,
-  bankAccountIbanKindEnum,
-  bankAccounts,
   CAMPAIGN_QR_REFERENCE_MODE_VALUES,
   CAMT_STATEMENT_STATUS_VALUES,
   CAMT_UNRECONCILED_REASON_VALUES,
@@ -730,7 +755,6 @@ export {
   DONATION_PAYMENT_SOURCE_VALUES,
   type DonationPaymentSource,
   donationPaymentSourceEnum,
-  type NewBankAccount,
   type NewCamtCreditEntry,
   type NewCamtStatement,
   type NewCamtUnreconciledEntry,
@@ -928,6 +952,41 @@ export const donations = pgTable(
      * webhook handler.
      */
     refundedAt: timestamp("refunded_at", { withTimezone: true }),
+
+    // ── Fee breakdown (in donation/presentment currency) ────────────────────
+    transactionFeeCents: integer("transaction_fee_cents").notNull().default(0),
+    forexFeeCents: integer("forex_fee_cents").notNull().default(0),
+    /** Nullable; computed on write as amountCents − transactionFeeCents − forexFeeCents − platformFeeCents. */
+    netAmountCents: integer("net_amount_cents"),
+
+    // ── Settlement record ────────────────────────────────────────────────────
+    settledAmountCents: integer("settled_amount_cents"),
+    settledCurrency: varchar("settled_currency", { length: 3 }),
+    stripeBalanceTxnId: text("stripe_balance_txn_id"),
+
+    // ── FX accounting ────────────────────────────────────────────────────────
+    /**
+     * Source of the exchange rate: 'stripe_balance_txn' | 'fixer_api' |
+     * 'backfilled' | 'manual' | 'same_currency'. Checked at DB level via
+     * donations_exchange_rate_source_check constraint (migration 0060).
+     */
+    exchangeRateSource: text("exchange_rate_source"),
+    exchangeRateTimestamp: timestamp("exchange_rate_timestamp", { withTimezone: true }),
+    /**
+     * Donation amount converted to the fund's settlement currency, in
+     * settlement-currency cents. Supersedes amountBaseCents conceptually
+     * (ADR-032 §2.3) — amountBaseCents is retained for back-compat.
+     */
+    amountInSettlementCurrencyCents: integer("amount_in_settlement_currency_cents"),
+
+    // ── Outage resilience ────────────────────────────────────────────────────
+    /**
+     * Set TRUE when the FX rate could not be fetched synchronously (e.g. Fixer
+     * API outage). The backfill job queries WHERE fx_pending = TRUE, fills in
+     * exchangeRate / exchangeRateSource / amountInSettlementCurrencyCents, then
+     * flips this to FALSE. (Epic #416 Task 5 / ADR-032 §2.3)
+     */
+    fxPending: boolean("fx_pending").notNull().default(false),
     paymentMethod: varchar("payment_method", { length: 50 }),
     paymentRef: varchar("payment_ref", { length: 255 }),
     /**
@@ -977,6 +1036,18 @@ export const funds = pgTable(
     name: varchar("name", { length: 255 }).notNull(),
     description: text("description"),
     type: fundTypeEnum("type").notNull().default("unrestricted"),
+    /**
+     * Optional FK to the settlement bank account for this fund (ADR-032 §2.4,
+     * Epic #416 Task 3). When set, donations allocated to this fund settle via
+     * the specified bank account; `bank_accounts.currency` becomes the fund's
+     * settlement currency. Nullable — existing funds have no bank account
+     * assigned yet. A follow-up migration will enforce NOT NULL once all funds
+     * are assigned. ON DELETE RESTRICT prevents accidental removal of an account
+     * that still has funds bound to it.
+     */
+    bankAccountId: uuid("bank_account_id").references((): AnyPgColumn => bankAccounts.id, {
+      onDelete: "restrict",
+    }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -1012,6 +1083,49 @@ export const donationAllocations = pgTable(
     index("donation_allocations_fund_id_idx").on(table.fundId),
   ],
 );
+
+// ─── Org Currency Balances (ADR-032 §2.10) ───────────────────────────────────
+
+/**
+ * Materialized running totals per (org, currency) pair. Updated by the
+ * `update-org-currency-balance` worker processor whenever a domain event
+ * signals a donation status change (donation.created, donation.refunded,
+ * donation.status_changed). Consumed by the reporting API to answer
+ * "how much has this org received in each currency?" in O(1) without
+ * scanning the full `donations` table.
+ *
+ * `cleared_total_cents` — sum of donations with status = 'cleared'.
+ * `pending_total_cents` — sum of donations with status = 'pending'.
+ *
+ * Deltas are signed: refunds pass a negative cleared delta so the
+ * ON CONFLICT UPDATE naturally subtracts from the running total.
+ *
+ * RLS tenant isolation via the `app_current_organization_id()` helper (FORCE'd).
+ * Only `SELECT` is granted to `givernance_app`; the worker processor
+ * connects via the owner pool for the upsert.
+ *
+ * Totals are BIGINT cents — cumulative lifetime running totals overflow INTEGER
+ * (cap ≈ €21.4M) for a mid/large NPO (ADR-032 §2.10).
+ */
+export const orgCurrencyBalances = pgTable(
+  "org_currency_balances",
+  {
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    currency: varchar("currency", { length: 3 }).notNull(),
+    clearedTotalCents: bigint("cleared_total_cents", { mode: "number" }).notNull().default(0),
+    pendingTotalCents: bigint("pending_total_cents", { mode: "number" }).notNull().default(0),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.orgId, t.currency] }),
+    index("org_currency_balances_org_idx").on(t.orgId),
+  ],
+);
+
+export type OrgCurrencyBalance = typeof orgCurrencyBalances.$inferSelect;
+export type NewOrgCurrencyBalance = typeof orgCurrencyBalances.$inferInsert;
 
 // ─── Pledges ─────────────────────────────────────────────────────────────────
 
@@ -1248,6 +1362,27 @@ export const campaignFunds = pgTable(
     fundId: uuid("fund_id")
       .notNull()
       .references(() => funds.id, { onDelete: "cascade" }),
+    /**
+     * Percentage of a split-routed donation allocated to this fund.
+     * NULL is valid when only one fund is assigned — in that case the
+     * entire donation amount flows to the single fund with no split.
+     * When two or more funds are assigned, every row must have a non-null
+     * splitPct and the values must sum to exactly 100.00.
+     * ADR-032 §2.5, Epic #416 Task 4.
+     */
+    splitPct: numeric("split_pct", { precision: 5, scale: 2 }),
+    /**
+     * When true, this fund is presented as the default on the online
+     * donation form when the donor does not select a specific fund.
+     * Exactly one row per campaign must have isOnlineDefault = true
+     * whenever two or more funds are assigned.
+     */
+    isOnlineDefault: boolean("is_online_default").notNull().default(false),
+    /**
+     * Display / picker order within the campaign. Lower values appear
+     * first. Defaults to 0 — ties are broken by fund name client-side.
+     */
+    sortOrder: smallint("sort_order").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [

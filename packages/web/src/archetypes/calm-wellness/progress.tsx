@@ -20,9 +20,9 @@ export function CalmProgress({ data }: ProgressSlotProps) {
         <span style={{ width: `${progressPercent}%` }} />
       </div>
       <p className="calm-progress__meta">
-        <strong>{formatCurrency(data.raisedCents, "en")}</strong> raised ·{" "}
-        <strong>{progressPercent} %</strong> of goal · {data.donorCount.toLocaleString("en")}{" "}
-        supporters
+        <strong>{formatCurrency(data.raisedCents, data.locale, data.defaultCurrency)}</strong>{" "}
+        raised · <strong>{progressPercent} %</strong> of goal ·{" "}
+        {data.donorCount.toLocaleString(data.locale)} supporters
       </p>
     </div>
   );

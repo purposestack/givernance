@@ -75,6 +75,7 @@ function canonicaliseBic(input: string | null | undefined): string | null {
 }
 
 export interface CreateBankAccountInput {
+  label: string;
   holderName: string;
   holderStreet: string;
   holderBuildingNumber?: string | null;
@@ -83,11 +84,13 @@ export interface CreateBankAccountInput {
   holderCountryCode?: string;
   iban: string;
   bic?: string | null;
-  bankName: string;
-  currency?: "CHF" | "EUR";
+  bankName?: string | null;
+  /** ISO 4217 alpha-3 settlement currency (e.g. "CHF", "EUR"). Required — no default. */
+  currency: string;
 }
 
 export interface UpdateBankAccountInput {
+  label?: string;
   holderName?: string;
   holderStreet?: string;
   holderBuildingNumber?: string | null;
@@ -95,8 +98,10 @@ export interface UpdateBankAccountInput {
   holderTown?: string;
   holderCountryCode?: string;
   bic?: string | null;
-  bankName?: string;
-  currency?: "CHF" | "EUR";
+  bankName?: string | null;
+  /** ISO 4217 alpha-3 settlement currency (e.g. "CHF", "EUR"). */
+  currency?: string;
+  isActive?: boolean;
 }
 
 export class BankAccountConflictError extends Error {
@@ -124,7 +129,7 @@ function deriveIbanKind(iban: string): "iban" | "qr_iban" {
   return classifyIban(iban) === "qr_iban" ? "qr_iban" : "iban";
 }
 
-function validateCurrencyVsKind(currency: "CHF" | "EUR", ibanKind: "iban" | "qr_iban"): void {
+function validateCurrencyVsKind(currency: string, ibanKind: "iban" | "qr_iban"): void {
   // EUR + QRR is illegal under IG QR-bill v2.4 (euroSIC discontinuation).
   // A QR-IBAN forces QRR for the reference type, so EUR + QR-IBAN is the
   // exact pathological combination we block here at create-time, with the
@@ -206,7 +211,7 @@ export async function createBankAccount(
   }
 
   const ibanKind = deriveIbanKind(iban);
-  const currency = input.currency ?? "CHF";
+  const { currency } = input;
   validateCurrencyVsKind(currency, ibanKind);
 
   const holderCountryCode = (input.holderCountryCode ?? "CH").toUpperCase();
@@ -250,6 +255,7 @@ export async function createBankAccount(
       .insert(bankAccounts)
       .values({
         orgId,
+        label: input.label,
         holderName: input.holderName,
         holderStreet: input.holderStreet,
         holderBuildingNumber:
@@ -262,7 +268,7 @@ export async function createBankAccount(
         iban,
         ibanKind,
         bic,
-        bankName: input.bankName,
+        bankName: input.bankName ?? null,
         currency,
       })
       .returning();
@@ -315,6 +321,7 @@ function validateUpdateBankAccountInput(input: UpdateBankAccountInput): void {
  */
 function buildUpdatePatch(input: UpdateBankAccountInput) {
   const patch: Partial<typeof bankAccounts.$inferInsert> = { updatedAt: new Date() };
+  if (input.label !== undefined) patch.label = input.label;
   if (input.holderName !== undefined) patch.holderName = input.holderName;
   if (input.holderStreet !== undefined) patch.holderStreet = input.holderStreet;
   if (input.holderBuildingNumber !== undefined) {
@@ -329,8 +336,9 @@ function buildUpdatePatch(input: UpdateBankAccountInput) {
     patch.holderCountryCode = input.holderCountryCode.toUpperCase();
   }
   if (input.bic !== undefined) patch.bic = canonicaliseBic(input.bic);
-  if (input.bankName !== undefined) patch.bankName = input.bankName;
+  if (input.bankName !== undefined) patch.bankName = input.bankName ?? null;
   if (input.currency !== undefined) patch.currency = input.currency;
+  if (input.isActive !== undefined) patch.isActive = input.isActive;
   return patch;
 }
 

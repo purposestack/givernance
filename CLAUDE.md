@@ -249,6 +249,26 @@ close #182
 
 Apply this in `gh pr create` / `gh pr edit` bodies, in commit messages that close issues, and in any PR template. Use `close` (not `closes`, not `fix`, not `fixes`).
 
+### 🛑 Never close an Epic issue before the PR is merged
+
+**Epic issues (labelled `epic` or tracking a multi-task milestone) must only be closed once the corresponding PR is actually merged into `main`.** Closing an Epic while the PR is still open or in draft gives a false signal to the team that the work is done and prevents tracking of unresolved review feedback or CI failures. Use `gh issue close` only in the PR body's `close #N` directive (auto-closes at merge time) or manually after confirming the PR is merged.
+
+### 🛑 Always rebase against main — never merge main into a feature branch
+
+**Use `git rebase origin/main` to incorporate upstream changes into a feature branch. Never run `git merge origin/main` (or `git merge main`) on a feature branch.** Merge commits pollute the linear history, make `git bisect` harder, and produce noisy diffs in PRs. The rebase workflow:
+
+```bash
+git fetch origin
+git rebase origin/main
+# resolve any conflicts per file, then:
+git add <resolved-file>
+git rebase --continue
+# repeat until clean, then:
+git push --force-with-lease origin <branch>
+```
+
+If a rebase conflict arises in a generated or auto-formatted file, always prefer the `main` version of the generated parts and re-apply only the intentional feature changes on top.
+
 ### 🛑 RLS is the safety net, never the contract (issue #430)
 
 **Every tenant-scoped Drizzle query MUST filter by `eq(<table>.orgId, ctx.orgId)` (or equivalent) explicitly, in addition to whatever RLS policy applies.** RLS — `users.tenant_isolation`, etc. — is defence in depth. The contract is the application code.

@@ -9,7 +9,9 @@ export function EditorialProgress({ data }: ProgressSlotProps) {
 
   return (
     <section className="editorial-progress" aria-label="Campaign progress">
-      <p className="editorial-progress__amount">{formatCurrency(data.raisedCents, "en")}</p>
+      <p className="editorial-progress__amount">
+        {formatCurrency(data.raisedCents, data.locale, data.defaultCurrency)}
+      </p>
       <div>
         <div
           className="editorial-progress__bar"
@@ -22,8 +24,8 @@ export function EditorialProgress({ data }: ProgressSlotProps) {
           <span style={{ width: `${progressPercent}%` }} />
         </div>
         <p className="editorial-progress__meta">
-          {formatCurrency(goalCents, "en")} goal · {data.donorCount.toLocaleString("en")}{" "}
-          contributors · {progressPercent} % of target
+          {formatCurrency(goalCents, data.locale, data.defaultCurrency)} goal ·{" "}
+          {data.donorCount.toLocaleString(data.locale)} contributors · {progressPercent} % of target
         </p>
       </div>
     </section>

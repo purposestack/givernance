@@ -19,10 +19,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
 import { ApiProblem } from "@/lib/api";
 import { createClientApiClient } from "@/lib/api/client-browser";
+import { SETTLEMENT_CURRENCIES } from "@/lib/format";
 import type { TenantCurrency } from "@/models/tenant";
 import { TenantService } from "@/services/TenantService";
-
-const TENANT_CURRENCIES: TenantCurrency[] = ["EUR", "GBP", "CHF"];
 
 function resolveApiErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof ApiProblem) {
@@ -195,7 +194,7 @@ export function TenantSettingsForm({
                   <SelectValue placeholder={t("fields.baseCurrencyPlaceholder")} />
                 </SelectTrigger>
                 <SelectContent>
-                  {TENANT_CURRENCIES.map((currency) => (
+                  {SETTLEMENT_CURRENCIES.map((currency) => (
                     <SelectItem key={currency} value={currency}>
                       {currency}
                     </SelectItem>

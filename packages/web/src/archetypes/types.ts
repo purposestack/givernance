@@ -18,6 +18,8 @@
 import type { PublicPageStyleKey } from "@givernance/shared/constants";
 import type { ComponentType, ReactNode } from "react";
 
+import type { PublicDonationCurrency } from "@/models/public-page";
+
 /**
  * Donor-facing payload shape the public-page endpoint returns to the
  * archetype slots. Mirrors `PublishedCampaignPublicPage` from
@@ -38,7 +40,9 @@ export interface ArchetypePageData {
   goalAmountCents: number | null;
   raisedCents: number;
   donorCount: number;
-  defaultCurrency: "EUR" | "GBP" | "CHF";
+  defaultCurrency: PublicDonationCurrency;
+  /** BCP-47 locale for donor-facing money/number formatting in every slot. */
+  locale: string;
   organisationName: string;
   organisationMission: string | null;
   organisationLogoUrl: string | null;

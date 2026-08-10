@@ -19,6 +19,8 @@ import { platformAdminsRoutes } from "./modules/admin/platform-admins-routes.js"
 import { auditRoutes } from "./modules/audit/routes.js";
 import { bankAccountRoutes } from "./modules/bank-accounts/routes.js";
 import { brandingRoutes } from "./modules/branding/routes.js";
+import { campaignFundRoutes } from "./modules/campaigns/campaign-funds.routes.js";
+import { checkoutConfigRoutes } from "./modules/campaigns/checkout-config.routes.js";
 import { postalCampaignRoutes } from "./modules/campaigns/postal-routes.js";
 import { campaignRoutes } from "./modules/campaigns/routes.js";
 import { constituentRoutes } from "./modules/constituents/routes.js";
@@ -201,6 +203,8 @@ export async function createServer(opts: CreateServerOpts = {}): Promise<Fastify
   await app.register(bankAccountRoutes, { prefix: "/v1" });
   await app.register(pledgeRoutes, { prefix: "/v1" });
   await app.register(campaignRoutes, { prefix: "/v1" });
+  await app.register(campaignFundRoutes, { prefix: "/v1" });
+  await app.register(checkoutConfigRoutes, { prefix: "/v1" });
   await app.register(postalCampaignRoutes, { prefix: "/v1" });
   await app.register(paymentRoutes, { prefix: "/v1" });
   await app.register(stripeWebhookRoute, { prefix: "/v1" });

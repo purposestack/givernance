@@ -1,6 +1,7 @@
 /** Shared route guards — reusable preHandler hooks for auth and RBAC */
 
 import { timingSafeEqual } from "node:crypto";
+import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
 import type { FastifyReply, FastifyRequest } from "fastify";
 
 /**
@@ -24,7 +25,8 @@ export type GuardName =
   | "requireWrite"
   | "requireOrgAdmin"
   | "requireSuperAdmin"
-  | "requireSuperAdminOrOwnOrgAdmin";
+  | "requireSuperAdminOrOwnOrgAdmin"
+  | "requireBankMutationAcr";
 
 export interface AuthDenial {
   guard: GuardName;
@@ -206,6 +208,148 @@ export async function requireAdminSecret(request: FastifyRequest, reply: Fastify
       detail: "Invalid admin secret",
     });
   }
+}
+
+/**
+ * Guard: require bank-mutation step-up (ADR-032 §2.7).
+ *
+ * Bank account mutation endpoints (POST / PATCH / DELETE) require an MFA-backed
+ * re-authentication: `acr >= 2` AND an `auth_time` no older than 900 seconds
+ * (15 minutes). Both must hold — a fresh re-auth at LoA 1 is insufficient, and
+ * LoA 2 on a stale session is equally insufficient.
+ *
+ * The LoA-2 contract is the one the realm actually issues (`acr.loa.map` maps
+ * only {"1","2"}) and the one the web step-up requests (`acr_values=2`). An
+ * earlier revision of this guard demanded a bespoke
+ * `urn:givernance:acr:bank-mutation` value that NO flow, client scope or web
+ * code ever produces — which made every bank mutation a permanent 401 the
+ * moment it shipped. Reusing the proven LoA contract keeps the control real
+ * instead of creating pressure to disable it in production (B4).
+ *
+ * On failure the response follows RFC 9457 with a `WWW-Authenticate`
+ * header so the web client can trigger a Keycloak step-up redirect.
+ *
+ * The factory signature matches the pattern used by `requireFlag` so
+ * routes can include it in `preHandler` arrays without an extra import
+ * of the Fastify instance.
+ *
+ * Coverage note (B5): the step-up is meaningless if it only guards the IBAN row.
+ * A settlement destination can equally be repointed by rebinding a campaign or a
+ * fund to a different bank account, or by rewriting a campaign's fund splits — so
+ * those routes carry this guard too (conditionally, via `when`, where the route
+ * also serves unrelated edits). `changesSettlementDestination` below is the shared
+ * predicate.
+ */
+
+/**
+ * True when a request body would repoint where money settles — i.e. it carries a
+ * `bankAccountId`. Used with `requireBankMutationAcr({ when })` on multi-purpose
+ * routes so ordinary edits stay step-up-free.
+ */
+export function changesSettlementDestination(request: FastifyRequest): boolean {
+  const body = request.body as Record<string, unknown> | undefined | null;
+  return !!body && Object.hasOwn(body, "bankAccountId");
+}
+export function requireBankMutationAcr(options?: {
+  /**
+   * Optional predicate — when supplied, the step-up is enforced ONLY if it
+   * returns true for the request. Lets a multi-purpose route (e.g.
+   * `PATCH /v1/campaigns/:id`) demand MFA when the body actually repoints the
+   * settlement destination, without forcing a step-up on an unrelated rename.
+   */
+  when?: (request: FastifyRequest) => boolean;
+}) {
+  return async function bankMutationAcrHook(
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): Promise<void> {
+    if (options?.when && !options.when(request)) return;
+
+    // Enforcement gate (manual-test review finding #2). The step-up guard ships
+    // unconditionally, but only ENFORCES when security.bank_mutation_stepup is on.
+    // OFF (default) → no-op: Keycloak can't yet issue the required step-up ACR
+    // (Appendix B-1), so enforcing would 401 every bank mutation. Fail-OPEN on a
+    // flag-eval error is deliberate — matches the platform's "unknown flag → off"
+    // semantics and keeps bank management working during the low-traffic launch.
+    let enforce = false;
+    try {
+      enforce = await request.flagService.isEnabled(
+        FEATURE_FLAG_KEYS.SECURITY_BANK_MUTATION_STEPUP,
+        { orgId: request.auth?.orgId },
+      );
+    } catch {
+      enforce = false;
+    }
+    if (!enforce) return;
+
+    const auth = request.auth;
+
+    // requireAuth must run before this guard — if auth is null, 401 is
+    // already being sent. Defensive check in case the order is wrong.
+    if (!auth) {
+      void reply.header("WWW-Authenticate", 'Bearer acr_values="2"');
+      return reply.status(401).send({
+        type: "urn:givernance:error:step-up-required",
+        title: "Step-up authentication required",
+        status: 401,
+        detail: "Bank account mutations require TOTP re-authentication within the last 15 minutes.",
+        instance: request.url,
+      });
+    }
+
+    const acr = auth.acr;
+    const authTime = auth.authTime;
+
+    // acr >= 2 — the LoA the realm issues and the web requests. Parsed
+    // numerically so a future LoA 3 also satisfies a LoA-2 requirement.
+    const acrLevel = Number.parseInt(String(acr ?? ""), 10);
+    const hasRequiredAcr = Number.isFinite(acrLevel) && acrLevel >= 2;
+    const nowSec = Math.floor(Date.now() / 1000);
+    const authTimeAge = typeof authTime === "number" ? nowSec - authTime : null;
+    // Reject a FUTURE auth_time as well as a stale one — a clock-skewed or
+    // forged forward-dated claim must not buy an unbounded step-up window.
+    const isRecent = authTimeAge !== null && authTimeAge >= 0 && authTimeAge < 900;
+
+    if (!hasRequiredAcr || !isRecent) {
+      request.log.warn(
+        {
+          event: "bank_mutation.step_up_required",
+          acr: acr ?? null,
+          authTime: authTime ?? null,
+          authTimeAge: typeof authTime === "number" ? nowSec - authTime : null,
+          url: request.url,
+          userId: auth.userId,
+          orgId: auth.orgId,
+          reason: !hasRequiredAcr ? "acr_insufficient" : "auth_time_stale",
+        },
+        "Bank account mutation blocked — step-up ACR required",
+      );
+      void reply.header("WWW-Authenticate", 'Bearer acr_values="2"');
+      return reply.status(401).send({
+        type: "urn:givernance:error:step-up-required",
+        title: "Step-up authentication required",
+        status: 401,
+        detail: "Bank account mutations require TOTP re-authentication within the last 15 minutes.",
+        instance: request.url,
+      });
+    }
+
+    // Step-up passed — emit a structured audit log line so the SIEM
+    // can correlate bank-mutation events with the ACR claim that
+    // authorised them, without having to reconstruct from raw JWT fields.
+    request.log.info(
+      {
+        event: "bank_mutation.step_up_passed",
+        acr,
+        authTime,
+        authTimeAge: nowSec - (authTime as number),
+        url: request.url,
+        userId: auth.userId,
+        orgId: auth.orgId,
+      },
+      "Bank account mutation step-up ACR verified",
+    );
+  };
 }
 
 /** Constant-time string comparison to prevent timing attacks (M1 fix) */

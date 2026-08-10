@@ -117,6 +117,14 @@ const EnvSchema = Type.Object({
   /** ExchangeRate-API key used for currency conversion refreshes */
   EXCHANGE_RATE_API_KEY: Type.Optional(Type.String({ minLength: 1 })),
   /**
+   * Fixer.io API key — used by FxRateService to read exchange rates from
+   * the Redis cache populated by the worker's daily refresh_fx_cache job.
+   * When absent, FxRateService falls back to cache-only (rate: null when
+   * cache is cold). The API reads from cache only; live calls stay in the
+   * worker.
+   */
+  FIXER_API_KEY: Type.Optional(Type.String({ minLength: 1 })),
+  /**
    * Symmetric secret used to sign the app-layer impersonation JWT (HS256).
    * The impersonation token is short-lived (≤2h) and scoped to a single
    * support session — using a separate secret from the realm's RS256 keys

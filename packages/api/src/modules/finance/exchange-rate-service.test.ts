@@ -1,4 +1,4 @@
-import { clearExchangeRateApiCache } from "@givernance/shared";
+import { clearExchangeRateApiCache } from "@givernance/shared/finance";
 import { exchangeRates } from "@givernance/shared/schema";
 import { and, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";

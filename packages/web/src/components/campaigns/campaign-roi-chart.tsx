@@ -22,6 +22,8 @@ interface CampaignRoiChartProps {
   totalRaisedCents: number;
   roi: number | null;
   locale: string;
+  /** Campaign settlement currency — cost and raised are both in this currency. */
+  currency: string;
   labels: CampaignRoiChartLabels;
 }
 
@@ -44,6 +46,7 @@ export function CampaignRoiChart({
   totalRaisedCents,
   roi,
   locale,
+  currency,
   labels,
 }: CampaignRoiChartProps) {
   const id = useId();
@@ -52,8 +55,8 @@ export function CampaignRoiChart({
   const tableCaptionId = `${id}-table-caption`;
   const chartMax = Math.max(costCents ?? 0, totalRaisedCents, 1);
   const costDisplayValue =
-    costCents !== null ? formatCurrency(costCents, locale) : labels.unavailable;
-  const raisedDisplayValue = formatCurrency(totalRaisedCents, locale);
+    costCents !== null ? formatCurrency(costCents, locale, currency) : labels.unavailable;
+  const raisedDisplayValue = formatCurrency(totalRaisedCents, locale, currency);
   const roiDisplayValue = roi !== null ? formatPercent(roi, locale, 1) : labels.unavailable;
   const summary = roi !== null ? labels.chartSummary : labels.chartSummaryUnavailable;
 

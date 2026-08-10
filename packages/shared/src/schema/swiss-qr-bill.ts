@@ -1,12 +1,9 @@
 /**
  * Swiss QR-bill foundation schema (Epic #318).
  *
- * Five tenant-scoped tables that wire the Swiss postal-donation rail
+ * Four tenant-scoped tables that wire the Swiss postal-donation rail
  * onto the existing campaign + donation graph:
  *
- *   - `bank_accounts`              — IBAN/QR-IBAN holders configured
- *                                    in `Settings → Bank Accounts`,
- *                                    one per Swiss operating account.
  *   - `swiss_qr_references`        — per-recipient QRR/SCOR minted at
  *                                    postal-export time, sibling to
  *                                    `campaign_qr_codes`.
@@ -19,6 +16,10 @@
  *                                    entries the reconciler couldn't
  *                                    auto-match (no QR ref / format /
  *                                    foreign IBAN / orphan reversal).
+ *
+ * The `bank_accounts` table lives in `./bank-account.ts` — it was
+ * extracted because it is referenced by the funds module, the campaign
+ * editor, and the Settings UI, well beyond the QR-bill rail.
  *
  * Companion migration: `0044_swiss_qr_bill_foundation.sql`. The
  * partial unique index for retry-idempotency on
@@ -45,25 +46,10 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 
+import { bankAccounts } from "./bank-account";
 import { campaignPostalExports, campaigns, constituents, donations, tenants, users } from "./index";
 
 // ─── Enums ──────────────────────────────────────────────────────────────────
-
-/** IBAN classification: regular IBAN or QR-IBAN (IID 30000-31999). */
-export const BANK_ACCOUNT_IBAN_KIND_VALUES = ["iban", "qr_iban"] as const;
-export type BankAccountIbanKind = (typeof BANK_ACCOUNT_IBAN_KIND_VALUES)[number];
-
-export const bankAccountIbanKindEnum = pgEnum("bank_account_iban_kind", [
-  ...BANK_ACCOUNT_IBAN_KIND_VALUES,
-]);
-
-/** Operating-account currency. CHF default; EUR allowed (SCOR-only — EUR+QRR is illegal under IG v2.4). */
-export const BANK_ACCOUNT_CURRENCY_VALUES = ["CHF", "EUR"] as const;
-export type BankAccountCurrency = (typeof BANK_ACCOUNT_CURRENCY_VALUES)[number];
-
-export const bankAccountCurrencyEnum = pgEnum("bank_account_currency", [
-  ...BANK_ACCOUNT_CURRENCY_VALUES,
-]);
 
 /** Swiss QR-bill reference type: 27-digit QRR (mod-10) or RF-prefixed SCOR (ISO 11649). */
 export const SWISS_QR_REFERENCE_TYPE_VALUES = ["qrr", "scor"] as const;
@@ -127,79 +113,6 @@ export type DonationPaymentSource = (typeof DONATION_PAYMENT_SOURCE_VALUES)[numb
 export const donationPaymentSourceEnum = pgEnum("donation_payment_source", [
   ...DONATION_PAYMENT_SOURCE_VALUES,
 ]);
-
-// ─── bank_accounts ──────────────────────────────────────────────────────────
-
-/**
- * Swiss bank account configured by an org_admin in
- * `Settings → Bank Accounts`. Holds the data printed on every QR-bill
- * (holder name + address + IBAN + currency) and acts as the join target
- * for camt.053 imports — every uploaded statement must reference an
- * IBAN registered here, or the worker rejects the file (foreign-IBAN
- * safety, §7).
- *
- * Field caps mirror the QR-bill IG v2.4 / v2.5 structured-address (S)
- * string limits exactly so the renderer never has to truncate:
- * holder_name ≤ 70, street ≤ 70, building_number ≤ 16, postal_code ≤ 16,
- * town ≤ 35, country exactly 2. Combined address (K) is not modelled —
- * v2.5 makes S mandatory from 2026-09-30; we ship S-only by construction.
- *
- * Soft-delete (`deleted_at`): once a bank account has issued a single
- * `swiss_qr_references` row, it cannot be hard-deleted (FK with
- * `ON DELETE RESTRICT`) — financial-record retention. Removing it from
- * the UI sets `deleted_at` and degrades any linked campaign back to
- * "no QR-bill" mode (`campaigns.bank_account_id` becomes NULL via
- * ON DELETE SET NULL on the FK declared in the migration).
- */
-export const bankAccounts = pgTable(
-  "bank_accounts",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    orgId: uuid("org_id")
-      .notNull()
-      .references(() => tenants.id, { onDelete: "cascade" }),
-    holderName: varchar("holder_name", { length: 70 }).notNull(),
-    /** IG QR-bill S-address `StrtNm` — street name only, no number. ≤ 70 chars. */
-    holderStreet: varchar("holder_street", { length: 70 }).notNull(),
-    /** IG QR-bill S-address `BldgNb` — building / house number. ≤ 16 chars per the standard. */
-    holderBuildingNumber: varchar("holder_building_number", { length: 16 }),
-    /** IG QR-bill S-address `PstCd` — postal code. ≤ 16 chars. */
-    holderPostalCode: varchar("holder_postal_code", { length: 16 }).notNull(),
-    /** IG QR-bill S-address `TwnNm` — town / city. ≤ 35 chars. */
-    holderTown: varchar("holder_town", { length: 35 }).notNull(),
-    /** ISO 3166-1 alpha-2 — CHECK in migration restricts to CH or LI (IG QR-bill scope). */
-    holderCountryCode: varchar("holder_country_code", { length: 2 }).notNull().default("CH"),
-    /**
-     * Stored canonical (no-spaces, uppercase). VARCHAR(34) covers any
-     * IBAN; CH/LI are 21 chars. Validated mod-97 + country at the API
-     * boundary by `validators/iban.ts::isValidIban`.
-     */
-    iban: varchar("iban", { length: 34 }).notNull(),
-    ibanKind: bankAccountIbanKindEnum("iban_kind").notNull(),
-    /** SWIFT/BIC — 8 or 11 chars; nullable because not always known by the operator. */
-    bic: varchar("bic", { length: 11 }),
-    /** Bank display name (e.g. "PostFinance", "UBS Switzerland AG") — printed on the slip. */
-    bankName: varchar("bank_name", { length: 100 }).notNull(),
-    currency: bankAccountCurrencyEnum("currency").notNull().default("CHF"),
-    /**
-     * Soft-delete marker. The matching unique index on `(org_id, iban)`
-     * is partial — `WHERE deleted_at IS NULL` — so the same IBAN can be
-     * re-added after a soft-delete. The Drizzle-side unique here is
-     * unconditional for type parity; the migration declares the partial
-     * predicate.
-     */
-    deletedAt: timestamp("deleted_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    index("bank_accounts_org_idx").on(table.orgId),
-    unique("bank_accounts_org_iban_uniq").on(table.orgId, table.iban),
-  ],
-);
-
-export type BankAccount = typeof bankAccounts.$inferSelect;
-export type NewBankAccount = typeof bankAccounts.$inferInsert;
 
 // ─── swiss_qr_references ────────────────────────────────────────────────────
 

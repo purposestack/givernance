@@ -10,9 +10,12 @@
  * of truth for the wire shape).
  */
 
+import type { FinanceFilterCurrency } from "@/lib/format";
+
 export type FinancePeriod = "today" | "7d" | "30d" | "90d" | "ytd" | "custom";
 
-export type FinanceCurrency = "EUR" | "GBP" | "CHF" | "all";
+/** Super-admin finance filter currency — see lib/format theme. */
+export type FinanceCurrency = FinanceFilterCurrency;
 
 export type FinanceGrade = "A+" | "A" | "B" | "C" | "D";
 

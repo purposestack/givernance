@@ -41,7 +41,7 @@ interface PostalCampaignSectionProps {
    * because…" explainer. Null when no bank account is linked (standard
    * mode).
    */
-  bankAccount: { bankName: string; ibanLast4: string; currency: "CHF" | "EUR" } | null;
+  bankAccount: { bankName: string | null; ibanLast4: string; currency: string } | null;
   initialMembers: CampaignMember[];
   initialMemberTotal: number;
   initialExports: PostalExport[];

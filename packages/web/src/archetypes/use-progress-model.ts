@@ -1,3 +1,4 @@
+import { formatCurrency } from "@/lib/format";
 import type { ArchetypePageData } from "./types";
 
 /**
@@ -32,9 +33,11 @@ export function useProgressModel(data: ArchetypePageData): ProgressModel | null 
   const goalCents = data.goalAmountCents ?? 0;
   const progressPercent =
     goalCents > 0 ? Math.min(100, Math.round((data.raisedCents / goalCents) * 100)) : 0;
-  const ariaValueText = `${progressPercent} percent funded — ${data.raisedCents / 100} of ${
-    goalCents / 100
-  } ${data.defaultCurrency}`;
+  const ariaValueText = `${progressPercent} percent funded — ${formatCurrency(
+    data.raisedCents,
+    data.locale,
+    data.defaultCurrency,
+  )} of ${formatCurrency(goalCents, data.locale, data.defaultCurrency)}`;
 
   return { goalCents, progressPercent, ariaValueText };
 }

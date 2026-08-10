@@ -130,7 +130,9 @@ export function BankAccountsTable({ bankAccounts, canManage }: BankAccountsTable
                         <Button
                           variant="ghost"
                           size="sm"
-                          aria-label={t("table.openActions", { name: account.bankName })}
+                          aria-label={t("table.openActions", {
+                            name: account.bankName ?? account.label,
+                          })}
                         >
                           <MoreHorizontal size={16} aria-hidden="true" />
                         </Button>
@@ -172,7 +174,7 @@ export function BankAccountsTable({ bankAccounts, canManage }: BankAccountsTable
             <AlertDialogDescription>
               {accountToDelete
                 ? t("delete.description", {
-                    bankName: accountToDelete.bankName,
+                    bankName: accountToDelete.bankName ?? accountToDelete.label,
                     iban: formatIbanForDisplay(accountToDelete.iban),
                   })
                 : null}

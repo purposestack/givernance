@@ -772,15 +772,27 @@ describe("Postal preview", () => {
   };
 
   async function createBankLinkedCampaign(iban: string): Promise<string> {
-    const token = signToken(app);
+    // Both requests below mutate settlement (create the bank account, then link it
+    // to the campaign), so both need the step-up token — there is no plain-token
+    // request left in this helper.
+    const bankToken = signToken(app, {
+      acr: "2",
+      auth_time: Math.floor(Date.now() / 1000) - 60,
+    });
     // Fresh slate — the partial unique (org_id, iban) WHERE deleted_at IS
     // NULL would otherwise collide across re-runs on the persistent DB.
     await db.execute(sql`DELETE FROM bank_accounts WHERE org_id = ${ORG_A} AND iban = ${iban}`);
     const bank = await app.inject({
       method: "POST",
       url: "/v1/bank-accounts",
-      headers: authHeader(token),
-      payload: { ...QR_BILL_HOLDER, iban, bankName: "PostFinance", currency: "CHF" },
+      headers: authHeader(bankToken),
+      payload: {
+        ...QR_BILL_HOLDER,
+        iban,
+        bankName: "PostFinance",
+        currency: "CHF",
+        label: "PostFinance CHF",
+      },
     });
     expect(bank.statusCode).toBe(201);
     const bankAccountId = bank.json<{ data: { id: string } }>().data.id;
@@ -793,7 +805,8 @@ describe("Postal preview", () => {
     const linked = await app.inject({
       method: "PATCH",
       url: `/v1/campaigns/${campaign}`,
-      headers: authHeader(token),
+      // Repointing a campaign's settlement account requires the step-up (B5).
+      headers: authHeader(bankToken),
       payload: { bankAccountId },
     });
     expect(linked.statusCode).toBe(200);

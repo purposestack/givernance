@@ -2,13 +2,19 @@
 
 import { CUSTOM_FIELD_JOBS, CUSTOM_FIELDS_QUEUE } from "@givernance/shared/custom-fields";
 import {
+  type BackfillFxRatePayload,
   BRANDING_EVENT_TYPES,
+  CURRENCY_BALANCE_QUEUE_NAME,
   FINANCE_DASHBOARD_JOBS,
+  FX_CACHE_JOBS,
+  FX_CACHE_QUEUE_NAME,
   NOTIFICATIONS_DIGEST_JOBS,
   PLATFORM_REPORTS_JOBS,
   QUEUE_NAMES,
   RECEIPT_JOBS,
+  type RefreshFxCachePayload,
   TENANT_LIFECYCLE_JOBS,
+  type UpdateOrgCurrencyBalancePayload,
 } from "@givernance/shared/jobs";
 import type { Job } from "bullmq";
 import { Queue, Worker } from "bullmq";
@@ -18,6 +24,7 @@ import { assertWorkerAppRoleSecure } from "./lib/db.js";
 import { jobLogger, logger } from "./lib/logger.js";
 import { routeDomainEvent } from "./lib/route-domain-event.js";
 import { extractTraceId } from "./lib/trace-context.js";
+import { processBackfillFxRate } from "./processors/backfill-fx-rate.processor.js";
 import { processBrandingActivateLogo } from "./processors/branding-activate-logo.js";
 import { processBrandingGcAsset } from "./processors/branding-gc-asset.js";
 import { processBrandingOrphanGcSweep } from "./processors/branding-orphan-gc-sweep.js";
@@ -42,6 +49,7 @@ import {
 } from "./processors/platform-report-trigger.js";
 import { processGeneratePostalExport } from "./processors/postal-export.js";
 import { processBulkImport } from "./processors/process-bulk-import.js";
+import { processRefreshFxCache } from "./processors/refresh-fx-cache.processor.js";
 import { processRewrapReceiptDeks } from "./processors/rewrap-receipt-deks.js";
 import { processSendBulkEmail } from "./processors/send-bulk-email.js";
 import { processSignupVerificationEmail } from "./processors/signup-email.js";
@@ -51,6 +59,7 @@ import { fanoutSurveyErasure } from "./processors/survey-erasure-cascade.js";
 import { processSurveyInvitationEmail } from "./processors/survey-invitation-email.js";
 import { processTeamInviteEmail } from "./processors/team-invite-email.js";
 import { processTenantLifecycle } from "./processors/tenant-lifecycle.js";
+import { processUpdateOrgCurrencyBalance } from "./processors/update-org-currency-balance.processor.js";
 
 /** Create a fresh ioredis connection — BullMQ requires separate connections for Queue vs Worker */
 function createRedisConnection() {
@@ -71,6 +80,22 @@ const tenantLifecycleQueue = new Queue(QUEUE_NAMES.TENANT_LIFECYCLE, {
 });
 const brandingQueue = new Queue(QUEUE_NAMES.BRANDING, { connection: queueConnection });
 const keycloakSyncQueue = new Queue(QUEUE_NAMES.KEYCLOAK_SYNC, { connection: queueConnection });
+// Currency balance update queue (ADR-032 §2.10, Epic #416 Task 6)
+const currencyBalancesQueue = new Queue(CURRENCY_BALANCE_QUEUE_NAME, {
+  connection: queueConnection,
+});
+
+// FX-cache refresh + backfill queue (ADR-032 §2.1, Epic #416 Tasks 9–11)
+const fxCacheQueue = new Queue(FX_CACHE_QUEUE_NAME, {
+  connection: queueConnection,
+  defaultJobOptions: {
+    attempts: 3,
+    backoff: { type: "exponential", delay: 60_000 },
+    removeOnComplete: { count: 10 },
+    removeOnFail: { count: 50 },
+  },
+});
+
 const notificationsDigestQueue = new Queue(QUEUE_NAMES.NOTIFICATIONS_DIGEST, {
   connection: queueConnection,
   // BullMQ Worker constructors don't honour `attempts/backoff` — those
@@ -208,6 +233,22 @@ async function scheduleRepeatableJobs() {
     },
   );
 
+  // FX-cache daily refresh (ADR-032 §2.1, Epic #416 Task 10). Runs at
+  // 04:00 UTC — after EU midnight quiet period and before the morning
+  // trading open that would make stale rates visible. `jobId` is fixed
+  // so re-registering across worker restarts doesn't fan out to duplicate
+  // repeatable schedules.
+  await fxCacheQueue.add(
+    FX_CACHE_JOBS.REFRESH,
+    { triggeredBy: "schedule" } satisfies RefreshFxCachePayload,
+    {
+      jobId: "fx-cache-refresh-daily",
+      repeat: { pattern: "0 4 * * *", tz: "UTC" },
+      removeOnComplete: { count: 10 },
+      removeOnFail: { count: 50 },
+    },
+  );
+
   // Hourly survey-send sweep — picks up any survey whose
   // next_scheduled_at has elapsed. Hourly granularity (rather than
   // daily) is necessary so a super-admin who clicks "Schedule for
@@ -282,6 +323,22 @@ async function scheduleRepeatableJobs() {
       removeOnFail: { count: 20 },
     },
   );
+
+  // One-shot startup warm-up — enqueue a single refresh_fx_cache job
+  // immediately so the cache is populated on first deploy / worker
+  // restart without waiting until 04:00 UTC. The `jobId` includes a
+  // timestamp so multiple pod restarts each trigger their own warm-up
+  // rather than collapsing into one (intended: every pod restart is a
+  // warm-up opportunity).
+  await fxCacheQueue.add(
+    FX_CACHE_JOBS.REFRESH,
+    { triggeredBy: "startup" } satisfies RefreshFxCachePayload,
+    {
+      jobId: `fx-cache-refresh-startup-${Date.now()}`,
+      removeOnComplete: { count: 5 },
+      removeOnFail: { count: 20 },
+    },
+  );
 }
 
 /**
@@ -324,6 +381,36 @@ async function processDomainEvent(job: Job): Promise<void> {
   // alongside the routing decision. The helper short-circuits on
   // non-`user.soft_deleted` events.
   await fanoutSurveyErasure({ outboxId: id, tenantId, type, payload, traceparent });
+
+  // Org currency balance update (ADR-032 §2.10, Epic #416 Task 6).
+  // Enqueue a dedicated BullMQ job for donation lifecycle events so the
+  // materialized totals stay in sync. jobId is stable per (donation, eventType)
+  // so outbox re-deliveries don't produce duplicate balance mutations.
+  if (
+    type === "donation.created" ||
+    type === "donation.refunded" ||
+    type === "donation.status_changed"
+  ) {
+    const currencyBalancePayload: UpdateOrgCurrencyBalancePayload = {
+      orgId: tenantId,
+      donationId: payload.donationId as string,
+      eventType: type as UpdateOrgCurrencyBalancePayload["eventType"],
+      // Carry the real transition so the processor never assumes a prior bucket
+      // (ADR-032 §2.10). Absent fields ⇒ the processor safely no-ops.
+      priorStatus: payload.priorStatus as UpdateOrgCurrencyBalancePayload["priorStatus"],
+      fromStatus: payload.fromStatus as UpdateOrgCurrencyBalancePayload["fromStatus"],
+      toStatus: payload.toStatus as UpdateOrgCurrencyBalancePayload["toStatus"],
+    };
+    await currencyBalancesQueue.add("update-org-currency-balance", currencyBalancePayload, {
+      jobId: `currency-balance-${payload.donationId as string}-${type}`,
+      attempts: 3,
+      backoff: { type: "exponential", delay: 5000 },
+    });
+    log.info(
+      { donationId: payload.donationId, eventType: type },
+      "Enqueued currency balance update",
+    );
+  }
 
   const decision = routeDomainEvent({ id, tenantId, type, payload, traceparent });
 
@@ -865,6 +952,43 @@ function startWorkers() {
     },
   );
 
+  // Currency balance update worker (ADR-032 §2.10, Epic #416 Task 6).
+  // Concurrency 5: jobs are short-lived (single upsert) and idempotent.
+  const currencyBalancesWorker = new Worker(
+    CURRENCY_BALANCE_QUEUE_NAME,
+    (job: Job<UpdateOrgCurrencyBalancePayload>) => processUpdateOrgCurrencyBalance(job),
+    {
+      connection: createRedisConnection(),
+      concurrency: 5,
+      ...defaultJobOpts,
+    },
+  );
+
+  // FX-cache worker (ADR-032 §2.1, Epic #416 Tasks 9–11).
+  // Carries two job names: refresh_fx_cache and backfill_fx_rate.
+  // Concurrency 1: Fixer.io calls are sequential per job and we don't
+  // want concurrent warm-up runs competing on the same Redis keys.
+  const fxCacheWorker = new Worker(
+    FX_CACHE_QUEUE_NAME,
+    async (job: Job) => {
+      // biome-ignore lint/suspicious/noExplicitAny: BullMQ Job is heterogeneously typed at runtime
+      const j = job as Job<any>;
+      if (j.name === FX_CACHE_JOBS.REFRESH) {
+        return processRefreshFxCache(j as Job<RefreshFxCachePayload>);
+      }
+      if (j.name === FX_CACHE_JOBS.BACKFILL) {
+        return processBackfillFxRate(j as Job<BackfillFxRatePayload>);
+      }
+      logger.warn({ jobName: j.name }, "Unknown fx_cache job — skipping");
+      return null;
+    },
+    {
+      connection: createRedisConnection(),
+      concurrency: 1,
+      ...defaultJobOpts,
+    },
+  );
+
   const workers = [
     receiptsWorker,
     emailsWorker,
@@ -881,6 +1005,8 @@ function startWorkers() {
     bulkImportWorker,
     financeDashboardWorker,
     platformReportsWorker,
+    currencyBalancesWorker,
+    fxCacheWorker,
   ];
 
   for (const w of workers) {

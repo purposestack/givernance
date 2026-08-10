@@ -19,7 +19,12 @@ import { toast } from "@/components/ui/toast";
 import { ApiProblem } from "@/lib/api";
 import { createClientApiClient } from "@/lib/api/client-browser";
 import { getReadableTextColor } from "@/lib/color";
-import { formatCurrency } from "@/lib/format";
+import {
+  formatCurrency,
+  formatCurrencyRounded,
+  getCurrencySymbol,
+  SETTLEMENT_CURRENCIES,
+} from "@/lib/format";
 import type { PublicDonationCurrency } from "@/models/public-page";
 import { CampaignPublicPageService } from "@/services/CampaignPublicPageService";
 
@@ -64,6 +69,24 @@ interface PublicDonationFormProps {
    * description, fields, CTA) still renders.
    */
   chromeless?: boolean;
+  /**
+   * Epic #416 — dynamic currency list from `GET /v1/campaigns/:id/checkout-config`.
+   * When provided (flag on), replaces the hardcoded `PUBLIC_DONATION_CURRENCIES`
+   * list. The selected currency is persisted in sessionStorage under
+   * `"givernance_donation_currency"` so the donor's choice survives a
+   * 3DS redirect back to the same page.
+   *
+   * TODO: Future work — validate against Stripe minimum amounts per currency.
+   *       The checkout-config endpoint does not yet return min amounts; add
+   *       client-side validation here once the API exposes them.
+   */
+  presentmentCurrencies?: string[];
+  /**
+   * Epic #416 — the campaign's settlement currency (informational). Not
+   * currently shown in the UI but forwarded for future display ("you're
+   * donating in EUR; we settle in CHF") and Stripe minimum validation.
+   */
+  settlementCurrency?: string;
 }
 
 interface PublicDonationFormValues {
@@ -71,7 +94,14 @@ interface PublicDonationFormValues {
   lastName: string;
   email: string;
   amount: string;
-  currency: PublicDonationCurrency;
+  /**
+   * Widened to `string` to accommodate dynamic currencies from the
+   * checkout-config endpoint (Epic #416). When `presentmentCurrencies`
+   * is not provided the value is always a `PublicDonationCurrency` from
+   * the hardcoded list; when it is provided it may be any IETF currency
+   * code returned by the API.
+   */
+  currency: string;
 }
 
 interface FormErrors {
@@ -85,7 +115,7 @@ interface PaymentSession {
   clientSecret: string;
   stripeAccountId: string;
   amountCents: number;
-  currency: PublicDonationCurrency;
+  currency: string;
 }
 
 /**
@@ -115,7 +145,11 @@ const DEFAULT_VALUES: PublicDonationFormValues = {
   amount: "",
   currency: "EUR",
 };
-const PUBLIC_DONATION_CURRENCIES: PublicDonationCurrency[] = ["EUR", "GBP", "CHF"];
+// Static fallback when the multi-currency checkout-config list is unavailable
+// (flag off). Derived from the settlement-currency theme — see lib/format.
+const PUBLIC_DONATION_CURRENCIES: PublicDonationCurrency[] = [...SETTLEMENT_CURRENCIES];
+
+const SESSION_STORAGE_CURRENCY_KEY = "givernance_donation_currency";
 
 export function PublicDonationForm({
   campaignId,
@@ -127,12 +161,37 @@ export function PublicDonationForm({
   tenantStripeAccountId,
   qrCode,
   chromeless = false,
+  presentmentCurrencies,
+  settlementCurrency: _settlementCurrency,
 }: PublicDonationFormProps) {
   const t = useTranslations("publicDonationPage.form");
   const tPayment = useTranslations("publicDonationPage.payment");
+
+  // Epic #416 — resolve initial currency from sessionStorage when
+  // presentmentCurrencies is provided (dynamic list). Only restore
+  // if the stored value is still in the current list to avoid
+  // presenting an unsupported currency after a config change.
+  const effectiveCurrencies =
+    presentmentCurrencies && presentmentCurrencies.length > 0
+      ? presentmentCurrencies
+      : PUBLIC_DONATION_CURRENCIES;
+
+  const resolvedInitialCurrency = (): string => {
+    if (presentmentCurrencies && presentmentCurrencies.length > 0) {
+      const stored =
+        typeof window !== "undefined"
+          ? window.sessionStorage.getItem(SESSION_STORAGE_CURRENCY_KEY)
+          : null;
+      if (stored && presentmentCurrencies.includes(stored)) {
+        return stored;
+      }
+    }
+    return defaultCurrency;
+  };
+
   const [values, setValues] = useState<PublicDonationFormValues>({
     ...DEFAULT_VALUES,
-    currency: defaultCurrency,
+    currency: resolvedInitialCurrency(),
   });
   const [errors, setErrors] = useState<FormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -300,7 +359,24 @@ export function PublicDonationForm({
           locale={locale}
           goalAmountCents={goalAmountCents}
           defaultCurrency={defaultCurrency}
-          onValuesChange={setValues}
+          currencies={effectiveCurrencies}
+          onValuesChange={(updater) => {
+            setValues((current) => {
+              const next = updater(current);
+              // Epic #416 — persist currency selection in sessionStorage
+              // when a dynamic list is active, so a 3DS redirect back to
+              // this page restores the donor's choice.
+              if (
+                presentmentCurrencies &&
+                presentmentCurrencies.length > 0 &&
+                next.currency !== current.currency &&
+                typeof window !== "undefined"
+              ) {
+                window.sessionStorage.setItem(SESSION_STORAGE_CURRENCY_KEY, next.currency);
+              }
+              return next;
+            });
+          }}
           onErrorsChange={setErrors}
           onSubmit={handleSubmit}
         />
@@ -317,6 +393,7 @@ function DonorDetailsForm({
   locale,
   goalAmountCents,
   defaultCurrency,
+  currencies,
   onValuesChange,
   onErrorsChange,
   onSubmit,
@@ -328,6 +405,8 @@ function DonorDetailsForm({
   locale: string;
   goalAmountCents: number | null;
   defaultCurrency: PublicDonationCurrency;
+  /** Effective currency list — either dynamic (Epic #416) or hardcoded fallback. */
+  currencies: readonly string[];
   onValuesChange: (next: (current: PublicDonationFormValues) => PublicDonationFormValues) => void;
   onErrorsChange: (next: (current: FormErrors) => FormErrors) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
@@ -370,11 +449,7 @@ function DonorDetailsForm({
                 onErrorsChange((current) => ({ ...current, amount: undefined }));
               }}
             >
-              {new Intl.NumberFormat(locale, {
-                style: "currency",
-                currency: values.currency,
-                maximumFractionDigits: 0,
-              }).format(amount)}
+              {formatCurrencyRounded(amount * 100, locale, values.currency)}
             </Button>
           );
         })}
@@ -462,7 +537,7 @@ function DonorDetailsForm({
           input={
             <div className="relative">
               <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-on-surface-variant">
-                {getCurrencySymbol(values.currency)}
+                {getCurrencySymbol(values.currency, locale)}
               </span>
               <Input
                 id="public-donation-amount"
@@ -492,7 +567,7 @@ function DonorDetailsForm({
               onValueChange={(currency) =>
                 onValuesChange((current) => ({
                   ...current,
-                  currency: currency as PublicDonationCurrency,
+                  currency,
                 }))
               }
             >
@@ -500,7 +575,7 @@ function DonorDetailsForm({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {PUBLIC_DONATION_CURRENCIES.map((currency) => (
+                {currencies.map((currency) => (
                   <SelectItem key={currency} value={currency}>
                     {currency}
                   </SelectItem>
@@ -532,17 +607,6 @@ function DonorDetailsForm({
       </form>
     </>
   );
-}
-
-function getCurrencySymbol(currency: PublicDonationCurrency): string {
-  switch (currency) {
-    case "GBP":
-      return "£";
-    case "CHF":
-      return "CHF";
-    default:
-      return "€";
-  }
 }
 
 function Field({

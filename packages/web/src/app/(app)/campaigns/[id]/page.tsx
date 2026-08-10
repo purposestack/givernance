@@ -172,7 +172,7 @@ async function fetchLinkedBankAccountOrNull(
   client: Awaited<ReturnType<typeof createServerApiClient>>,
   bankAccountId: string | null,
   isAdmin: boolean,
-): Promise<{ bankName: string; ibanLast4: string; currency: "CHF" | "EUR" } | null> {
+): Promise<{ bankName: string | null; ibanLast4: string; currency: string } | null> {
   if (!isAdmin || !bankAccountId) return null;
   try {
     const account = await BankAccountService.getBankAccount(client, bankAccountId);
@@ -302,9 +302,13 @@ export default async function CampaignDetailPage({
   ]);
   const totalCostDisplayValue =
     roiMetrics.totalCostCents > 0
-      ? formatCurrency(roiMetrics.totalCostCents, locale)
+      ? formatCurrency(roiMetrics.totalCostCents, locale, campaign.defaultCurrency)
       : t("roi.unavailable");
-  const raisedDisplayValue = formatCurrency(roiMetrics.rawRaisedCents, locale);
+  const raisedDisplayValue = formatCurrency(
+    roiMetrics.rawRaisedCents,
+    locale,
+    campaign.defaultCurrency,
+  );
   const roiDisplayValue =
     roiMetrics.roiPct !== null ? formatPercent(roiMetrics.roiPct, locale, 1) : t("roi.unavailable");
 
@@ -383,6 +387,7 @@ export default async function CampaignDetailPage({
             totalRaisedCents={roiMetrics.rawRaisedCents}
             roi={roiMetrics.roiPct}
             locale={locale}
+            currency={campaign.defaultCurrency}
             labels={{
               title: t("roi.title"),
               subtitle: t("roi.subtitle"),

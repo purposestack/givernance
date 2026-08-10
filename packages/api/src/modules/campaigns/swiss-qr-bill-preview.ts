@@ -72,7 +72,8 @@ export interface SwissQrBillPreviewBankAccount {
   holderPostalCode: string;
   holderTown: string;
   holderCountryCode: string;
-  currency: "CHF" | "EUR";
+  /** ISO 4217 alpha-3 settlement currency — open-ended after ADR-032 §2.4. */
+  currency: string;
 }
 
 export interface SwissQrBillPreviewInput extends PostalLetterRenderInput {
@@ -235,7 +236,10 @@ export async function renderSwissQrBillPreviewToBuffer(
   // French appeal never ends up under a German payment strip.
   const qrBill = new SwissQRBill(
     {
-      currency: input.bankAccount.currency,
+      // `SwissQRBill` v4 types currency as "CHF" | "EUR". Swiss QR-bill
+      // scope: the readiness gate rejects non-Swiss currencies before a
+      // preview or export can be enqueued. Cast safe at runtime.
+      currency: input.bankAccount.currency as "CHF" | "EUR",
       reference: input.reference,
       creditor: {
         account: input.bankAccount.iban,

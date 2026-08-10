@@ -14,6 +14,7 @@ import { createServerApiClient } from "@/lib/api/client-server";
 import { getReadableTextColor } from "@/lib/color";
 import { formatCurrency } from "@/lib/format";
 import { isUuid } from "@/lib/utils";
+import type { CheckoutConfig } from "@/models/public-page";
 import { CampaignPublicPageService } from "@/services/CampaignPublicPageService";
 
 interface PublicCampaignPageProps {
@@ -93,8 +94,9 @@ function renderArchetype(args: {
   colorPrimary: string;
   locale: string;
   qrCode: string | undefined;
+  checkoutConfig: CheckoutConfig | null;
 }) {
-  const { id, styleKey, page, colorPrimary, locale, qrCode } = args;
+  const { id, styleKey, page, colorPrimary, locale, qrCode, checkoutConfig } = args;
   const archetypeData: ArchetypePageData = {
     campaignId: id,
     title: page.title,
@@ -104,6 +106,7 @@ function renderArchetype(args: {
     raisedCents: page.raisedCents,
     donorCount: page.donorCount,
     defaultCurrency: page.defaultCurrency,
+    locale,
     organisationName: page.organisationName ?? "",
     organisationMission: page.organisationMission ?? null,
     organisationLogoUrl: page.organisationLogoUrl ?? null,
@@ -119,6 +122,8 @@ function renderArchetype(args: {
       publishableKey={process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? null}
       tenantStripeAccountId={page.stripeAccountId}
       qrCode={qrCode}
+      presentmentCurrencies={checkoutConfig?.presentmentCurrencies}
+      settlementCurrency={checkoutConfig?.settlementCurrency}
       // Each archetype's AmountPicker provides its own card chrome
       // (Activist warm paper, Calm pastel, Cosmic glass) — without
       // this flag the form would render its own white card inside
@@ -166,6 +171,16 @@ export default async function PublicCampaignPage({
       page.raisedCents,
     );
 
+    // Epic #416 — fetch checkout-config when multi-currency flag may be on.
+    // Non-fatal: flag off → 404, campaign not ready → 422; both return null
+    // and the form falls back to the hardcoded PUBLIC_DONATION_CURRENCIES list.
+    let checkoutConfig: CheckoutConfig | null = null;
+    try {
+      checkoutConfig = await CampaignPublicPageService.getCheckoutConfig(client, id);
+    } catch {
+      // Non-fatal — flag may be off, or campaign not ready; fall back to hardcoded list
+    }
+
     // Epic #362 — resolve the archetype to render (URL override > API
     // value > null). When non-null, the donor sees the archetype's
     // four slots via `<ArchetypeRenderer>` instead of the hardcoded
@@ -177,7 +192,15 @@ export default async function PublicCampaignPage({
       styleOverride ?? (isPublicPageStyleKey(page.publicPageStyle) ? page.publicPageStyle : null);
 
     if (resolvedStyle !== null) {
-      return renderArchetype({ id, styleKey: resolvedStyle, page, colorPrimary, locale, qrCode });
+      return renderArchetype({
+        id,
+        styleKey: resolvedStyle,
+        page,
+        colorPrimary,
+        locale,
+        qrCode,
+        checkoutConfig,
+      });
     }
 
     // Fall through to the hardcoded layout (no archetype picked).
@@ -193,6 +216,7 @@ export default async function PublicCampaignPage({
       showProgress,
       goalCents,
       progressPercent,
+      checkoutConfig,
     });
   } catch (error) {
     if (error instanceof ApiProblem && error.status === 404) {
@@ -221,6 +245,7 @@ function renderHardcodedLayout(args: {
   showProgress: boolean;
   goalCents: number;
   progressPercent: number;
+  checkoutConfig: CheckoutConfig | null;
 }) {
   const {
     id,
@@ -234,6 +259,7 @@ function renderHardcodedLayout(args: {
     showProgress,
     goalCents,
     progressPercent,
+    checkoutConfig,
   } = args;
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(8,103,91,0.14),_transparent_42%),linear-gradient(180deg,_var(--color-surface-container-lowest)_0%,_var(--color-surface)_100%)]">
@@ -350,6 +376,8 @@ function renderHardcodedLayout(args: {
             publishableKey={process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? null}
             tenantStripeAccountId={page.stripeAccountId}
             qrCode={qrCode}
+            presentmentCurrencies={checkoutConfig?.presentmentCurrencies}
+            settlementCurrency={checkoutConfig?.settlementCurrency}
           />
         </div>
       </div>

@@ -1,4 +1,4 @@
-import { clearExchangeRateApiCache } from "@givernance/shared";
+import { clearExchangeRateApiCache } from "@givernance/shared/finance";
 import {
   constituents,
   donations,

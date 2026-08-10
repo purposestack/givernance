@@ -16,13 +16,16 @@ export function RetroProgress({ data }: ProgressSlotProps) {
       aria-valuenow={progressPercent}
       aria-valuetext={ariaValueText}
     >
-      <p className="retro-progress__amount">{formatCurrency(data.raisedCents, "en")}</p>
+      <p className="retro-progress__amount">
+        {formatCurrency(data.raisedCents, data.locale, data.defaultCurrency)}
+      </p>
       <div>
         <div className="retro-progress__bar" aria-hidden="true">
           <span style={{ width: `${progressPercent}%` }} />
         </div>
         <p className="retro-progress__meta">
-          of {formatCurrency(goalCents, "en")} · {data.donorCount.toLocaleString("en")} subscribers
+          of {formatCurrency(goalCents, data.locale, data.defaultCurrency)} ·{" "}
+          {data.donorCount.toLocaleString(data.locale)} subscribers
         </p>
       </div>
       <p className="retro-progress__amount">{progressPercent} %</p>

@@ -1,9 +1,11 @@
 import type { CustomFieldValues } from "@givernance/shared/custom-fields";
+import type { SettlementCurrency } from "@/lib/format";
 import type { Pagination } from "@/models/constituent";
 
 export type CampaignType = "nominative_postal" | "door_drop" | "digital";
 export type CampaignStatus = "draft" | "active" | "closed";
-export type CampaignCurrency = "EUR" | "GBP" | "CHF";
+/** Campaign default (settlement) currency — see lib/format theme. */
+export type CampaignCurrency = SettlementCurrency;
 
 /** Per-campaign override on the QR-bill reference type (Epic #318). */
 export type CampaignQrReferenceMode = "auto" | "qrr" | "scor";

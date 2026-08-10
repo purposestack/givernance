@@ -15,6 +15,7 @@ import {
 } from "@givernance/shared/lib/receipt-crypto";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
+import { resolveEnabledCurrency } from "../../lib/currency.js";
 import { CustomFieldValidationError, customFieldsProblem } from "../../lib/custom-field-values.js";
 import { flagService as defaultFlagService } from "../../lib/flags/flag-service.js";
 import { requireAuth, requireOrgAdmin, requireWrite } from "../../lib/guards.js";
@@ -367,10 +368,20 @@ const AllocationSchema = Type.Object({
   amountCents: Type.Integer({ minimum: 1 }),
 });
 
+/**
+ * Currency on WRITE bodies — any ISO-4217 code, case-insensitive (the manual
+ * form sends lowercase). Validated against enabled `currency_metadata` in the
+ * handler so a manual donation can use ANY Fixer-supported currency, not just a
+ * hard-coded European subset (findings #9 + #11). Responses keep the uppercase
+ * `CurrencySchema` union. A hard-coded uppercase union here silently dropped a
+ * lowercase code, defaulting the row to EUR.
+ */
+const CurrencyWriteSchema = Type.Optional(Type.String({ minLength: 3, maxLength: 3 }));
+
 const DonationCreateBody = Type.Object({
   constituentId: UuidSchema,
   amountCents: Type.Integer({ minimum: 1 }),
-  currency: Type.Optional(CurrencySchema),
+  currency: CurrencyWriteSchema,
   campaignId: Type.Optional(Type.Union([UuidSchema, Type.Null()])),
   paymentMethod: Type.Optional(Type.String({ maxLength: 50 })),
   paymentRef: Type.Optional(Type.String({ maxLength: 255 })),
@@ -383,7 +394,7 @@ const DonationCreateBody = Type.Object({
 const DonationUpdateBody = Type.Object({
   constituentId: UuidSchema,
   amountCents: Type.Integer({ minimum: 1 }),
-  currency: Type.Optional(CurrencySchema),
+  currency: CurrencyWriteSchema,
   campaignId: Type.Optional(Type.Union([UuidSchema, Type.Null()])),
   paymentMethod: Type.Optional(Type.Union([Type.String({ maxLength: 50 }), Type.Null()])),
   paymentRef: Type.Optional(Type.Union([Type.String({ maxLength: 255 }), Type.Null()])),
@@ -877,6 +888,19 @@ export async function donationRoutes(app: FastifyInstance) {
         return reply.status(422).send(customWrite.problem);
       }
 
+      // Normalise + validate the currency against enabled currency_metadata
+      // (findings #9 + #11) — the manual form sends a lowercase code, which the
+      // old uppercase-union schema silently dropped, defaulting the row to EUR.
+      if (body.currency !== undefined) {
+        const resolved = await resolveEnabledCurrency(body.currency);
+        if (!resolved) {
+          return reply
+            .status(422)
+            .send(problemDetail(422, "invalid_currency", "This currency is not supported."));
+        }
+        body.currency = resolved;
+      }
+
       try {
         const donation = await createDonation(
           orgId,
@@ -950,6 +974,17 @@ export async function donationRoutes(app: FastifyInstance) {
       const customWrite = await resolveDonationCustomWrite(request, orgId, body.custom, id);
       if (!customWrite.ok) {
         return reply.status(422).send(customWrite.problem);
+      }
+
+      // Same currency normalisation + enabled-validation as create (findings #9 / #11).
+      if (body.currency !== undefined) {
+        const resolved = await resolveEnabledCurrency(body.currency);
+        if (!resolved) {
+          return reply
+            .status(422)
+            .send(problemDetail(422, "invalid_currency", "This currency is not supported."));
+        }
+        body.currency = resolved;
       }
 
       try {

@@ -3,6 +3,7 @@ import { ProfileLanguageForm } from "@/components/profile/profile-language-form"
 import { PageHeader } from "@/components/shared/page-header";
 import { createServerApiClient } from "@/lib/api/client-server";
 import { requireAuth } from "@/lib/auth/guards";
+import { isMultiCurrencyEnabled } from "@/lib/feature-flags/server";
 import { UserService } from "@/services/UserService";
 
 /**
@@ -23,6 +24,9 @@ export default async function ProfilePage() {
   // the response, so the server-side snapshot is only ever the seed.
   const api = await createServerApiClient();
   const me = await UserService.getMe(api);
+  // Feature-flag-first: the display-currency picker is a net-new surface gated by
+  // donation.multi_currency. SSR-resolve it so the picker is wholly absent when off.
+  const multiCurrencyEnabled = await isMultiCurrencyEnabled();
 
   // ADR-035 rules A1 + A2 — the page header (title, breadcrumbs) is static
   // shell; only content cascades. The language card is the sole content
@@ -36,7 +40,7 @@ export default async function ProfilePage() {
         breadcrumbs={[{ label: t("breadcrumbRoot"), href: "/dashboard" }, { label: t("title") }]}
       />
       <div className="reveal-item">
-        <ProfileLanguageForm initial={me} />
+        <ProfileLanguageForm initial={me} multiCurrencyEnabled={multiCurrencyEnabled} />
       </div>
     </div>
   );

@@ -2,7 +2,7 @@
 
 > Related: [ADR-010 Payment Provider Selection](adr-010-payment-provider-selection.md) · [ADR-029 Keycloak Session Revocation](adr-029-keycloak-session-revocation.md) · [docs/20-payment-strategy.md](../20-payment-strategy.md) · [docs/03-data-model.md](../03-data-model.md) · [docs/25-swiss-qr-bill.md](../25-swiss-qr-bill.md)
 
-**Status**: Accepted — 2026-05-21
+**Status**: Implemented — 2026-05-22 (Epic #416, PR #417)
 **Supersedes**: v1 (initial multi-currency sketch, same date)
 
 ---
@@ -76,10 +76,13 @@ Rationale:
 - Daily update cadence matches the 24h TTL cache policy.
 
 **Caching contract**: A scheduled BullMQ job (`refresh_fx_cache`) runs every 24 hours and on startup. It fetches Fixer.io `/v1/latest?base={currency}` for each distinct base currency in the union of:
+- The **platform base currency (EUR)** — always warmed, unconditionally (see below).
 - All distinct `bank_accounts.currency` values where the account is linked to an active fund.
 - All distinct `users.display_currency` values for active users.
 
 Results stored in Redis under `fx:rates:{base_currency}` with TTL 25 hours. A single Redis key per base currency serves all conversion directions for that base. Do not make per-request Fixer.io calls.
+
+**Always warm EUR**: The warm-set unconditionally includes the platform base currency `EUR`, even when no tenant has a bank account or a display-currency override yet. This is load-bearing for the healthcheck (§2.12), which probes `fx:rates:EUR` as its canary: without a guaranteed EUR warm-up, a fresh deploy — or a tenant set that settles entirely in non-EUR currencies — leaves `fx:rates:EUR` cold and flaps the `fx` subsystem to `down` despite a valid `FIXER_API_KEY` and a running worker. The warm-set construction is an exported pure helper (`collectCurrenciesToWarm`) so the always-include-EUR contract is unit-tested without booting Drizzle/Redis/BullMQ.
 
 **Rejected**: ECB/Frankfurter — EUR-base only, ~32 currency pairs, no historical rate API.
 
@@ -336,6 +339,8 @@ No single-figure "total donations" crosses currency boundaries in any accounting
 ```
 
 `stale` = cache age > 25 hours. `down` = unreachable AND cache age > 25h. No live Fixer.io call on every probe.
+
+The probe reads a single canary key — `fx:rates:EUR` (the platform base currency) — and reports `down` when it is absent (`cache_age_hours: null`). The `refresh_fx_cache` warm-set therefore **always** includes EUR (§2.1) so the canary reflects real Fixer.io reachability, not merely whether a tenant happens to hold a EUR bank account.
 
 ### 2.13 Converted Currency Amount Component — design specification
 

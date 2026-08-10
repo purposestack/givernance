@@ -176,7 +176,24 @@ export const DonationAllocationSchema = Type.Object({
   amountCents: Type.Integer({ exclusiveMinimum: 0 }),
 });
 
+// TODO(ADR-032): Replace these static lists with a runtime check against currency_metadata.enabled = true
+// This will be wired in task #409 (checkout-config endpoint).
+//
+// Two themed currency sets, single source of truth for both API validation
+// and the web currency pickers (re-exported into `packages/web/src/lib/format.ts`):
+//   - MULTI_CURRENCY_VALUES   — settlement currencies (tenant base / campaign default)
+//   - DONATION_CURRENCY_VALUES — currencies accepted for a manual/offline donation
 export const MULTI_CURRENCY_VALUES = ["EUR", "GBP", "CHF"] as const;
+export const DONATION_CURRENCY_VALUES = [
+  "EUR",
+  "GBP",
+  "CHF",
+  "SEK",
+  "NOK",
+  "DKK",
+  "PLN",
+  "CZK",
+] as const;
 export const MultiCurrencySchema = Type.Union(
   MULTI_CURRENCY_VALUES.map((currency) => Type.Literal(currency)),
   { default: "EUR" },
@@ -187,16 +204,7 @@ export const DonationCreateSchema = Type.Object({
   constituentId: Type.String({ format: "uuid" }),
   amountCents: Type.Integer({ exclusiveMinimum: 0 }),
   currency: Type.Union(
-    [
-      Type.Literal("EUR"),
-      Type.Literal("GBP"),
-      Type.Literal("CHF"),
-      Type.Literal("SEK"),
-      Type.Literal("NOK"),
-      Type.Literal("DKK"),
-      Type.Literal("PLN"),
-      Type.Literal("CZK"),
-    ],
+    DONATION_CURRENCY_VALUES.map((currency) => Type.Literal(currency)),
     { default: "EUR" },
   ),
   campaignId: Type.Optional(Type.String({ format: "uuid" })),

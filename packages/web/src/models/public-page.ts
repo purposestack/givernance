@@ -1,8 +1,25 @@
 import type { PublicPageStyleKey } from "@givernance/shared/constants";
 import type { CampaignPublicPageColor } from "@givernance/shared/validators";
+import type { PresentmentCurrency } from "@/lib/format";
 
 export type PublicPageStatus = "draft" | "published";
-export type PublicDonationCurrency = "EUR" | "GBP" | "CHF";
+/** Donor-facing presentment currency superset — see lib/format theme. */
+export type PublicDonationCurrency = PresentmentCurrency;
+
+/**
+ * Epic #416 — checkout-config response (multi-currency). Returned by
+ * `GET /v1/campaigns/:id/checkout-config` when `donation.multi_currency` is
+ * enabled for the campaign's tenant. `presentmentCurrencies` replaces the
+ * hardcoded `PUBLIC_DONATION_CURRENCIES` list in the donation form.
+ */
+export interface CheckoutConfig {
+  settlementCurrency: string;
+  presentmentCurrencies: string[];
+}
+
+export interface CheckoutConfigResponse {
+  data: CheckoutConfig;
+}
 
 export interface CampaignPublicPage {
   id: string;
@@ -110,7 +127,12 @@ export interface CampaignPublicPageInput {
 
 export interface PublicDonationIntentInput {
   amountCents: number;
-  currency: PublicDonationCurrency;
+  /**
+   * Widened to `string` (Epic #416) to support dynamic currencies from the
+   * checkout-config endpoint. When multi-currency is off, this is always a
+   * `PublicDonationCurrency`; when on, any IETF currency code is valid.
+   */
+  currency: string;
   email: string;
   firstName: string;
   lastName: string;
