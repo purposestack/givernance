@@ -280,7 +280,10 @@ export class FilterQueryBuilder {
    * TZ east of UTC the upper bound lands BEFORE the UTC end of day and
    * rows created late in the UTC day silently drop out (issue #582 — the
    * lower bound already parses as UTC midnight, both bounds must agree).
-   * Day-boundary semantics for core date filters are therefore UTC days.
+   * Day-boundary semantics for bare-day core date filters are therefore
+   * UTC days. Caveat: a TZ-naive ISO DATETIME value (no shape validation
+   * upstream) still parses process-local at the `toDate` step — closing
+   * that needs a date-shape gate in the validation layer (follow-up).
    */
   private endOfDay(value: unknown): unknown {
     if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {

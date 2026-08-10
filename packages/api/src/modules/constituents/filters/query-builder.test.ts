@@ -38,6 +38,14 @@ const REGISTRY: Record<string, FieldMetadata> = {
     column: "created_at",
     operators: ["eq", "neq", "gt", "gte", "lt", "lte", "between"],
   },
+  "donations.lastDate": {
+    name: "donations.lastDate",
+    type: "date",
+    table: "donations",
+    column: "donated_at",
+    operators: ["eq", "neq", "gt", "gte", "lt", "lte", "between"],
+    aggregate: "max",
+  },
   "custom.last_review": {
     name: "custom.last_review",
     type: "date",
@@ -159,6 +167,26 @@ describe("core-date bounds are UTC-explicit (issue #582)", () => {
         expect(params.map(isoOf)).toContain("2026-03-10T23:59:59.999Z");
       });
     }
+  });
+
+  it("applies the same UTC bound on the raw-SQL aggregate date lane (last gift)", () => {
+    // buildAggregateCondition has its own operator switch with raw `sql`
+    // bindings — it reuses normalizeValue today, but nothing else pins that:
+    // a refactor forking the aggregate lane would silently resurrect the
+    // local-time bound on "last gift between …" (autopilot review of #582).
+    withTz("Pacific/Kiritimati", () => {
+      const builder = new FilterQueryBuilder(ORG_ID, REGISTRY);
+      const condition = builder.buildAggregateCondition("donations.lastDate", "between", [
+        "2025-01-01",
+        "2025-12-31",
+      ]);
+      expect(condition).toBeDefined();
+      // biome-ignore lint/style/noNonNullAssertion: asserted above
+      const { params } = dialect.sqlToQuery(condition!);
+      const iso = params.map(isoOf);
+      expect(iso).toContain("2025-01-01T00:00:00.000Z");
+      expect(iso).toContain("2025-12-31T23:59:59.999Z");
+    });
   });
 });
 
