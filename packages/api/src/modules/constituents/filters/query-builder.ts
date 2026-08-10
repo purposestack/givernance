@@ -265,7 +265,7 @@ export class FilterQueryBuilder {
    * Date becomes the previous local day and every custom-date eq/bound is
    * off by one. Custom dates compare at `::date` granularity, so the core
    * end-of-day upper-bound convention is a no-op here
-   * (`…T23:59:59.999`::date is the same day) — the bare day string is bound
+   * (`…T23:59:59.999Z`::date is the same day) — the bare day string is bound
    * untouched; ISO timestamp strings are truncated to their calendar day.
    */
   private normalizeCustomDateValue(value: unknown): unknown {
@@ -273,10 +273,18 @@ export class FilterQueryBuilder {
     return Array.isArray(value) ? value.map(toDay) : toDay(value);
   }
 
-  /** Append an end-of-day time to a bare `YYYY-MM-DD` string; pass through the rest. */
+  /**
+   * Append an explicit UTC end-of-day time to a bare `YYYY-MM-DD` string;
+   * pass through the rest. The `Z` suffix is load-bearing: without it the
+   * string parses in PROCESS-LOCAL time at the `toDate` step, so in any
+   * TZ east of UTC the upper bound lands BEFORE the UTC end of day and
+   * rows created late in the UTC day silently drop out (issue #582 — the
+   * lower bound already parses as UTC midnight, both bounds must agree).
+   * Day-boundary semantics for core date filters are therefore UTC days.
+   */
   private endOfDay(value: unknown): unknown {
     if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
-      return `${value}T23:59:59.999`;
+      return `${value}T23:59:59.999Z`;
     }
     return value;
   }

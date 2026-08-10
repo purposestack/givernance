@@ -242,7 +242,12 @@ No new tables. Donation metrics come from an inline `donation_stats` subquery
   - **Units**: amount fields carry `valueUnit: "cents"`; the builder multiplies
     the EUR input by 100 before comparing against `*_cents` columns.
   - **Date `between`**: the upper bound is extended to end-of-day so an
-    inclusive-looking `…-12-31` range doesn't drop that day's records.
+    inclusive-looking `…-12-31` range doesn't drop that day's records. Day
+    boundaries are **UTC calendar days**: the bound is bumped to
+    `…T23:59:59.999Z` (explicit `Z` — issue #582), matching the UTC-midnight
+    parse of the bare lower bound. Both engines (constituents + donations)
+    share this normalisation; org-local-timezone day boundaries are out of
+    scope for now (would need a per-org timezone setting).
 
 ## 4. Permissions matrix
 | Endpoint | Guard chain | Rate limit |

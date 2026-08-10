@@ -31,6 +31,13 @@ const ORG_ID = "00000000-0000-0000-0000-0000000000aa";
 const dialect = new PgDialect();
 
 const REGISTRY: Record<string, FieldMetadata> = {
+  "constituent.createdAt": {
+    name: "constituent.createdAt",
+    type: "date",
+    table: "constituents",
+    column: "created_at",
+    operators: ["eq", "neq", "gt", "gte", "lt", "lte", "between"],
+  },
   "custom.last_review": {
     name: "custom.last_review",
     type: "date",
@@ -96,6 +103,61 @@ describe("custom-date value binding (review m4)", () => {
       // day must survive untouched.
       expect(params).toContain("2026-01-15");
       expect(params.some((p) => p instanceof Date)).toBe(false);
+    }
+  });
+});
+
+describe("core-date bounds are UTC-explicit (issue #582)", () => {
+  // The flake: `endOfDay` used to emit `YYYY-MM-DDT23:59:59.999` WITHOUT a
+  // timezone suffix, which the `toDate` step parsed in PROCESS-LOCAL time.
+  // East of UTC the upper bound then landed before the UTC end of day and
+  // rows created late in the UTC day dropped out — reproducible locally
+  // between 00h and 02h Europe/Paris, never in CI (TZ=UTC). These tests pin
+  // the bound in an extreme UTC+14 zone so CI catches any regression.
+  // Runtime TZ changes are honoured on POSIX since Node 13 (not on Windows,
+  // where the fixed code still passes because the bound is TZ-independent).
+  const withTz = (tz: string, fn: () => void) => {
+    const prev = process.env.TZ;
+    process.env.TZ = tz;
+    try {
+      fn();
+    } finally {
+      if (prev === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = prev;
+      }
+    }
+  };
+
+  const isoOf = (p: unknown): string | null => {
+    const d = p instanceof Date ? p : typeof p === "string" ? new Date(p) : null;
+    return d && !Number.isNaN(d.getTime()) ? d.toISOString() : null;
+  };
+
+  it("binds both between bounds as UTC instants even in a UTC+14 zone", () => {
+    withTz("Pacific/Kiritimati", () => {
+      const { params } = compile({
+        field: "constituent.createdAt",
+        operator: "between",
+        value: ["2000-01-01", "2026-03-10"],
+      });
+      const iso = params.map(isoOf);
+      expect(iso).toContain("2000-01-01T00:00:00.000Z");
+      expect(iso).toContain("2026-03-10T23:59:59.999Z");
+    });
+  });
+
+  it("bumps lte / gt to the UTC end of day regardless of process TZ", () => {
+    for (const operator of ["lte", "gt"] as const) {
+      withTz("Pacific/Kiritimati", () => {
+        const { params } = compile({
+          field: "constituent.createdAt",
+          operator,
+          value: "2026-03-10",
+        });
+        expect(params.map(isoOf)).toContain("2026-03-10T23:59:59.999Z");
+      });
     }
   });
 });
