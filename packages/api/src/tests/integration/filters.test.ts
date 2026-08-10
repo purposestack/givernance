@@ -732,6 +732,11 @@ describe("Advanced Constituent Filters", () => {
       // All 4 constituents were createdAt = now() in the fixture. A range ending
       // TODAY must include them — without the end-of-day normalisation the bare
       // date casts to midnight and drops rows created later today.
+      // Day-boundary semantics are UTC (issue #582): the server now bounds the
+      // range at `${today}T23:59:59.999Z`, so the UTC calendar day computed
+      // here matches the fixtures' UTC `now()` in every process timezone —
+      // this used to flake between 00h and 02h Europe/Paris when the
+      // (then TZ-naive) bound parsed in local time.
       const today = new Date().toISOString().slice(0, 10);
       const res = await preview({
         operator: "AND",
