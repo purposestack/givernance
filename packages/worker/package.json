@@ -20,7 +20,7 @@
     "archiver": "^7.0.1",
     "bullmq": "^5.80.2",
     "csv-parse": "^7.0.1",
-    "dompurify": "^3.4.12",
+    "dompurify": "^3.4.13",
     "drizzle-orm": "^0.45.2",
     "exceljs": "^4.4.0",
     "ioredis": "^5.11.1",

@@ -33,7 +33,7 @@
     "drizzle-orm": "^0.45.2",
     "@aws-sdk/client-s3": "^3.1086.0",
     "@sinclair/typebox": "^0.34.52",
-    "dompurify": "^3.4.12",
+    "dompurify": "^3.4.13",
     "jsdom": "^29.1.1",
     "lru-cache": "^11.5.2"
   },
