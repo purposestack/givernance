@@ -13,27 +13,27 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1086.0",
-    "@aws-sdk/lib-storage": "^3.1086.0",
+    "@aws-sdk/client-s3": "^3.1105.0",
+    "@aws-sdk/lib-storage": "^3.1105.0",
     "@givernance/shared": "workspace:*",
     "@sinclair/typebox": "^0.34.52",
     "archiver": "^7.0.1",
     "bullmq": "^5.80.2",
-    "csv-parse": "^7.0.1",
-    "dompurify": "^3.4.12",
+    "csv-parse": "^7.0.2",
+    "dompurify": "^3.4.13",
     "drizzle-orm": "^0.45.2",
     "exceljs": "^4.4.0",
     "ioredis": "^5.11.1",
     "jsdom": "^29.1.1",
-    "nodemailer": "^9.0.3",
+    "nodemailer": "^9.0.5",
     "pdf-lib": "^1.17.1",
     "pdfkit": "^0.19.1",
     "pg": "^8.22.0",
     "pino": "^10.3.1",
     "qrcode": "^1.5.4",
-    "resend": "^6.17.2",
+    "resend": "^6.18.1",
     "sharp": "^0.35.3",
-    "stripe": "^22.2.0",
+    "stripe": "^22.4.0",
     "swissqrbill": "^4.4.0"
   },
   "devDependencies": {
@@ -41,9 +41,9 @@
     "@types/jsdom": "^28.0.3",
     "@types/nodemailer": "^8.0.1",
     "@types/pdfkit": "^0.17.6",
-    "@types/pg": "^8.20.0",
+    "@types/pg": "^8.20.4",
     "@types/qrcode": "^1.5.6",
-    "tsx": "^4.23.1",
+    "tsx": "^4.23.10",
     "typescript": "^6.0.3"
   }
 }
