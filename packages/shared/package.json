@@ -31,15 +31,15 @@
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2",
-    "@aws-sdk/client-s3": "^3.1086.0",
+    "@aws-sdk/client-s3": "^3.1115.0",
     "@sinclair/typebox": "^0.34.52",
-    "dompurify": "^3.4.12",
+    "dompurify": "^3.4.14",
     "jsdom": "^29.1.1",
     "lru-cache": "^11.5.2"
   },
   "devDependencies": {
     "@types/jsdom": "^28.0.3",
-    "@types/pg": "^8.20.0",
+    "@types/pg": "^8.23.1",
     "typescript": "^6.0.3"
   }
 }
