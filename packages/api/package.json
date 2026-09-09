@@ -30,7 +30,7 @@
     "@sinclair/typebox": "^0.34.52",
     "archiver": "^7.0.1",
     "bullmq": "^5.80.2",
-    "csv-parse": "^7.0.1",
+    "csv-parse": "^7.0.2",
     "dompurify": "^3.4.12",
     "drizzle-orm": "^0.45.2",
     "exceljs": "^4.4.0",
