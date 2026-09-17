@@ -56,7 +56,8 @@
         "authFailed": "Authentication failed. Please try again.",
         "generic": "Something went wrong during sign-in. Please try again.",
         "sessionExpired": "Session expired. Please try signing in again.",
-        "interrupted": "Authentication session was interrupted. Please try again."
+        "interrupted": "Authentication session was interrupted. Please try again.",
+        "noTenants": "Your account isn't linked to any organisation yet. Ask an administrator of your organisation to invite you, then sign in again."
       }
     },
     "forgotPassword": {
@@ -297,6 +298,11 @@
       "errors": {
         "forbidden": "You cannot switch to this workspace.",
         "generic": "Could not switch workspaces. Please try again."
+      },
+      "loadError": {
+        "title": "We couldn't load your workspaces",
+        "description": "Your organisations could not be retrieved. You are still signed in — this is usually temporary.",
+        "retry": "Try again"
       }
     }
   },

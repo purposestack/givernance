@@ -28,20 +28,18 @@ const mockUpdateMe = vi.fn();
 vi.mock("@/lib/auth", () => ({
   useAuth: () => ({
     user: {
-      userId: "user-1",
+      id: "user-1",
       orgId: "org-1",
       email: "claire.dubois@solidarite-med.org",
       firstName: "Claire",
       lastName: "Dubois",
-      roles: [],
+      role: "user",
     },
     logout: mockLogout,
     hasRole: () => false,
     hasAppRole: () => false,
-    isImpersonating: false,
     loading: false,
     error: null,
-    endImpersonation: vi.fn(),
     refresh: vi.fn(),
   }),
 }));

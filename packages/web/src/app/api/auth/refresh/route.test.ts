@@ -48,6 +48,11 @@ const { POST } = await import("./route");
 
 const KEYCLOAK_TOKEN_URL = "http://localhost:8080/realms/givernance/protocol/openid-connect/token";
 
+/** Unsigned JWT-shaped string — the route only peeks at the payload. */
+function fakeJwt(claims: Record<string, unknown>): string {
+  return `header.${Buffer.from(JSON.stringify(claims)).toString("base64url")}.sig`;
+}
+
 function makeRequest(): NextRequest {
   // The route only awaits its own cookies(); it never reads anything off
   // the NextRequest object, so a dummy is fine.
@@ -118,6 +123,65 @@ describe("POST /api/auth/refresh", () => {
     // rotation rather than minted fresh, so in-flight client reads stay
     // consistent across the round-trip.
     expect(jar.get("csrf-token")).toBe("stable-csrf-uuid");
+  });
+
+  // Issue #613 — the refresh cookie belongs to the OPERATOR while
+  // `givernance_jwt` holds the impersonation token; rotating would silently
+  // turn a read-only impersonation into a plain super-admin session.
+  it.each([
+    ["app-layer HS256 token (iss)", { iss: "givernance-impersonation", sub: "target-1" }],
+    [
+      "Keycloak token-exchange token (act claim)",
+      { iss: "http://localhost:8080/realms/givernance", sub: "target-1", act: { sub: "op-1" } },
+    ],
+  ])("is a 200 no-op that leaves every cookie alone for an impersonation %s", async (_label, claims) => {
+    const impersonationJwt = fakeJwt(claims);
+    jar.set("givernance_jwt", impersonationJwt);
+    jar.set("givernance_id_token", "operator-id-token");
+    jar.set("givernance_refresh_token", "operator-refresh");
+    jar.set("csrf-token", "stable-csrf-uuid");
+    const before = new Map(jar);
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const res = await POST(makeRequest());
+    const body = (await res.json()) as Record<string, unknown>;
+
+    expect(res.status).toBe(200);
+    expect(body).toEqual({ ok: true, skipped: "impersonation", expiresIn: null });
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    // Keycloak never contacted → the operator's refresh token isn't rotated.
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(new Map(jar)).toEqual(before);
+  });
+
+  it("does not clear an impersonation cookie when the refresh cookie is missing", async () => {
+    const impersonationJwt = fakeJwt({ iss: "givernance-impersonation", sub: "target-1" });
+    jar.set("givernance_jwt", impersonationJwt);
+
+    const res = await POST(makeRequest());
+
+    expect(res.status).toBe(200);
+    expect(jar.get("givernance_jwt")).toBe(impersonationJwt);
+  });
+
+  it("still rotates a regular Keycloak JWT (no act claim)", async () => {
+    jar.set("givernance_jwt", fakeJwt({ iss: "http://localhost:8080/realms/givernance" }));
+    jar.set("givernance_refresh_token", "old-refresh");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ access_token: "new-jwt", expires_in: 300 }), {
+            status: 200,
+          }),
+      ),
+    );
+
+    const res = await POST(makeRequest());
+
+    expect(res.status).toBe(200);
+    expect(jar.get("givernance_jwt")).toBe("new-jwt");
   });
 
   it("keeps the existing refresh-token cookie when Keycloak omits one", async () => {

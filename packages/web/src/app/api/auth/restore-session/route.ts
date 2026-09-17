@@ -13,6 +13,7 @@ import {
 } from "@/lib/auth/keycloak";
 import { logAuthEvent } from "@/lib/auth/log";
 import { exchangeRefreshToken } from "@/lib/auth/refresh-session";
+import { verifyKeycloakJwt } from "@/lib/auth/verify-keycloak-jwt";
 
 const DEFAULT_RETURN_PATH = "/dashboard";
 
@@ -33,6 +34,17 @@ const DEFAULT_RETURN_PATH = "/dashboard";
  *      an impersonation token 401s, a full-page nav here restores the
  *      operator's platform-admin session from their still-valid Keycloak
  *      refresh token, then lands them on the session list.
+ *   3. The server-side page guards (`requireAuth`, issue #613), when the
+ *      session cookie is present but fails verification — instead of
+ *      `/login`, which looped through the proxy's signed-in bounce.
+ *
+ * Impersonation: unlike `/api/auth/refresh` (a background call that must
+ * never touch an impersonation cookie), this route DOES replace an
+ * impersonation token with the operator's own session — on purpose. Every
+ * caller reaches it only once that token is dead (expired, revoked within
+ * its `exp`, or unverifiable), and it is an explicit full-page navigation
+ * after which the impersonation banner is gone, never a silent swap under
+ * a page that still looks impersonated.
  *
  * CSRF: like `/api/auth/refresh`, no double-submit token is required. The
  * refresh cookie is httpOnly, the only effect is rotating the caller's
@@ -42,7 +54,8 @@ const DEFAULT_RETURN_PATH = "/dashboard";
  * prefetched into an unexpected token rotation.
  *
  * On success: rotates access / id / refresh cookies (+ CSRF) and
- * 303-redirects to the validated `return` path. On any failure: clears
+ * 303-redirects to the validated `return` path. On any failure (including
+ * a fresh access token that doesn't pass `verifyKeycloakJwt`): clears
  * the session cookies and 303-redirects to /login, preserving `return`
  * as the post-login `redirect`.
  */
@@ -59,6 +72,22 @@ export async function GET(request: NextRequest) {
   const session = await exchangeRefreshToken(refreshToken);
   if (!session) {
     logAuthEvent("warn", "auth.restore.refresh_failed", { returnTo });
+    return clearAndRedirectToLogin(jar, returnTo);
+  }
+
+  // Issue #613 — verify the fresh access token with the SAME verifier the
+  // page guards use before writing it (the callback route does the same).
+  // The guards detour here when the session cookie is unverifiable; if the
+  // replacement can't be verified either (JWKS unreachable, issuer
+  // misconfiguration), writing it would bounce guard → restore → guard
+  // forever. Clearing the session and landing on /login breaks the loop:
+  // without a JWT the proxy no longer bounces /login back to /dashboard.
+  try {
+    await verifyKeycloakJwt(session.accessToken);
+  } catch (err) {
+    logAuthEvent("error", "auth.restore.access_token_unverifiable", {
+      message: err instanceof Error ? err.message : String(err).slice(0, 256),
+    });
     return clearAndRedirectToLogin(jar, returnTo);
   }
 

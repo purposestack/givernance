@@ -7,10 +7,27 @@ const CSRF_COOKIE_NAME = "csrf-token";
 const RESTORE_SESSION_PATH = "/api/auth/restore-session";
 
 /**
- * Route prefixes that require authentication.
- * Only includes implemented features — add new entries as pages are built.
+ * Route prefixes that require authentication: every top-level segment of
+ * the operator app (`src/app/(app)/*`), the back office (`(admin)/admin`)
+ * and the org picker. Issue #613 — a segment missing here skips the
+ * restore-session detour, so an expired JWT bounces straight to /login.
+ * `proxy.test.ts` walks the app directory and fails when a new segment is
+ * added without being listed.
+ *
+ * Deliberately an allow-list rather than "everything not public": the
+ * proxy also sees `/api/v1/*` XHRs (which must get a 401, not a redirect),
+ * `/api/healthz`, public assets and the donor-facing `(public)` pages.
  */
-const PROTECTED_PREFIXES = ["/dashboard", "/settings", "/select-organization", "/admin"];
+const PROTECTED_PREFIXES = [
+  "/dashboard",
+  "/constituents",
+  "/donations",
+  "/campaigns",
+  "/profile",
+  "/settings",
+  "/select-organization",
+  "/admin",
+];
 
 /** Route prefixes that are always public (auth pages, API callbacks, static assets). */
 const PUBLIC_PREFIXES = [

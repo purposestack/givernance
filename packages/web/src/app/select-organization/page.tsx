@@ -1,13 +1,17 @@
+import { TriangleAlert } from "lucide-react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { AuthCard } from "@/components/auth/auth-card";
 import { AuthLogo } from "@/components/auth/auth-logo";
 import { OrgPickerClient } from "@/components/auth/org-picker";
+import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
 import { JWT_COOKIE_NAME } from "@/lib/auth/keycloak";
 
 export const dynamic = "force-dynamic";
+
+const RESTORE_RETRY_HREF = "/api/auth/restore-session?return=%2Fselect-organization";
 
 /**
  * Org picker interstitial (issue #112 / doc 22 §6.3).
@@ -38,12 +42,49 @@ export default async function SelectOrganizationPage() {
     lastVisitedAt: string | null;
   }
 
-  let memberships: Membership[] = [];
+  // `null` = the fetch failed; `[]` = the API answered "no memberships".
+  // Issue #613: the two used to be conflated, so an API blip redirected a
+  // perfectly valid member to `/login?error=no_tenants` (and on to
+  // /dashboard via the proxy).
+  let memberships: Membership[] | null = null;
+  let retryHref = "/select-organization";
   try {
     const res = await api.get<{ data: Membership[] }>("/v1/users/me/organizations");
     memberships = res.data;
-  } catch {
-    // If the API call fails, let the client side render an error state.
+  } catch (err) {
+    memberships = null;
+    // The API rejected a JWT the proxy still considers live (revoked
+    // session, rotated key): a plain reload would fail the same way until
+    // the token expires, so the retry goes through restore-session instead.
+    if (err instanceof ApiProblem && err.status === 401) retryHref = RESTORE_RETRY_HREF;
+  }
+
+  if (!memberships) {
+    return (
+      <main
+        id="main-content"
+        className="flex min-h-screen flex-col items-center justify-center gap-8 bg-background p-6"
+      >
+        <AuthCard>
+          <AuthLogo />
+          <div role="alert" className="text-center">
+            <TriangleAlert className="mx-auto mb-4 h-8 w-8 text-error" aria-hidden="true" />
+            <h1 className="mb-2 font-heading text-xl text-text">{t("loadError.title")}</h1>
+            <p className="mb-8 text-sm text-text-secondary">{t("loadError.description")}</p>
+            {/* Plain <a>, never next/link: on a 401 the retry is the
+                restore-session GET (rotates the access token, then lands back
+                here — or on /login if the session is really gone), which must
+                not be prefetched. User-initiated, so it cannot loop. */}
+            <a
+              href={retryHref}
+              className="inline-flex h-[var(--btn-height-lg)] items-center justify-center rounded-button bg-primary px-8 font-body text-base font-medium text-on-primary no-underline transition-opacity duration-normal ease-out hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            >
+              {t("loadError.retry")}
+            </a>
+          </div>
+        </AuthCard>
+      </main>
+    );
   }
 
   if (memberships.length === 1 && memberships[0]) {

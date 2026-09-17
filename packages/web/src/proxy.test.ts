@@ -11,6 +11,9 @@
  *   - the CSRF safety-net cookie is still minted when missing
  */
 
+import { readdirSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { NextRequest } from "next/server";
 import { describe, expect, it } from "vitest";
 
@@ -94,6 +97,68 @@ describe("proxy (Next.js middleware)", () => {
 
   it("lets unauthenticated users reach public routes", async () => {
     const res = await proxy(makeRequest("/login"));
+    expect(res.headers.get("location")).toBeNull();
+    expect(res.status).toBe(200);
+  });
+
+  // Issue #613 — the whole operator app is protected, not four prefixes.
+  it.each([
+    "/constituents",
+    "/constituents/0190a1b2-0000-7000-8000-000000000001",
+    "/donations",
+    "/campaigns",
+    "/campaigns/abc/edit",
+    "/profile",
+    "/admin/tenants",
+  ])("detours %s with an EXPIRED jwt to restore-session", async (pathname) => {
+    const res = await proxy(makeRequest(pathname, { jwt: EXPIRED_JWT }));
+    const loc = res.headers.get("location") ?? "";
+    expect(loc).toContain("/api/auth/restore-session");
+    expect(loc).toContain(`return=${encodeURIComponent(pathname)}`);
+  });
+
+  it("protects every top-level segment of the (app) and (admin) route groups", async () => {
+    const appDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "app");
+    const segments = ["(app)", "(admin)"].flatMap((group) =>
+      readdirSync(path.join(appDir, group), { withFileTypes: true })
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => `/${entry.name}`),
+    );
+    expect(segments).toContain("/constituents");
+    expect(segments).toContain("/admin");
+
+    for (const segment of segments) {
+      const res = await proxy(makeRequest(segment));
+      expect(res.headers.get("location") ?? "", `${segment} must be protected`).toContain(
+        "/api/auth/restore-session",
+      );
+    }
+  });
+
+  it.each([
+    "/login",
+    "/signup",
+    "/signup/verify?token=abc",
+    "/signup/success",
+    "/forgot-password",
+    "/reset-password",
+    "/invite/accept?token=abc",
+    "/admin/platform-admins/accept?token=abc",
+    "/p/0190a1b2-0000-7000-8000-000000000001",
+    "/c/0190a1b2-0000-7000-8000-000000000001",
+    "/api/auth/login",
+    "/api/auth/restore-session?return=%2Fdashboard",
+    "/api/healthz",
+    // XHRs through the API rewrite must reach Fastify and get a 401 —
+    // never an HTML redirect.
+    "/api/v1/constituents",
+    "/givernance-logo.svg",
+    "/icon.svg",
+    // Strict prefix match: look-alikes of protected segments stay public.
+    "/profiles",
+    "/campaigns-archive",
+  ])("keeps %s public for a signed-out visitor", async (pathname) => {
+    const res = await proxy(makeRequest(pathname));
     expect(res.headers.get("location")).toBeNull();
     expect(res.status).toBe(200);
   });
