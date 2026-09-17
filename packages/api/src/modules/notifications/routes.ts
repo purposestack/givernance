@@ -25,6 +25,7 @@ import { NOTIFICATION_TYPE_VALUES, type NotificationType } from "@givernance/sha
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
 import { requireAuth } from "../../lib/guards.js";
+import { getActiveSession } from "../../lib/impersonation/redis-store.js";
 import {
   DataResponse,
   ErrorResponses,
@@ -32,6 +33,8 @@ import {
   problemDetail,
   UuidSchema,
 } from "../../lib/schemas.js";
+import { resolveActiveMembership } from "../../plugins/auth.js";
+import { isSessionBlocklisted, isUserBlocklisted } from "../session/service.js";
 import {
   getUnreadCount,
   listNotifications,
@@ -369,22 +372,39 @@ export async function notificationRoutes(app: FastifyInstance) {
         // stream is open and can downgrade the polling fallback.
         reply.raw.write("event: ready\ndata: {}\n\n");
 
-        // Honour `Last-Event-ID` header for reconnect — the value
-        // is the ISO timestamp of the most-recently-delivered row.
+        // Honour `Last-Event-ID` header for reconnect — the value is the
+        // opaque `(created_at µs, id)` cursor of the most-recently-delivered
+        // row (issue #616; the service still accepts the legacy ISO form).
         const lastEventId = request.headers["last-event-id"];
         const since =
-          typeof lastEventId === "string" && lastEventId.length > 0
-            ? new Date(lastEventId)
+          typeof lastEventId === "string" && lastEventId.length > 0 && lastEventId.length <= 256
+            ? lastEventId
             : undefined;
+
+        // Re-validated on every poll (Security H2 / issue #616): the auth
+        // hook only ran once, at the handshake. A user soft-deleted or
+        // blocklisted, a revoked session, an ended impersonation or a
+        // suspended tenant closes the stream within one polling interval.
+        const jti = request.jwtJti;
+        const impersonationSessionId = request.auth?.impersonation?.sessionId;
+        const isStillAuthorised = async (): Promise<boolean> => {
+          if (await isUserBlocklisted(userId)) return false;
+          if (jti && (await isSessionBlocklisted(jti))) return false;
+          if (impersonationSessionId && !(await getActiveSession(impersonationSessionId))) {
+            return false;
+          }
+          return (await resolveActiveMembership(userId, orgId)).active;
+        };
 
         const stream = streamNotifications(orgId, userRowId, {
           signal: controller.signal,
           intervalMs: 5_000,
-          since: Number.isNaN(since?.getTime() ?? NaN) ? undefined : since,
+          since,
+          isStillAuthorised,
         });
-        for await (const row of stream) {
+        for await (const { notification: row, cursor } of stream) {
           const payload = JSON.stringify(serializeNotification(row));
-          reply.raw.write(`id: ${row.createdAt.toISOString()}\n`);
+          reply.raw.write(`id: ${cursor}\n`);
           reply.raw.write(`event: notification\n`);
           reply.raw.write(`data: ${payload}\n\n`);
         }

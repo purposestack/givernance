@@ -246,6 +246,16 @@ The full pipeline (validation, async sharp variants, Keycloak sync) is in [`docs
 - Uses the existing `/v1/admin/tenants/:orgId/snapshot` for audit exports.
 - Suspend / archive actions are **soft** — no hard delete in MVP.
 
+#### Lifecycle enforcement (issue #616)
+
+`POST /v1/superadmin/tenants/:id/lifecycle` (`suspend` / `archive` / `activate`) is enforced at the **auth boundary**, not per route:
+
+- The auth plugin's active-membership lookup (`resolveActiveMembership`, `packages/api/src/plugins/auth.ts`) joins `tenants` and reads `tenants.status`. A member of a `suspended` or `archived` tenant is rejected on **every** tenant route with the same `401 "Account no longer active."` problem a removed user gets. `provisional` and `active` tenants pass.
+- The result is cached per `(sub, org_id)` in Redis for 30 s. `transitionTenantStatus` drops every cache entry of the tenant's members right after the transition commits, so a suspension (or a reactivation) takes effect on the next request. If that best-effort invalidation fails (Redis blip), the **maximum staleness is the 30 s cache TTL**.
+- Two session endpoints stay reachable so a multi-org member is never trapped in a suspended tenant: `GET /v1/users/me/organizations` and `POST /v1/session/switch-org` (both keyed on the JWT `sub`; switching **into** a suspended tenant is still refused with 409, an archived one with 404).
+- **Super-admins are unaffected** — they hold no tenant membership (ADR-022) and the back-office routes keep working on suspended / archived tenants (that is how a tenant gets reactivated). Impersonation START already refuses suspended / archived tenants; an in-flight impersonation session into a tenant that gets suspended ends on its next request (`401 "Impersonation session ended or expired."`).
+- Open notification SSE streams re-check the membership on every 5 s poll and close themselves.
+
 ## 7. URL routing
 
 - Authenticated app routes live under `/<org-slug>/…` (see §6 of ADR-016). App shell reads the slug from the route, resolves the tenant on every request, and re-mints the access token on `POST /v1/session/switch-org`.

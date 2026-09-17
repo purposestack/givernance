@@ -2,6 +2,7 @@
  * API routes for advanced constituent filtering
  */
 
+import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { requireFlag } from "../../../lib/flags/flag-guard.js";
@@ -186,8 +187,11 @@ export async function registerFilterRoutes(app: FastifyInstance) {
   // below resolve to e.g. `POST /v1/constituents/filter` and
   // `POST /v1/campaigns/:id/members/filter`.
   app.register(async (app) => {
+    // Flag gate FIRST (404 when off — anti-disclosure), auth second. The
+    // root-level auth plugin has already populated `request.auth`, so the
+    // tenant-scoped flag override still resolves (issue #616).
+    app.addHook("onRequest", requireFlag(FEATURE_FLAG_KEYS.ADVANCED_FILTERS));
     app.addHook("onRequest", requireAuth);
-    app.addHook("onRequest", requireFlag("advanced_filters"));
 
     /**
      * Execute a filter query and return matching constituents

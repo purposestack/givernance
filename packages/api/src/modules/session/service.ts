@@ -164,7 +164,7 @@ export async function recordOrgSwitch(
     await tx
       .update(users)
       .set({ lastVisitedAt: new Date(), updatedAt: new Date() })
-      .where(eq(users.id, target.userId));
+      .where(and(eq(users.id, target.userId), eq(users.orgId, target.orgId)));
 
     await tx.insert(auditLogs).values({
       orgId: target.orgId,
@@ -245,6 +245,8 @@ const USER_BLOCKLIST_PREFIX = "auth:user-blocklist:";
 const ACTIVE_USER_CACHE_PREFIX = "auth:active-user:";
 /** Default TTL for the active-row cache. Soft-delete invalidates the key directly. */
 export const ACTIVE_USER_CACHE_TTL_SECONDS = 30;
+/** Negative cache value for "tenant suspended / archived" (issue #616). */
+const ACTIVE_USER_CACHE_TENANT_INACTIVE = "T";
 
 function userBlocklistKey(keycloakId: string): string {
   return `${USER_BLOCKLIST_PREFIX}${keycloakId}`;
@@ -288,6 +290,9 @@ export async function isUserBlocklisted(keycloakId: string | undefined): Promise
  *     so call sites that need `users.id` (e.g. notifications routes
  *     filtering against `notifications.user_id`) don't re-query.
  *   - `"missing"` — no active row (cached negative).
+ *   - `"tenant_inactive"` — the row exists but the tenant is `suspended` /
+ *     `archived` (issue #616); cached so a suspended tenant's traffic doesn't
+ *     hit Postgres on every request.
  *   - `null` — not in cache; caller should query Postgres.
  *
  * The cache is intentionally short-TTL so a soft-delete propagates without
@@ -296,6 +301,7 @@ export async function isUserBlocklisted(keycloakId: string | undefined): Promise
  *
  * Cache value encoding:
  *   - `"0"` ⇒ missing (negative cache, legacy compat)
+ *   - `"T"` ⇒ tenant suspended / archived (negative cache, issue #616)
  *   - any other non-empty string ⇒ `users.id` row UUID (positive cache)
  *
  * The old `"1"` positive value (pre-Epic-#363 GLO-004 fix) is treated as
@@ -305,11 +311,12 @@ export async function isUserBlocklisted(keycloakId: string | undefined): Promise
 export async function getActiveUserCache(
   keycloakId: string,
   orgId: string,
-): Promise<{ active: true; userRowId: string } | "missing" | null> {
+): Promise<{ active: true; userRowId: string } | "missing" | "tenant_inactive" | null> {
   try {
     const hit = await redis.get(activeUserCacheKey(keycloakId, orgId));
     if (hit === null) return null;
     if (hit === "0") return "missing";
+    if (hit === ACTIVE_USER_CACHE_TENANT_INACTIVE) return "tenant_inactive";
     // Reject the pre-fix `"1"` positive value and any other shape that
     // isn't a UUID — a "1" handed back as `userRowId` would silently
     // re-introduce the bug on tenant routes filtering by `users.id`.
@@ -324,16 +331,21 @@ export async function getActiveUserCache(
 /**
  * Write the cache with a short TTL after a successful (or negative) DB
  * lookup. `userRowId` is the `users.id` row UUID when active, omitted
- * for the negative case.
+ * for the negative cases (`tenantInactive` marks a suspended / archived
+ * tenant, as opposed to a missing `users` row).
  */
 export async function setActiveUserCache(
   keycloakId: string,
   orgId: string,
-  result: { active: true; userRowId: string } | { active: false },
+  result: { active: true; userRowId: string } | { active: false; tenantInactive?: boolean },
   ttlSeconds = ACTIVE_USER_CACHE_TTL_SECONDS,
 ): Promise<void> {
   try {
-    const value = result.active ? result.userRowId : "0";
+    const value = result.active
+      ? result.userRowId
+      : result.tenantInactive
+        ? ACTIVE_USER_CACHE_TENANT_INACTIVE
+        : "0";
     await redis.setex(activeUserCacheKey(keycloakId, orgId), ttlSeconds, value);
   } catch (err) {
     logger.error({ err, keycloakId, orgId }, "active-user cache write failed");
@@ -346,6 +358,26 @@ export async function invalidateActiveUserCache(keycloakId: string, orgId: strin
     await redis.del(activeUserCacheKey(keycloakId, orgId));
   } catch (err) {
     logger.error({ err, keycloakId, orgId }, "active-user cache invalidation failed");
+  }
+}
+
+/**
+ * Drop the cache for every listed member of one tenant — called after a
+ * tenant lifecycle transition (suspend / archive / reactivate, issue #616)
+ * so the new `tenants.status` is observed on the next request. Keys are
+ * per-user, so the caller passes the tenant's `keycloak_id`s (read from
+ * `users`) rather than us SCANning Redis. Best-effort: on a Redis failure
+ * the entries age out within `ACTIVE_USER_CACHE_TTL_SECONDS`.
+ */
+export async function invalidateActiveUserCacheForTenant(
+  orgId: string,
+  keycloakIds: string[],
+): Promise<void> {
+  if (keycloakIds.length === 0) return;
+  try {
+    await redis.del(...keycloakIds.map((k) => activeUserCacheKey(k, orgId)));
+  } catch (err) {
+    logger.error({ err, orgId }, "active-user cache tenant invalidation failed");
   }
 }
 

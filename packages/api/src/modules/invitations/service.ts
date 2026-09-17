@@ -60,7 +60,7 @@ import {
   tenants,
   users,
 } from "@givernance/shared/schema";
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
 import type { FastifyRequest } from "fastify";
 import pino from "pino";
 import { systemDb, withTenantContext } from "../../lib/db.js";
@@ -258,6 +258,10 @@ export async function createTeamInvitation(
     // surface this as a 409 from the route so the operator gets a clear
     // signal that they already invited this person; the dedicated
     // resend endpoint is the right way to retry.
+    //
+    // Only non-expired rows count (issue #616): an unordered `limit(1)` over
+    // every unaccepted row could pick an old expired invitation and let a
+    // duplicate through next to a live one.
     const [pending] = await tx
       .select({ id: invitations.id, expiresAt: invitations.expiresAt })
       .from(invitations)
@@ -267,10 +271,12 @@ export async function createTeamInvitation(
           sql`lower(${invitations.email}) = ${normalisedEmail}`,
           eq(invitations.purpose, "team_invite"),
           isNull(invitations.acceptedAt),
+          gt(invitations.expiresAt, new Date()),
         ),
       )
+      .orderBy(desc(invitations.expiresAt), desc(invitations.id))
       .limit(1);
-    if (pending && pending.expiresAt > new Date()) {
+    if (pending) {
       return { ok: false as const, error: { kind: "already_invited" as const } };
     }
 
@@ -418,7 +424,7 @@ export async function listTeamInvitations(
         createdAt: invitations.createdAt,
       })
       .from(invitations)
-      .leftJoin(users, eq(users.id, invitations.invitedById))
+      .leftJoin(users, and(eq(users.id, invitations.invitedById), eq(users.orgId, input.orgId)))
       .where(and(eq(invitations.orgId, input.orgId), eq(invitations.purpose, "team_invite")))
       .orderBy(desc(invitations.createdAt))
       .limit(perPage)

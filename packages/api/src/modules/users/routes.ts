@@ -588,7 +588,7 @@ export async function userRoutes(app: FastifyInstance) {
         const [updated] = await tx
           .update(users)
           .set({ locale: body.locale, updatedAt: new Date() })
-          .where(eq(users.id, existing.id))
+          .where(and(eq(users.id, existing.id), eq(users.orgId, orgId)))
           .returning({
             id: users.id,
             orgId: users.orgId,

@@ -8,11 +8,13 @@ import {
 } from "@givernance/shared/custom-fields";
 import {
   campaignConstituents,
+  campaignDocuments,
   constituents,
   donations,
   mergeHistory,
   type OutboxMetadata,
   outboxEvents,
+  pledges,
 } from "@givernance/shared/schema";
 import type { Pagination } from "@givernance/shared/types";
 import {
@@ -659,6 +661,15 @@ export interface DuplicateMatch {
   score: number;
 }
 
+/**
+ * pg_trgm similarity of the FULL name at/above which two constituents are
+ * flagged as likely duplicates. Calibrated on real pairs: "Jean Dupont" vs
+ * "Jean Dupond" 0.71, "Jon Smith" vs "John Smith" 0.62, swapped first/last
+ * 1.0 — all flagged; "Marc Martin" vs "Marie Martin" 0.58, "Marie Dupont" vs
+ * "Jean Dupont" 0.39 — not flagged.
+ */
+const FULL_NAME_DUPLICATE_THRESHOLD = 0.6;
+
 /** Find potential duplicate constituents using trigram similarity and exact email match */
 export async function findDuplicates(
   orgId: string,
@@ -667,6 +678,13 @@ export async function findDuplicates(
   return withTenantContext(orgId, async (tx) => {
     // Build a score from trigram similarity on names + exact email match
     // similarity() returns 0..1; we weight first+last name and add a bonus for email match
+    //
+    // The score only RANKS. What QUALIFIES a row as a candidate (issue #616)
+    // is an exact email match OR a full-name similarity at/above the
+    // threshold. The old gate — either name component > 0.3, score ≥ 0.3 —
+    // sat below a single component's weight (0.35), so sharing just a last
+    // name ("Marie Dupont" vs "Jean Dupont") raised the duplicate dialog.
+    const fullName = `${input.firstName} ${input.lastName}`;
     const rows = await tx.execute(sql`
       SELECT
         id,
@@ -688,8 +706,7 @@ export async function findDuplicates(
       WHERE org_id = ${orgId}
         AND deleted_at IS NULL
         AND (
-          similarity(first_name, ${input.firstName}) > 0.3
-          OR similarity(last_name, ${input.lastName}) > 0.3
+          similarity(first_name || ' ' || last_name, ${fullName}) >= ${FULL_NAME_DUPLICATE_THRESHOLD}
           OR (
             ${input.email ?? null}::text IS NOT NULL
             AND email IS NOT NULL
@@ -700,7 +717,7 @@ export async function findDuplicates(
       LIMIT 10
     `);
 
-    return (rows.rows as unknown as DuplicateMatch[]).filter((r) => r.score >= 0.3);
+    return rows.rows as unknown as DuplicateMatch[];
   });
 }
 
@@ -738,6 +755,160 @@ export function constituentEtag(row: { id: string; updatedAt: Date }): string {
 export interface MergeOptions {
   /** Optional `If-Match` — if present, must match the survivor's current ETag. */
   ifMatch?: string;
+  /**
+   * Union the duplicate's `types` into the survivor. The route sets it from
+   * the tenant's `constituents.multi_type` flag; default (off) keeps the
+   * survivor single-typed — see docs/34-constituents.md § merge.
+   */
+  unionTypes?: boolean;
+}
+
+type MergeTx = Parameters<Parameters<typeof withTenantContext>[1]>[0];
+type ConstituentRow = typeof constituents.$inferSelect;
+
+/**
+ * `SELECT … FOR UPDATE` both live rows of a merge. The locks are taken in
+ * sorted-id order, NOT survivor-first: two opposite merges (A←B and B←A)
+ * submitted together would otherwise each hold one row and wait on the
+ * other — a deadlock (issue #616). With a global order the second merger
+ * simply waits, then finds its survivor soft-deleted (`undefined` → 404).
+ */
+async function lockMergePair(tx: MergeTx, orgId: string, primaryId: string, duplicateId: string) {
+  const lockRow = async (id: string): Promise<ConstituentRow | undefined> => {
+    const [row] = await tx
+      .select()
+      .from(constituents)
+      .where(
+        and(eq(constituents.id, id), eq(constituents.orgId, orgId), isNull(constituents.deletedAt)),
+      )
+      .for("update");
+    return row;
+  };
+
+  if (primaryId.toLowerCase() < duplicateId.toLowerCase()) {
+    const primary = await lockRow(primaryId);
+    const duplicate = await lockRow(duplicateId);
+    return { primary, duplicate };
+  }
+  const duplicate = await lockRow(duplicateId);
+  const primary = await lockRow(primaryId);
+  return { primary, duplicate };
+}
+
+/**
+ * Scalar fields the survivor inherits from the duplicate: survivor wins,
+ * empty values are filled.
+ *
+ * The postal address is back-filled as a BLOCK, only when the survivor has
+ * no address at all (issue #616). Filling field by field would splice two
+ * different addresses together (survivor's city + duplicate's street) and
+ * print an undeliverable recipient block on the next postal export.
+ */
+function mergeBackfill(
+  primary: ConstituentRow,
+  duplicate: ConstituentRow,
+): Partial<ConstituentInput> {
+  const fill: Partial<ConstituentInput> = {};
+  if (!primary.email && duplicate.email) fill.email = duplicate.email;
+  if (!primary.phone && duplicate.phone) fill.phone = duplicate.phone;
+
+  const survivorHasAddress = [
+    primary.addressLine1,
+    primary.addressLine2,
+    primary.postalCode,
+    primary.city,
+  ].some(Boolean);
+  if (survivorHasAddress) return fill;
+
+  if (duplicate.addressLine1) fill.addressLine1 = duplicate.addressLine1;
+  if (duplicate.addressLine2) fill.addressLine2 = duplicate.addressLine2;
+  if (duplicate.postalCode) fill.postalCode = duplicate.postalCode;
+  if (duplicate.city) fill.city = duplicate.city;
+  if (!primary.countryCode && duplicate.countryCode) fill.countryCode = duplicate.countryCode;
+  return fill;
+}
+
+/**
+ * Re-point the duplicate's dependent rows to the survivor, inside the merge
+ * transaction. Every table with a `constituent_id` FK is decided here:
+ *
+ *   - `pledges`               → moved (no uniqueness on the constituent).
+ *   - `campaign_constituents` → survivor enrolled in each of the duplicate's
+ *       campaigns (`ON CONFLICT DO NOTHING` — it may already be a member),
+ *       then the duplicate's membership rows are removed.
+ *   - `campaign_documents`    → moved (no uniqueness on the constituent).
+ *   - `campaign_qr_codes`, `swiss_qr_references` → moved, EXCEPT where the
+ *       survivor already holds a row for the same postal export (unique
+ *       `(export_id, constituent_id)`): the survivor's row wins and the
+ *       duplicate's stays attached to the soft-deleted record, so a printed
+ *       QR / payment reference that is already in a donor's hands still
+ *       resolves instead of 404-ing.
+ *   - `bulk_import_results`, `bulk_email_jobs.*_constituent_ids` → NOT moved:
+ *       point-in-time reports of what an import / dispatch did.
+ *
+ * Every statement carries the explicit `org_id` predicate (issue #430).
+ */
+async function repointMergedConstituentRefs(
+  tx: MergeTx,
+  orgId: string,
+  primaryId: string,
+  duplicateId: string,
+  now: Date,
+): Promise<void> {
+  await tx
+    .update(pledges)
+    .set({ constituentId: primaryId, updatedAt: now })
+    .where(and(eq(pledges.constituentId, duplicateId), eq(pledges.orgId, orgId)));
+
+  await tx.execute(sql`
+    INSERT INTO campaign_constituents (org_id, campaign_id, constituent_id, added_by, added_at)
+    SELECT org_id, campaign_id, ${primaryId}::uuid, added_by, added_at
+    FROM campaign_constituents
+    WHERE org_id = ${orgId} AND constituent_id = ${duplicateId}
+    ON CONFLICT (org_id, campaign_id, constituent_id) DO NOTHING
+  `);
+  await tx
+    .delete(campaignConstituents)
+    .where(
+      and(
+        eq(campaignConstituents.constituentId, duplicateId),
+        eq(campaignConstituents.orgId, orgId),
+      ),
+    );
+
+  await tx
+    .update(campaignDocuments)
+    .set({ constituentId: primaryId, updatedAt: now })
+    .where(
+      and(eq(campaignDocuments.constituentId, duplicateId), eq(campaignDocuments.orgId, orgId)),
+    );
+
+  await tx.execute(sql`
+    UPDATE campaign_qr_codes q
+    SET constituent_id = ${primaryId}::uuid
+    WHERE q.org_id = ${orgId}
+      AND q.constituent_id = ${duplicateId}
+      AND NOT EXISTS (
+        SELECT 1 FROM campaign_qr_codes s
+        WHERE s.org_id = ${orgId}
+          AND s.constituent_id = ${primaryId}
+          AND s.export_id IS NOT NULL
+          AND s.export_id = q.export_id
+      )
+  `);
+
+  await tx.execute(sql`
+    UPDATE swiss_qr_references r
+    SET constituent_id = ${primaryId}::uuid
+    WHERE r.org_id = ${orgId}
+      AND r.constituent_id = ${duplicateId}
+      AND NOT EXISTS (
+        SELECT 1 FROM swiss_qr_references s
+        WHERE s.org_id = ${orgId}
+          AND s.constituent_id = ${primaryId}
+          AND s.export_id = r.export_id
+      )
+  `);
 }
 
 /** Merge a duplicate constituent into a primary (survivor) constituent */
@@ -763,33 +934,12 @@ export async function mergeConstituents(
     // pass If-Match, and both apply — even though only one should succeed
     // (PR #142 review H3). `FOR UPDATE` serialises the tail of the merge
     // against any other writer touching this row, including another merge.
-    const [primary] = await tx
-      .select()
-      .from(constituents)
-      .where(
-        and(
-          eq(constituents.id, primaryId),
-          eq(constituents.orgId, orgId),
-          isNull(constituents.deletedAt),
-        ),
-      )
-      .for("update");
-
+    //
     // The duplicate doesn't strictly need a row lock (we're soft-deleting it,
     // not racing its updatedAt), but we still want it serialised against
     // concurrent mergers trying to use the SAME duplicate as the target of
     // two different merges — the second should see it already deleted.
-    const [duplicate] = await tx
-      .select()
-      .from(constituents)
-      .where(
-        and(
-          eq(constituents.id, duplicateId),
-          eq(constituents.orgId, orgId),
-          isNull(constituents.deletedAt),
-        ),
-      )
-      .for("update");
+    const { primary, duplicate } = await lockMergePair(tx, orgId, primaryId, duplicateId);
 
     if (!primary || !duplicate) return null;
 
@@ -806,9 +956,16 @@ export async function mergeConstituents(
     }
 
     // Fill null fields on primary with values from duplicate
-    const fieldsToFill: Partial<ConstituentInput> = {};
-    if (!primary.email && duplicate.email) fieldsToFill.email = duplicate.email;
-    if (!primary.phone && duplicate.phone) fieldsToFill.phone = duplicate.phone;
+    const fieldsToFill = mergeBackfill(primary, duplicate);
+
+    // Types (issue #465) — union, survivor's order first so `type = types[0]`
+    // keeps pointing at the survivor's primary type. Only when the caller
+    // says the tenant may hold multi-typed constituents; with the
+    // `constituents.multi_type` flag off the survivor keeps its single type
+    // (a union would mint a multi-typed row the edit form then 422s on).
+    const mergedTypes = options.unionTypes
+      ? [...new Set([...primary.types, ...duplicate.types])]
+      : primary.types;
 
     // Merge tags (union, deduplicate)
     const primaryTags = primary.tags ?? [];
@@ -830,7 +987,13 @@ export async function mergeConstituents(
     // can capture the post-merge state for the audit snapshot below.
     const [survivorAfter] = await tx
       .update(constituents)
-      .set({ ...fieldsToFill, tags: mergedTags, custom: mergedCustom, updatedAt: now })
+      .set({
+        ...fieldsToFill,
+        types: mergedTypes,
+        tags: mergedTags,
+        custom: mergedCustom,
+        updatedAt: now,
+      })
       .where(and(eq(constituents.id, primaryId), eq(constituents.orgId, orgId)))
       .returning();
 
@@ -839,6 +1002,12 @@ export async function mergeConstituents(
       .update(donations)
       .set({ constituentId: primaryId, updatedAt: now })
       .where(and(eq(donations.constituentId, duplicateId), eq(donations.orgId, orgId)));
+
+    // Re-point everything else that hangs off the duplicate (issue #616) —
+    // one deliberate decision per `constituent_id` FK in the schema. Left on
+    // the soft-deleted duplicate these rows silently drop out of mailing
+    // lists, pledge schedules and the survivor's history.
+    await repointMergedConstituentRefs(tx, orgId, primaryId, duplicateId, now);
 
     // Soft-delete the duplicate
     await tx

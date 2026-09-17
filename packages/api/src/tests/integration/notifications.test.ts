@@ -16,6 +16,7 @@ import { notifications } from "@givernance/shared/schema";
 import { eq, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { streamNotifications } from "../../modules/notifications/service.js";
 import { createServer } from "../../server.js";
 import {
   authHeader,
@@ -749,5 +750,140 @@ describe("Notifications — preferences", () => {
       payload: { inApp: true, emailDigest: true },
     });
     expect(res.statusCode).toBe(400);
+  });
+});
+
+// ─── 6. µs-precision keyset (issue #616) ───────────────────────────────
+//
+// `created_at` is µs precision; the cursor used to be a JS `Date` (ms).
+// Rows written by one fanout transaction share an identical `now()`, and
+// rows within the same millisecond differ only past the 3rd decimal.
+
+describe("Notifications — (created_at, id) keyset at µs precision", () => {
+  /** Seed one row with an explicit µs-precision timestamp literal. */
+  async function seedAt(createdAtUs: string): Promise<string> {
+    const id = await seedNotification({ orgId: ORG_A, userId: USER_A_ROW_ID });
+    await db.execute(
+      sql`UPDATE notifications SET created_at = ${createdAtUs}::timestamptz WHERE id = ${id}`,
+    );
+    return id;
+  }
+
+  it("list: rows sharing a timestamp / a millisecond across a page boundary come back exactly once", async () => {
+    const ids = [
+      // Identical µs timestamp — what one transaction's `now()` produces.
+      await seedAt("2026-03-01T10:00:00.123456Z"),
+      await seedAt("2026-03-01T10:00:00.123456Z"),
+      // Same millisecond, different µs.
+      await seedAt("2026-03-01T10:00:00.123789Z"),
+      await seedAt("2026-03-01T10:00:00.123001Z"),
+    ];
+    const token = signToken(app);
+
+    const seen: string[] = [];
+    let cursor: string | null = null;
+    for (let page = 0; page < 6; page++) {
+      const qs: string = cursor ? `&cursor=${encodeURIComponent(cursor)}` : "";
+      const res = await app.inject({
+        method: "GET",
+        url: `/v1/notifications?limit=1${qs}`,
+        headers: authHeader(token),
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json<{ data: Array<{ id: string }>; nextCursor: string | null }>();
+      seen.push(...body.data.map((r) => r.id));
+      cursor = body.nextCursor;
+      if (!cursor) break;
+    }
+
+    expect(seen).toHaveLength(ids.length);
+    expect(new Set(seen)).toEqual(new Set(ids));
+  });
+
+  it("list: a malformed / out-of-range cursor degrades to the first page, never a 500", async () => {
+    await seedNotification({ orgId: ORG_A, userId: USER_A_ROW_ID });
+    const forged = Buffer.from(
+      "2026-02-31T10:00:00.000Z|00000000-0000-0000-0000-000000000001",
+    ).toString("base64url");
+    const res = await app.inject({
+      method: "GET",
+      url: `/v1/notifications?cursor=${forged}`,
+      headers: authHeader(signToken(app)),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json<{ data: unknown[] }>().data).toHaveLength(1);
+  });
+
+  /** Race the generator's next item against an idle timeout. */
+  function nextOrIdle<T>(gen: AsyncGenerator<T, void, unknown>, ms: number) {
+    let timer: NodeJS.Timeout | undefined;
+    const idle = new Promise<"idle">((resolve) => {
+      timer = setTimeout(() => resolve("idle"), ms);
+    });
+    const next = gen.next().then((r) => (r.done ? ("done" as const) : r.value));
+    return { next, raced: Promise.race([next, idle]).finally(() => clearTimeout(timer)) };
+  }
+
+  it("stream: a delivered row is not re-yielded on the following polls", async () => {
+    const controller = new AbortController();
+    const resumeFrom = new Date(Date.now() - 60_000).toISOString();
+    const first = await seedNotification({ orgId: ORG_A, userId: USER_A_ROW_ID });
+    // Force a non-zero µs fraction: the row must be `>` its own ms truncation.
+    await db.execute(
+      sql`UPDATE notifications SET created_at = date_trunc('milliseconds', now()) + interval '456 microseconds' WHERE id = ${first}`,
+    );
+
+    const gen = streamNotifications(ORG_A, USER_A_ROW_ID, {
+      signal: controller.signal,
+      intervalMs: 20,
+      since: resumeFrom,
+    });
+    try {
+      const one = await gen.next();
+      expect(one.done).toBe(false);
+      if (one.done) return;
+      expect(one.value.notification.id).toBe(first);
+
+      // ~10 more polls: nothing new, so nothing may be yielded.
+      const pending = nextOrIdle(gen, 250);
+      expect(await pending.raced).toBe("idle");
+
+      // A genuinely new row is delivered by the still-pending `next()`.
+      // No `created_at` touch-up here: the 20 ms poller may deliver the row
+      // between the INSERT and an UPDATE, and moving `created_at` forward
+      // afterwards would legitimately put it past its own cursor again.
+      const second = await seedNotification({ orgId: ORG_A, userId: USER_A_ROW_ID });
+      const two = await pending.next;
+      expect(two).not.toBe("done");
+      if (two === "done") return;
+      expect(two.notification.id).toBe(second);
+
+      // Reconnect with the last event id resumes AFTER it (no replay).
+      const resumed = streamNotifications(ORG_A, USER_A_ROW_ID, {
+        signal: controller.signal,
+        intervalMs: 20,
+        since: two.cursor,
+      });
+      expect(await nextOrIdle(resumed, 150).raced).toBe("idle");
+    } finally {
+      controller.abort();
+    }
+  });
+
+  it("stream: stops as soon as `isStillAuthorised` turns false", async () => {
+    const controller = new AbortController();
+    let authorised = true;
+    const gen = streamNotifications(ORG_A, USER_A_ROW_ID, {
+      signal: controller.signal,
+      intervalMs: 20,
+      isStillAuthorised: async () => authorised,
+    });
+    try {
+      const pending = gen.next();
+      authorised = false;
+      expect((await pending).done).toBe(true);
+    } finally {
+      controller.abort();
+    }
   });
 });

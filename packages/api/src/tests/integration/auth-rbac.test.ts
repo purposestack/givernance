@@ -1,8 +1,10 @@
+import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { blocklistUser } from "../../modules/session/service.js";
 import { createServer } from "../../server.js";
-import { authHeader, signToken } from "../helpers/auth.js";
+import { authHeader, ORG_A, signToken } from "../helpers/auth.js";
+import { db } from "../helpers/db.js";
 
 const JWT_COOKIE_NAME = "givernance_jwt";
 const CSRF_COOKIE_NAME = "csrf-token";
@@ -325,6 +327,50 @@ describe("Audit routes", () => {
       page: 1,
       perPage: 20,
     });
+  });
+
+  // Issue #616 — out-of-range paging used to throw inside the handler (500).
+  it.each(["page=0", "perPage=1000", "perPage=0"])("GET /v1/audit?%s returns 400", async (qs) => {
+    const res = await app.inject({
+      method: "GET",
+      url: `/v1/audit?${qs}`,
+      headers: authHeader(signToken(app)),
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("GET /v1/audit pages rows sharing a created_at exactly once (id tiebreak)", async () => {
+    // Five rows with an identical timestamp, newer than anything else in the tenant.
+    const stamp = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const action = `test.audit_tiebreak_${Date.now()}`;
+    for (let i = 0; i < 5; i++) {
+      await db.execute(
+        sql`INSERT INTO audit_logs (org_id, action, created_at) VALUES (${ORG_A}, ${action}, ${stamp})`,
+      );
+    }
+    try {
+      const seen: string[] = [];
+      for (const page of [1, 2, 3]) {
+        const res = await app.inject({
+          method: "GET",
+          url: `/v1/audit?page=${page}&perPage=2`,
+          headers: authHeader(signToken(app)),
+        });
+        expect(res.statusCode).toBe(200);
+        const rows = res.json<{ data: Array<{ id: string; action: string }> }>().data;
+        seen.push(...rows.filter((r) => r.action === action).map((r) => r.id));
+      }
+      expect(seen).toHaveLength(5);
+      expect(new Set(seen).size).toBe(5);
+      // Within the tie the order is `id DESC`.
+      expect(seen).toEqual([...seen].sort().reverse());
+    } finally {
+      // `audit_logs` is immutable (trigger) — bypass it for fixture cleanup only.
+      await db.transaction(async (tx) => {
+        await tx.execute(sql`SET LOCAL session_replication_role = 'replica'`);
+        await tx.execute(sql`DELETE FROM audit_logs WHERE action = ${action}`);
+      });
+    }
   });
 });
 

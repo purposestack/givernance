@@ -29,7 +29,7 @@ import {
   notificationPreferences,
   notifications,
 } from "@givernance/shared/schema";
-import { and, count, desc, eq, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, isNull, sql } from "drizzle-orm";
 import { withTenantContext } from "../../lib/db.js";
 
 export interface ListNotificationsQuery {
@@ -87,34 +87,31 @@ export async function listNotifications(
       conditions.push(isNull(notifications.readAt));
     }
     if (cursor) {
-      // (created_at, id) tuple ordering — strict less-than on the
-      // composite. Postgres `row(a, b) < row(c, d)` evaluates exactly
-      // this. Using `or` of two conjunctions keeps Drizzle happy. The
-      // `or` helper returns `SQL | undefined`; we know both branches
-      // are present, so guard with an explicit truthy push rather
-      // than a non-null assertion (lint/style/noNonNullAssertion).
-      const cursorClause = or(
-        lt(notifications.createdAt, cursor.createdAt),
-        and(eq(notifications.createdAt, cursor.createdAt), lt(notifications.id, cursor.id)),
+      // (created_at, id) keyset — strict less-than on the composite,
+      // compared at the column's native µs precision (issue #616). The
+      // cursor carries the µs timestamp as TEXT: a JS `Date` truncates to
+      // ms, so `created_at = <ms>` never matched and `created_at < <ms>`
+      // skipped every sibling row sharing the cursor row's millisecond.
+      conditions.push(
+        sql`(${notifications.createdAt}, ${notifications.id}) < (${cursor.createdAt}::timestamptz, ${cursor.id}::uuid)`,
       );
-      if (cursorClause) conditions.push(cursorClause);
     }
 
     // Fetch one extra to know if there's a next page without a
     // second COUNT query.
     const rows = await tx
-      .select()
+      .select({ row: notifications, createdAtUs: CREATED_AT_US })
       .from(notifications)
       .where(and(...conditions))
       .orderBy(desc(notifications.createdAt), desc(notifications.id))
       .limit(limit + 1);
 
     const hasNext = rows.length > limit;
-    const data = hasNext ? rows.slice(0, limit) : rows;
-    const last = data[data.length - 1];
-    const nextCursor = hasNext && last ? encodeCursor(last.createdAt, last.id) : null;
+    const page = hasNext ? rows.slice(0, limit) : rows;
+    const last = page[page.length - 1];
+    const nextCursor = hasNext && last ? encodeCursor(last.createdAtUs, last.row.id) : null;
 
-    return { data, nextCursor };
+    return { data: page.map((r) => r.row), nextCursor };
   });
 }
 
@@ -391,6 +388,13 @@ export async function updatePreference(
  * `intervalMs` and yields rows created after `since`. Stops when the
  * caller's AbortSignal fires (the route closes the connection).
  *
+ * The poll is a `(created_at, id)` keyset at µs precision and the loop
+ * tracks the last EMITTED tuple (issue #616). The previous cursor was a
+ * JS `Date`: `created_at` (µs) is almost always `>` its own ms-truncated
+ * value, so every poll re-sent the rows it had just delivered. Each
+ * yielded item carries its opaque `cursor` — the route uses it as the
+ * SSE event id so a `Last-Event-ID` reconnect resumes exactly after it.
+ *
  * `isStillAuthorised` is called every iteration so a flag flip /
  * user revocation mid-stream tears down the connection within one
  * polling interval (Security H2). The caller passes a closure that
@@ -407,20 +411,29 @@ export async function* streamNotifications(
   options: {
     signal: AbortSignal;
     intervalMs: number;
-    since?: Date;
+    /**
+     * Resume point — the opaque `cursor` of the last delivered item (the
+     * SSE `Last-Event-ID`). A legacy ISO timestamp is still accepted.
+     * Absent / unparseable ⇒ start from "now".
+     */
+    since?: string;
     /** Returning `false` aborts the stream — see header. */
     isStillAuthorised?: () => Promise<boolean>;
   },
-): AsyncGenerator<Notification, void, unknown> {
-  let cursor = options.since ?? new Date();
+): AsyncGenerator<StreamedNotification, void, unknown> {
+  let cursor: DecodedCursor = decodeStreamResumePoint(options.since) ?? {
+    createdAt: new Date().toISOString(),
+    id: NIL_UUID,
+  };
   while (!options.signal.aborted) {
     if (options.isStillAuthorised) {
       const ok = await options.isStillAuthorised();
       if (!ok) break;
     }
+    const after = cursor;
     const fresh = await withTenantContext(orgId, async (tx) => {
       return tx
-        .select()
+        .select({ row: notifications, createdAtUs: CREATED_AT_US })
         .from(notifications)
         .where(
           and(
@@ -431,18 +444,24 @@ export async function* streamNotifications(
             // can't see.
             eq(notifications.panelVisible, true),
             isNull(notifications.deletedAt),
-            sql`${notifications.createdAt} > ${cursor.toISOString()}`,
+            sql`(${notifications.createdAt}, ${notifications.id}) > (${after.createdAt}::timestamptz, ${after.id}::uuid)`,
           ),
         )
-        .orderBy(notifications.createdAt);
+        .orderBy(asc(notifications.createdAt), asc(notifications.id));
     });
-    for (const row of fresh) {
-      yield row;
-      cursor = row.createdAt;
+    for (const { row, createdAtUs } of fresh) {
+      cursor = { createdAt: createdAtUs, id: row.id };
+      yield { notification: row, cursor: encodeCursor(createdAtUs, row.id) };
     }
     if (options.signal.aborted) break;
     await sleep(options.intervalMs, options.signal);
   }
+}
+
+/** One streamed row + the opaque resume cursor pointing just after it. */
+export interface StreamedNotification {
+  notification: Notification;
+  cursor: string;
 }
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
@@ -463,14 +482,38 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
 // ─── Cursor codec ─────────────────────────────────────────────────────
 
 interface DecodedCursor {
-  createdAt: Date;
+  /**
+   * UTC ISO-8601 timestamp TEXT with up to 6 fractional digits — kept as a
+   * string end to end because a JS `Date` cannot hold the column's µs
+   * precision (issue #616). Bound as `::timestamptz` in the keyset.
+   */
+  createdAt: string;
   id: string;
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const NIL_UUID = "00000000-0000-0000-0000-000000000000";
+/** Strict shape of the timestamp half — also accepts the legacy ms cursors. */
+const CURSOR_TS_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?Z$/;
 
-function encodeCursor(createdAt: Date, id: string): string {
-  return Buffer.from(`${createdAt.toISOString()}|${id}`, "utf8").toString("base64url");
+/** `created_at` rendered at full µs precision, in the cursor's text format. */
+const CREATED_AT_US = sql<string>`to_char(${notifications.createdAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
+
+function encodeCursor(createdAtUs: string, id: string): string {
+  return Buffer.from(`${createdAtUs}|${id}`, "utf8").toString("base64url");
+}
+
+/**
+ * Resume point for the SSE stream: the opaque cursor, or — for clients
+ * that connected before issue #616 — the legacy ISO `Last-Event-ID`.
+ */
+function decodeStreamResumePoint(value: string | undefined): DecodedCursor | null {
+  if (!value) return null;
+  const decoded = decodeCursor(value);
+  if (decoded) return decoded;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return { createdAt: date.toISOString(), id: NIL_UUID };
 }
 
 export function decodeCursor(value: string | undefined): DecodedCursor | null {
@@ -479,15 +522,22 @@ export function decodeCursor(value: string | undefined): DecodedCursor | null {
     const decoded = Buffer.from(value, "base64url").toString("utf8");
     const [iso, id] = decoded.split("|");
     if (!iso || !id) return null;
+    // Strict format + real-date check: the text is bound as `::timestamptz`,
+    // so anything Postgres could choke on must be rejected here (a bad
+    // cursor degrades to "first page", never a 500).
+    if (!CURSOR_TS_RE.test(iso)) return null;
     const date = new Date(iso);
     if (Number.isNaN(date.getTime())) return null;
+    // `new Date("2026-02-31T…")` rolls over instead of failing — Postgres
+    // would not. Round-trip the seconds part to reject such values.
+    if (date.toISOString().slice(0, 19) !== iso.slice(0, 19)) return null;
     // Validate `id` as a UUID — a forged cursor with a 10 k-char `id`
     // would otherwise ship to PG (Security M4 / Data L1). The cursor
     // can't bypass `user_id = currentUserId` regardless (WHERE clause
     // is unconditional), but rejecting nonsense at the boundary saves
     // a round-trip on tampering attempts.
     if (!UUID_RE.test(id)) return null;
-    return { createdAt: date, id };
+    return { createdAt: iso, id };
   } catch {
     return null;
   }

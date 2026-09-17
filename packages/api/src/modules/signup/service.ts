@@ -627,7 +627,7 @@ export async function verifySignup(
       await tx
         .update(invitations)
         .set({ acceptedAt: new Date() })
-        .where(eq(invitations.id, row.invitationId));
+        .where(and(eq(invitations.id, row.invitationId), eq(invitations.orgId, row.orgId)));
 
       // Gate emission on actual state changes — a recovery re-run leaves
       // both flags false and emits nothing, so welcome-email / billing /

@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
 import { auditLogs } from "@givernance/shared/schema";
 import { Type } from "@sinclair/typebox";
-import type { FastifyInstance, FastifyRequest } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   CustomFieldValidationError,
   customFieldsDisabledProblem,
@@ -370,6 +370,23 @@ async function isCustomFieldsEnabled(request: FastifyRequest, orgId: string): Pr
 }
 
 /**
+ * `?includeDeleted=true` gate for the list handler. Soft-deleted constituents
+ * (merged duplicates, erasure candidates) are an org_admin-only view —
+ * `viewer` / `user` get the guard's 403 rather than a silently-unfiltered
+ * list (issue #616). The web never sends the param. Returns `true` when the
+ * reply has been sent.
+ */
+async function deniedIncludeDeleted(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  includeDeleted: boolean | undefined,
+): Promise<boolean> {
+  if (!includeDeleted) return false;
+  await requireOrgAdmin(request, reply);
+  return reply.sent;
+}
+
+/**
  * Duplicate pre-check for the create handler — returns the matches to
  * put in the 409 body, or null when creation may proceed (`force=true`
  * or no candidates).
@@ -573,6 +590,8 @@ export async function constituentRoutes(app: FastifyInstance) {
         maxLifetimeAmountCents?: number;
         filters?: string;
       };
+
+      if (await deniedIncludeDeleted(request, reply, query.includeDeleted)) return reply;
 
       const filtersResult = await parseFiltersParam(request, orgId, query.filters);
       if (!filtersResult.ok) {
@@ -1004,6 +1023,13 @@ export async function constituentRoutes(app: FastifyInstance) {
           .send(problemDetail(400, "Bad Request", "Cannot merge a constituent into itself"));
       }
 
+      // Types are only unioned for tenants allowed to hold multi-typed
+      // constituents (issue #465 / #616) — flag off keeps the survivor's type.
+      const flags = request.flagService ?? defaultFlagService;
+      const unionTypes = await flags.isEnabled(FEATURE_FLAG_KEYS.CONSTITUENTS_MULTI_TYPE, {
+        orgId,
+      });
+
       try {
         const result = await mergeConstituents(
           orgId,
@@ -1012,7 +1038,7 @@ export async function constituentRoutes(app: FastifyInstance) {
           // Pass both the effective subject and the impersonating actor so the
           // merge_history snapshot records double-attribution (ADR-016 / #24).
           { userId, actorId: request.auth?.act?.sub ?? null },
-          { ifMatch },
+          { ifMatch, unionTypes },
           request,
         );
 

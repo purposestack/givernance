@@ -289,6 +289,32 @@ describe("POST /v1/invitations", () => {
     });
     expect(second.statusCode).toBe(409);
   });
+
+  // Issue #616 — the pending lookup was an unordered `limit(1)` over every
+  // unaccepted row, so an old EXPIRED invitation could shadow the live one
+  // and let a duplicate through.
+  it("an expired invitation neither blocks a re-invite nor hides a live pending one", async () => {
+    const f = await makeFixture();
+    const email = `expired+${f.slug}@example.org`;
+    await db.insert(invitations).values({
+      orgId: f.orgId,
+      email,
+      role: "user",
+      purpose: "team_invite",
+      expiresAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
+    });
+
+    const invite = () =>
+      app.inject({
+        method: "POST",
+        url: "/v1/invitations",
+        headers: authHeader(f.inviterToken),
+        payload: { email },
+      });
+
+    expect((await invite()).statusCode).toBe(201);
+    expect((await invite()).statusCode).toBe(409);
+  });
 });
 
 // ─── List ───────────────────────────────────────────────────────────────────
