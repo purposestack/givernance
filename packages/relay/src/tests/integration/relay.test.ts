@@ -4,8 +4,11 @@
  * Coverage:
  *   1. Happy path — pending row → status='completed' + a BullMQ job carrying
  *      the row's id/tenant/type/payload lands in the events queue.
- *   2. Failure path — when `eventsQueue.add()` rejects, the row transitions
- *      to status='failed' with the error message captured.
+ *   2. Failure path (issue #612) — when `eventsQueue.add()` rejects, the row
+ *      STAYS status='pending' with the error message captured, the batch
+ *      stops at the first failure, and the next tick delivers it.
+ *   2b. Shutdown — `shouldStop` aborts the batch between rows, leaving the
+ *      remainder pending.
  *   3. `FOR UPDATE SKIP LOCKED` — a row locked by an outer transaction is
  *      skipped by the relay (would otherwise block / be duplicated across
  *      replicas); once the lock releases, the relay picks it up.
@@ -178,7 +181,7 @@ describe("relayPendingEvents — real Postgres + Redis (issue #325)", () => {
     });
   });
 
-  it("failure path: marks the row failed, captures the error, and logs structured event", async () => {
+  it("failure path: leaves the row pending, captures the error, and logs structured event (issue #612)", async () => {
     const tenantId = freshTenantId();
     const logger = makeLogger();
     const { id } = firstOrThrow(
@@ -188,6 +191,10 @@ describe("relayPendingEvents — real Postgres + Redis (issue #325)", () => {
           tenantId,
           type: "test.fail",
           payload: { v: 1 },
+          // Backdated so this row heads the batch even if another suite
+          // writes a pending row into the shared test DB mid-test — the
+          // relay stops at the first enqueue error.
+          createdAt: new Date(Date.now() - 60_000),
         })
         .returning({ id: outboxEvents.id }),
       "outbox insert result",
@@ -197,7 +204,7 @@ describe("relayPendingEvents — real Postgres + Redis (issue #325)", () => {
     // connection, but the resulting error message would be ioredis-version-
     // specific and brittle. A minimal stub that throws a known error keeps
     // the assertion deterministic and still exercises every line of the
-    // relay's catch block (logger.error + UPDATE … SET status='failed').
+    // relay's catch block (logger.error + UPDATE … SET error = …).
     const failingQueue = {
       add: async () => {
         throw new Error("redis is down");
@@ -211,7 +218,9 @@ describe("relayPendingEvents — real Postgres + Redis (issue #325)", () => {
       await db.select().from(outboxEvents).where(eq(outboxEvents.id, id)),
       `outbox_events row ${id}`,
     );
-    expect(row.status).toBe("failed");
+    // NOT `failed`: nothing ever re-queues a failed row, so that state
+    // turned a transient Redis blip into a permanently lost event.
+    expect(row.status).toBe("pending");
     expect(row.error).toBe("redis is down");
     expect(row.processedAt).toBeNull();
 
@@ -226,6 +235,105 @@ describe("relayPendingEvents — real Postgres + Redis (issue #325)", () => {
       { eventId: id, err: "redis is down" },
       "Failed to relay event",
     );
+
+    // Next tick, Redis is back: the same row is delivered and the stale
+    // error message is cleared.
+    const recovered = await relayPendingEvents(db, queue, makeLogger());
+    expect(recovered).toBeGreaterThanOrEqual(1);
+    const after = firstOrThrow(
+      await db.select().from(outboxEvents).where(eq(outboxEvents.id, id)),
+      `outbox_events row ${id}`,
+    );
+    expect(after.status).toBe("completed");
+    expect(after.error).toBeNull();
+    expect(await queue.getJob(id)).toBeDefined();
+  });
+
+  it("failure path: stops the batch at the first enqueue error instead of hammering Redis (issue #612)", async () => {
+    const tenantId = freshTenantId();
+    const logger = makeLogger();
+    // Explicit, strictly increasing created_at so the relay's ORDER BY is
+    // deterministic (three inserts in one statement share `now()`).
+    const base = Date.now() - 60_000;
+    const inserted = await db
+      .insert(outboxEvents)
+      .values(
+        [0, 1, 2].map((i) => ({
+          tenantId,
+          type: `test.batch-${i}`,
+          payload: { i },
+          createdAt: new Date(base + i * 1000),
+        })),
+      )
+      .returning({ id: outboxEvents.id });
+    expect(inserted).toHaveLength(3);
+
+    let calls = 0;
+    const flakyQueue = {
+      add: async () => {
+        calls++;
+        if (calls === 2) throw new Error("READONLY");
+        return undefined;
+      },
+    } as unknown as Queue;
+
+    const processed = await relayPendingEvents(db, flakyQueue, logger);
+    expect(processed).toBe(1);
+    // Row 3 was never attempted.
+    expect(calls).toBe(2);
+    expect(logger.error).toHaveBeenCalledTimes(1);
+
+    const rows = await db
+      .select({ type: outboxEvents.type, status: outboxEvents.status, error: outboxEvents.error })
+      .from(outboxEvents)
+      .where(eq(outboxEvents.tenantId, tenantId))
+      .orderBy(outboxEvents.createdAt);
+    expect(rows).toEqual([
+      { type: "test.batch-0", status: "completed", error: null },
+      { type: "test.batch-1", status: "pending", error: "READONLY" },
+      { type: "test.batch-2", status: "pending", error: null },
+    ]);
+  });
+
+  it("shutdown: shouldStop aborts the batch between rows and leaves the rest pending (issue #612)", async () => {
+    const tenantId = freshTenantId();
+    const logger = makeLogger();
+    const base = Date.now() - 60_000;
+    await db.insert(outboxEvents).values(
+      [0, 1, 2].map((i) => ({
+        tenantId,
+        type: `test.stop-${i}`,
+        payload: { i },
+        createdAt: new Date(base + i * 1000),
+      })),
+    );
+
+    // Simulates SIGTERM landing while the first row is being enqueued.
+    let stopRequested = false;
+    const observingQueue = {
+      add: async () => {
+        stopRequested = true;
+        return undefined;
+      },
+    } as unknown as Queue;
+
+    const processed = await relayPendingEvents(db, observingQueue, logger, {
+      shouldStop: () => stopRequested,
+    });
+    // The in-flight row is finished (enqueued AND marked), nothing after it.
+    expect(processed).toBe(1);
+    expect(logger.error).not.toHaveBeenCalled();
+
+    const rows = await db
+      .select({ type: outboxEvents.type, status: outboxEvents.status })
+      .from(outboxEvents)
+      .where(eq(outboxEvents.tenantId, tenantId))
+      .orderBy(outboxEvents.createdAt);
+    expect(rows).toEqual([
+      { type: "test.stop-0", status: "completed" },
+      { type: "test.stop-1", status: "pending" },
+      { type: "test.stop-2", status: "pending" },
+    ]);
   });
 
   it("SKIP LOCKED: a row locked by another transaction is skipped, picked up after release", async () => {

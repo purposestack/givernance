@@ -456,7 +456,7 @@ Per [ADR-020](adrs/adr-020-bullmq-dead-letter-strategy-failed-set-structured-ale
   {service="givernance-worker"} | json | dlq=true
   ```
 
-- **Retention**: `removeOnFail: { count: 50 }` per queue (ADR-020 default). **Deviation**: the relay enqueues events-queue jobs with `attempts: 5, removeOnFail: 5000` ([`packages/relay/src/relay.ts`](../packages/relay/src/relay.ts)) — the generic domain-event pipeline is higher-volume and gets a longer forensic window (see the Deviations note in ADR-020).
+- **Retention**: outbox-routed and API-produced queues use the shared `defaultJobOptionsFor()` policy — failed jobs kept 14 days / 500 per queue, completed jobs 24h / 1000 (Stripe `webhooks`: 1h / 100, the payload carries donor PII); the cron queues keep ADR-020's original `removeOnFail: { count: 50 }`. Full table: [docs/02 §7.1a](02-reference-architecture.md#71a-worker-retry-retention-and-shutdown-semantics-issue-612). **Deviation**: the relay enqueues events-queue jobs with `attempts: 5, removeOnFail: 5000` ([`packages/relay/src/relay.ts`](../packages/relay/src/relay.ts)) — the generic domain-event pipeline is higher-volume and gets a longer forensic window (see the Deviations note in ADR-020).
 - **Replay**: manual, via BullBoard's retry button.
 
 ## 9. Testing Observability

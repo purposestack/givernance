@@ -161,6 +161,27 @@ function sanitiseFilename(input: string): string {
 export async function processGeneratePostalExport(
   job: Job<GeneratePostalExportJob["data"] & { traceparent?: string }>,
 ): Promise<{ uploaded: number }> {
+  try {
+    return await runPostalExport(job);
+  } catch (err) {
+    // Safety net (issue #612). `runPostalExport` marks the row failed on the
+    // paths it knows about, but several throws between the `processing`
+    // flip and the artefact `try` (campaign lookup, run-mode `blocked`,
+    // logo / Swiss-QR context load, the total_count re-snapshot) used to
+    // escape without it — leaving the row stuck in `processing` and the
+    // operator's progress bar spinning forever. No-op when the row is
+    // already terminal, so the specific message recorded closer to the
+    // failure is preserved. Never masks the original error.
+    const { orgId, exportId } = job.data;
+    const message = err instanceof Error ? err.message : String(err);
+    await markFailedUnlessTerminal(orgId, exportId, message).catch(() => {});
+    throw err;
+  }
+}
+
+async function runPostalExport(
+  job: Job<GeneratePostalExportJob["data"] & { traceparent?: string }>,
+): Promise<{ uploaded: number }> {
   const { exportId, campaignId, orgId, mode, traceparent } = job.data;
   const log = jobLogger({
     tenantId: orgId,
@@ -668,23 +689,59 @@ async function produceZipArtefact(
     passthrough.destroy(err);
   });
   archive.pipe(passthrough);
+  // The catch block below `destroy(err)`s this stream. If the upload has
+  // already failed and detached from it, nobody listens for the resulting
+  // 'error' event and Node escalates it to an uncaughtException — again
+  // fatal for the whole worker (issue #612). The error itself still reaches
+  // the caller through the promise paths, so swallowing the event is safe.
+  passthrough.on("error", () => {});
 
-  const uploadPromise = uploadCampaignZip(orgId, campaignId, exportId, passthrough);
+  // Settled wrapper (issue #612): the upload runs CONCURRENTLY with the
+  // render loop below, which can take minutes. A bare promise that rejects
+  // in that window (S3 down, credentials, multipart abort) has no handler
+  // attached yet → `unhandledRejection` → Node kills the whole worker
+  // process, taking every other in-flight job with it. Attaching the
+  // handlers at creation makes a rejection a value we inspect later.
+  let uploadFailure: { err: unknown } | null = null;
+  const uploadSettled = uploadCampaignZip(orgId, campaignId, exportId, passthrough).then(
+    (s3Path) => ({ ok: true as const, s3Path }),
+    (err: unknown) => {
+      uploadFailure = { err };
+      return { ok: false as const, err };
+    },
+  );
+  const throwIfUploadFailed = () => {
+    // Read through a widened local: TS narrows the `let` to `null` here
+    // because the assignment happens inside the callback above.
+    const failure = uploadFailure as { err: unknown } | null;
+    if (failure) throw failure.err;
+  };
 
   try {
     const uploaded = await renderAllWorkItems(ctx, (entries) => {
+      // Fail fast: no point rendering the remaining recipients into an
+      // archive nobody is consuming any more.
+      throwIfUploadFailed();
       for (const entry of entries) archive.append(entry.buffer, { name: entry.name });
     });
-    await archive.finalize();
-    const s3Path = await uploadPromise;
-    return { uploaded, s3Path };
+    // If the upload died, nothing drains `passthrough` and `finalize()`
+    // would wait on back-pressure forever — race it against the failure.
+    await Promise.race([
+      archive.finalize(),
+      uploadSettled.then((r) => {
+        if (!r.ok) throw r.err;
+      }),
+    ]);
+    const result = await uploadSettled;
+    if (!result.ok) throw result.err;
+    return { uploaded, s3Path: result.s3Path };
   } catch (err) {
     archive.abort();
     passthrough.destroy(err instanceof Error ? err : new Error(String(err)));
     // Best-effort cancel of the in-flight multipart upload — the SDK's
-    // `Upload` resolves rejected on body destroy, so awaiting it surfaces
-    // the original error rather than masking with the abort.
-    await uploadPromise.catch(() => {});
+    // `Upload` rejects on body destroy; `uploadSettled` never rejects, so
+    // awaiting it just waits for that to land without masking `err`.
+    await uploadSettled;
     throw err;
   }
 }
@@ -908,6 +965,31 @@ async function emitWorkItemPdfs(args: {
   }
 
   return entries;
+}
+
+/**
+ * `markFailed` for the outer safety net: only touches a row that is still
+ * `pending` / `processing`, so it never overwrites a `completed` export nor
+ * the more specific message an inner `markFailed` already recorded.
+ */
+async function markFailedUnlessTerminal(orgId: string, exportId: string, error: string) {
+  await withWorkerContext(orgId, async (tx) => {
+    await tx
+      .update(campaignPostalExports)
+      .set({
+        status: "failed",
+        error,
+        completedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(campaignPostalExports.id, exportId),
+          eq(campaignPostalExports.orgId, orgId),
+          sql`${campaignPostalExports.status} NOT IN ('completed', 'failed')`,
+        ),
+      );
+  });
 }
 
 async function markFailed(orgId: string, exportId: string, error: string) {

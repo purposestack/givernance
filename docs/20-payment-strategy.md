@@ -244,15 +244,17 @@ Both endpoints:
 
 Processing is **async** (BullMQ) to avoid timeout on slow DB writes. The webhook handler itself is as thin as possible.
 
-**BullMQ job config for webhook processor:**
+**BullMQ job config for webhook processor** — set on the API's producer-side `Queue` handle (`defaultJobOptionsFor("webhooks")` in `packages/shared/src/jobs/queue-options.ts`; BullMQ ignores retry options on the `Worker`):
 ```typescript
 defaultJobOptions: {
   attempts: 3,
-  backoff: { type: 'exponential', delay: 5000 }, // 5s, 10s, 20s
-  removeOnComplete: 100, // keep last 100 completed for debugging
-  removeOnFail: 500,     // keep failed jobs for investigation
+  backoff: { type: 'exponential', delay: 30_000 },   // retries at +30s, +60s
+  removeOnComplete: { age: 3600, count: 100 },        // payload carries donor PII — drop fast
+  removeOnFail: { age: 14 * 86_400, count: 500 },     // keep failed jobs for investigation
 }
 ```
+
+**`charge.refunded` — full vs partial.** Stripe fires `charge.refunded` for *every* refund on a charge. The worker only marks the donation `refunded` (stamps `refunded_at`, rolls back the campaign platform-fee accumulator, emits `donation.refunded`) when the charge is refunded **in full** (`charge.refunded === true`, equivalently `amount_refunded >= amount`). A **partial** refund leaves the donation `cleared` and is traced as a system-initiated `audit_logs` row (`WEBHOOK:charge.refunded.partial`, with `amountCents` / `amountRefundedCents`). Recording a partially-refunded amount on the donation itself needs a schema change and is out of scope for now.
 
 ### 5.4 Data model additions
 

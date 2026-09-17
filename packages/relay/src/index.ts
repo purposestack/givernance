@@ -6,7 +6,8 @@
  * Each cycle:
  *   1. SELECT rows with status = 'pending' FOR UPDATE SKIP LOCKED (C5 fix — prevents duplicate delivery)
  *   2. Enqueue each into BullMQ givernance_events queue
- *   3. Mark rows as 'completed' (or 'failed' on error)
+ *   3. Mark rows as 'completed'. On an enqueue error the row stays
+ *      'pending' (error message recorded) and the next cycle retries it.
  *
  * The poll-tick logic itself lives in `./relay.ts` so the integration test
  * suite (issue #325) can exercise it against a real Postgres + Redis without
@@ -36,6 +37,9 @@ const redis = new Redis(env.REDIS_URL, {
 
 const eventsQueue = new Queue(QUEUE_NAMES.EVENTS, { connection: redis });
 
+/** Hard ceiling for the SIGTERM drain — one tick is ≤ 100 enqueues, so this is generous. */
+const SHUTDOWN_TIMEOUT_MS = 10_000;
+
 let running = true;
 
 async function start(): Promise<void> {
@@ -43,7 +47,9 @@ async function start(): Promise<void> {
 
   while (running) {
     try {
-      const count = await relayPendingEvents(db, eventsQueue, logger);
+      const count = await relayPendingEvents(db, eventsQueue, logger, {
+        shouldStop: () => !running,
+      });
       if (count > 0) {
         logger.info({ count }, "Relayed events");
       }
@@ -55,16 +61,41 @@ async function start(): Promise<void> {
   }
 }
 
-function shutdown(): void {
-  logger.info("Shutting down");
+let shuttingDown = false;
+
+/**
+ * Graceful shutdown (issue #612). Order matters: stop the loop and WAIT for
+ * the in-flight tick before closing anything — closing the queue mid-batch
+ * made every remaining `add()` of that batch throw. The tick itself bails
+ * out between rows via `shouldStop`, leaving the rest `pending`.
+ */
+async function shutdown(signal: string, loop: Promise<void>): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  logger.info({ signal }, "Shutting down");
   running = false;
-  void eventsQueue
-    .close()
-    .then(() => redis.disconnect())
-    .then(() => pool.end());
+
+  const hardStop = setTimeout(() => {
+    logger.error({ signal }, "Graceful shutdown timed out — forcing exit");
+    process.exit(1);
+  }, SHUTDOWN_TIMEOUT_MS);
+  hardStop.unref();
+
+  try {
+    await loop;
+    await eventsQueue.close();
+    // BullMQ never closes a caller-supplied ioredis instance — quit it here.
+    await redis.quit();
+    await pool.end();
+  } catch (err) {
+    logger.error({ err }, "Error during shutdown");
+    process.exit(1);
+  }
+  clearTimeout(hardStop);
+  process.exit(0);
 }
 
-process.on("SIGINT", shutdown);
-process.on("SIGTERM", shutdown);
+const loop = start();
 
-start();
+process.on("SIGINT", () => void shutdown("SIGINT", loop));
+process.on("SIGTERM", () => void shutdown("SIGTERM", loop));

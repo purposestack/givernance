@@ -19,9 +19,9 @@
  * What does NOT live here:
  * - Queue name picks, job id derivation, BullMQ `add(...)` calls — those
  *   are side-effecting and stay in `worker.ts`.
- * - Time-dependent values (e.g. donation receipt `fiscalYear =
- *   new Date().getFullYear()`) — those are computed in the worker so
- *   the routing decision stays deterministic for a given input.
+ * - Time-dependent values — none today. (The receipt `fiscalYear` used
+ *   to be stamped from the wall clock at routing time; since issue #612
+ *   the receipt processor derives it from the donation instead.)
  */
 
 import type { Locale } from "@givernance/shared/i18n";

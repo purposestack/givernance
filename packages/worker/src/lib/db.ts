@@ -48,6 +48,11 @@ export async function withWorkerContext<T>(
   });
 }
 
+/** End both pg pools — called once by the graceful-shutdown path (issue #612). */
+export async function closeDbPools(): Promise<void> {
+  await Promise.all([ownerPool.end(), appPool.end()]);
+}
+
 /**
  * Boot-time guard (issue #430): the worker's app pool must connect as
  * a NOBYPASSRLS role. The 2026-05-23 staging incident traced back to

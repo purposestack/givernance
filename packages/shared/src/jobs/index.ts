@@ -2,13 +2,26 @@
 
 import type { OutboxMetadata } from "../schema";
 
+export {
+  DEFAULT_JOB_OPTIONS,
+  defaultJobOptionsFor,
+  type JobRetention,
+  type QueueDefaultJobOptions,
+} from "./queue-options";
+
 /** Generate a tax receipt PDF for a donation */
 export interface GenerateReceiptJob {
   name: "generate-receipt";
   data: {
     donationId: string;
     orgId: string;
-    fiscalYear: number;
+    /**
+     * @deprecated Back-compat only (issue #612). The processor derives the
+     * fiscal year from the donation itself (`donations.fiscal_year`, else
+     * the UTC year of `donated_at`); jobs enqueued by older builds still
+     * carry the routing-time wall-clock year here and it is ignored.
+     */
+    fiscalYear?: number;
     locale: string;
   };
 }

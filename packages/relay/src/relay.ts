@@ -27,11 +27,29 @@ export interface RelayLogger {
   error(obj: Record<string, unknown>, msg: string): void;
 }
 
+/** Per-tick knobs. */
+export interface RelayTickOptions {
+  /**
+   * Polled before each row. When it returns true the tick stops early and
+   * leaves the rest of the batch `pending` for the next tick / next relay
+   * instance — this is how `index.ts` shuts down without enqueueing into a
+   * queue that is about to close (issue #612).
+   */
+  shouldStop?: () => boolean;
+}
+
 /**
  * One poll tick: lock up to `BATCH_SIZE` pending rows with `FOR UPDATE
- * SKIP LOCKED`, enqueue each into BullMQ, and mark the row `completed`
- * (or `failed` on enqueue error). Returns the count of rows successfully
- * enqueued + marked `completed`.
+ * SKIP LOCKED`, enqueue each into BullMQ, and mark the row `completed`.
+ * Returns the count of rows successfully enqueued + marked `completed`.
+ *
+ * Enqueue errors (issue #612): the row STAYS `pending` — only the `error`
+ * column records what happened — and the tick stops at the first failure.
+ * Nothing ever re-queued a `failed` row, so the old "mark failed" behaviour
+ * turned a transient Redis blip into permanently lost domain events.
+ * Leaving the row pending is safe because `jobId: row.id` makes the retry
+ * idempotent; stopping the batch avoids hammering a Redis that just failed
+ * (the next tick, one poll interval later, is the retry/backoff).
  *
  * The `FOR UPDATE SKIP LOCKED` clause lets multiple relay replicas tick
  * the same table concurrently without blocking on each other. Note that
@@ -48,6 +66,7 @@ export async function relayPendingEvents(
   db: NodePgDatabase,
   eventsQueue: Queue,
   logger: RelayLogger,
+  options: RelayTickOptions = {},
 ): Promise<number> {
   const pending = await db.execute<{
     id: string;
@@ -67,6 +86,8 @@ export async function relayPendingEvents(
   let processed = 0;
 
   for (const row of pending.rows) {
+    if (options.shouldStop?.()) break;
+
     try {
       await eventsQueue.add(
         row.type,
@@ -98,30 +119,32 @@ export async function relayPendingEvents(
           removeOnFail: 5000,
         },
       );
-
-      await db
-        .update(outboxEvents)
-        .set({
-          status: "completed",
-          processedAt: new Date(),
-          updatedAt: new Date(),
-        })
-        .where(eq(outboxEvents.id, row.id));
-
-      processed++;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       logger.error({ eventId: row.id, err: message }, "Failed to relay event");
 
+      // Status deliberately untouched (`pending`) — see the function doc.
       await db
         .update(outboxEvents)
-        .set({
-          status: "failed",
-          error: message,
-          updatedAt: new Date(),
-        })
+        .set({ error: message, updatedAt: new Date() })
         .where(eq(outboxEvents.id, row.id));
+      break;
     }
+
+    // Outside the try: if THIS update throws, the row stays `pending` and
+    // the next tick re-adds the same jobId — a no-op in BullMQ.
+    await db
+      .update(outboxEvents)
+      .set({
+        status: "completed",
+        // Clear a message left by an earlier failed attempt.
+        error: null,
+        processedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(outboxEvents.id, row.id));
+
+    processed++;
   }
 
   return processed;
