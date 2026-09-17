@@ -93,9 +93,8 @@ async function createTestCampaign(name: string) {
     payload: { name, type: "digital" },
   });
   const campaign = res.json<{ data: { id: string } }>().data;
-  // Campaigns are born `draft`. The donor-facing page + donate intent are
-  // gated on the campaign lifecycle, not only the page's own `published`
-  // toggle (#611) — activate the way an operator does.
+  // Campaigns are born `draft`; activate the way an operator does so the
+  // fixtures mirror a live campaign (#611 gates the page on "not closed").
   await app.inject({
     method: "PATCH",
     url: `/v1/campaigns/${campaign.id}`,
@@ -577,7 +576,10 @@ describe("campaign lifecycle gates the public page + donate intent (issue #611)"
     expect(mockPaymentIntentsCreate).not.toHaveBeenCalled();
   });
 
-  it("a published page on a DRAFT campaign is not donor-visible and cannot take gifts", async () => {
+  it("a published page on a DRAFT campaign stays live — only `closed` gates the page", async () => {
+    // Nothing has ever required operators to activate a campaign before
+    // publishing its page, so gating on `active` would 404 pages that are
+    // live today. The lifecycle gate is "not closed".
     const token = signToken(app);
     const createRes = await app.inject({
       method: "POST",
@@ -597,29 +599,7 @@ describe("campaign lifecycle gates the public page + donate intent (issue #611)"
       method: "GET",
       url: `/v1/public/campaigns/${campaignId}/page`,
     });
-    expect(page.statusCode).toBe(404);
-
-    const donate = await app.inject({
-      method: "POST",
-      url: `/v1/public/campaigns/${campaignId}/donate`,
-      payload: donatePayload,
-    });
-    expect(donate.statusCode).toBe(404);
-    expect(mockPaymentIntentsCreate).not.toHaveBeenCalled();
-
-    // Activating via PATCH busts the cached 404 — the page goes live at once.
-    const activate = await app.inject({
-      method: "PATCH",
-      url: `/v1/campaigns/${campaignId}`,
-      headers: authHeader(token),
-      payload: { status: "active" },
-    });
-    expect(activate.statusCode).toBe(200);
-    const liveNow = await app.inject({
-      method: "GET",
-      url: `/v1/public/campaigns/${campaignId}/page`,
-    });
-    expect(liveNow.statusCode).toBe(200);
+    expect(page.statusCode).toBe(200);
   });
 });
 

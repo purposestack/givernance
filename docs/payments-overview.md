@@ -319,7 +319,7 @@ A refund flips the **original** donation row to `refunded` in place — no negat
 The first delivery answers 5xx, so Stripe retries. The retry hits the `ON CONFLICT DO NOTHING` duplicate branch; there we load the `webhook_events` row and, if it is still `pending`, re-add the job with the same deterministic `jobId` (`stripe-<event id>`) before answering 200. BullMQ ignores an add whose job id already exists, so an ordinary duplicate delivery is still processed exactly once.
 
 **Q: Can a donor still give to a campaign that was closed?**
-No. The public page and the donate endpoint both require the page to be `published` **and** `campaigns.status = 'active'`; a draft or closed campaign is a 404 on both. Closing a campaign (or any status change) deletes the 30-second public-page cache entry, so the page disappears immediately rather than after the TTL. Note that campaigns are created as `draft`: publishing the page is not enough — the campaign must be activated too.
+No. The public page and the donate endpoint both require the page to be `published` **and** the campaign not to be `closed`; a closed campaign is a 404 on both. Closing a campaign (or any status change) deletes the 30-second public-page cache entry, so the page disappears immediately rather than after the TTL. A page published on a campaign still in `draft` stays live: operators have never been required to activate a campaign before publishing its page.
 
 **Q: What if Stripe is down?**
 Donor sees a payment error. No PaymentIntent is created, no donation row is written. Givernance is operationally fine — the rest of the CRM keeps working. Stripe outages are rare and short.

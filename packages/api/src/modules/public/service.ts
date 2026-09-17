@@ -15,7 +15,7 @@ import {
   orgBrandingAssets,
   tenants,
 } from "@givernance/shared/schema";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull, ne, sql } from "drizzle-orm";
 import { db, systemDb, withTenantContext } from "../../lib/db.js";
 import { flagService } from "../../lib/flags/flag-service.js";
 import { redis } from "../../lib/redis.js";
@@ -269,10 +269,12 @@ async function loadPublicPage(campaignId: string) {
         and(
           eq(campaignPublicPages.orgId, basicPage.orgId),
           eq(campaignPublicPages.campaignId, campaignId),
-          // Issue #611: a published page on a draft / closed campaign is not
-          // donor-visible — the campaign lifecycle gates the page, not only
-          // the page's own draft/published toggle.
-          eq(campaigns.status, "active"),
+          // Issue #611: closing a campaign takes its page offline even if
+          // the page row is still `published`. Only `closed` gates — a page
+          // published on a `draft` campaign stays live, because nothing has
+          // ever required operators to activate before publishing and a
+          // stricter gate would 404 pages that are live today.
+          ne(campaigns.status, "closed"),
         ),
       );
 
@@ -407,15 +409,14 @@ export async function createDonationIntent(
         defaultCurrency: campaigns.defaultCurrency,
       })
       .from(campaigns)
-      // Issue #611: only ACTIVE campaigns accept gifts — a closed or draft
-      // campaign is a 404 here even if its public page is still `published`
-      // (the donor page may be cached / open in a tab when the operator
-      // closes the campaign).
+      // Issue #611: a CLOSED campaign no longer accepts gifts — 404 here
+      // even if its public page is still `published` (the donor page may be
+      // cached / open in a tab when the operator closes the campaign).
       .where(
         and(
           eq(campaigns.id, campaignId),
           eq(campaigns.orgId, publicPage.orgId),
-          eq(campaigns.status, "active"),
+          ne(campaigns.status, "closed"),
         ),
       );
 
