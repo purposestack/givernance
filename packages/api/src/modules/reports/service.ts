@@ -55,6 +55,7 @@ export async function getLybuntReport(
       INNER JOIN donations d ON d.constituent_id = c.id AND d.org_id = c.org_id
       WHERE c.org_id = ${orgId}
         AND c.deleted_at IS NULL
+        AND d.status = 'cleared'
         AND d.donated_at >= ${lastYearStart}::timestamptz
         AND d.donated_at < ${lastYearEnd}::timestamptz
         AND NOT EXISTS (
@@ -62,6 +63,7 @@ export async function getLybuntReport(
           FROM donations d2
           WHERE d2.constituent_id = c.id
             AND d2.org_id = ${orgId}
+            AND d2.status = 'cleared'
             AND d2.donated_at >= ${thisYearStart}::timestamptz
             AND d2.donated_at < ${thisYearEnd}::timestamptz
         )
@@ -119,12 +121,14 @@ export async function getSybuntReport(
       INNER JOIN donations d ON d.constituent_id = c.id AND d.org_id = c.org_id
       WHERE c.org_id = ${orgId}
         AND c.deleted_at IS NULL
+        AND d.status = 'cleared'
         AND d.donated_at < ${thisYearStart}::timestamptz
         AND NOT EXISTS (
           SELECT 1
           FROM donations d2
           WHERE d2.constituent_id = c.id
             AND d2.org_id = ${orgId}
+            AND d2.status = 'cleared'
             AND d2.donated_at >= ${thisYearStart}::timestamptz
             AND d2.donated_at < ${thisYearEnd}::timestamptz
         )

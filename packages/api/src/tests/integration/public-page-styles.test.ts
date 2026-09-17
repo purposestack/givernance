@@ -113,7 +113,17 @@ async function createCampaign(name: string): Promise<{ id: string }> {
     headers: authHeader(token),
     payload: { name, type: "digital" },
   });
-  return res.json<{ data: { id: string } }>().data;
+  const campaign = res.json<{ data: { id: string } }>().data;
+  // Campaigns are born `draft`. The donor-facing page is gated on the
+  // campaign lifecycle, not only the page's own `published` toggle (#611)
+  // — activate the way an operator does.
+  await app.inject({
+    method: "PATCH",
+    url: `/v1/campaigns/${campaign.id}`,
+    headers: authHeader(token),
+    payload: { status: "active" },
+  });
+  return campaign;
 }
 
 async function publishPage(campaignId: string, body: Record<string, unknown> = {}): Promise<void> {

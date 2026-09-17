@@ -458,6 +458,14 @@ describe("POST /v1/donations/stripe-webhook", () => {
     expect(res1.statusCode).toBe(200);
     expect(mockQueueAdd).toHaveBeenCalledTimes(1);
 
+    // The queue is mocked, so nothing moves the row off `pending`. Simulate
+    // the worker having picked the job up — a still-`pending` duplicate is
+    // the lost-enqueue case covered by the next test (issue #611).
+    await db
+      .update(webhookEvents)
+      .set({ status: "completed", processedAt: new Date() })
+      .where(eq(webhookEvents.stripeEventId, eventId));
+
     // Second call with same event ID — ON CONFLICT should detect duplicate
     const res2 = await app.inject({
       method: "POST",
@@ -472,5 +480,58 @@ describe("POST /v1/donations/stripe-webhook", () => {
     expect(res2.json()).toEqual({ received: true });
     // Queue should NOT be called again for the duplicate
     expect(mockQueueAdd).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-enqueues on Stripe's retry when the first delivery persisted the row but queue.add failed (issue #611)", async () => {
+    mockQueueAdd.mockClear();
+    const eventId = `evt_test_lost_enqueue_${Date.now()}`;
+
+    mockVerifyStripeWebhook.mockReturnValue({
+      id: eventId,
+      type: "payment_intent.succeeded",
+      livemode: false,
+      account: "acct_test_123",
+      data: {
+        object: { id: "pi_lost_enqueue", amount: 1000, currency: "eur", metadata: {} },
+      },
+    } as unknown as Stripe.Event);
+
+    const deliver = () =>
+      app.inject({
+        method: "POST",
+        url: "/v1/donations/stripe-webhook",
+        payload: Buffer.from("{}"),
+        headers: {
+          "content-type": "application/json",
+          "stripe-signature": "t=123,v1=abc",
+        },
+      });
+
+    // First delivery: the row is inserted, then Redis is down for the add.
+    mockQueueAdd.mockRejectedValueOnce(new Error("redis unavailable"));
+    const res1 = await deliver();
+    expect(res1.statusCode).toBe(500);
+    // Generic 5xx body — the internal error text is not reflected.
+    expect(res1.body).not.toContain("redis unavailable");
+
+    const [row] = await db
+      .select({ id: webhookEvents.id, status: webhookEvents.status })
+      .from(webhookEvents)
+      .where(eq(webhookEvents.stripeEventId, eventId));
+    expect(row?.status).toBe("pending");
+
+    // Stripe retries. Before the fix: ON CONFLICT → "duplicate, skipping" →
+    // 200, and the event was never enqueued.
+    const res2 = await deliver();
+    expect(res2.statusCode).toBe(200);
+    expect(res2.json()).toEqual({ received: true });
+
+    expect(mockQueueAdd).toHaveBeenCalledTimes(2);
+    expect(mockQueueAdd).toHaveBeenLastCalledWith(
+      "process-stripe-webhook",
+      expect.objectContaining({ webhookEventId: row?.id, stripeEventId: eventId }),
+      // Same deterministic job id → a no-op in BullMQ if the job does exist.
+      { jobId: `stripe-${eventId}` },
+    );
   });
 });

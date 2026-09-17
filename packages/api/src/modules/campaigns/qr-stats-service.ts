@@ -54,11 +54,10 @@ export async function getCampaignQrStats(
     const [donationStats] = await tx
       .select({
         donationCount: sql<number>`count(*) FILTER (WHERE ${donations.status} = 'cleared')::int`,
-        amountCents: sql<number>`COALESCE(SUM(CASE
-          WHEN ${donations.status} = 'cleared' THEN ${donations.amountBaseCents}
-          WHEN ${donations.status} = 'refunded' THEN -${donations.amountBaseCents}
-          ELSE 0
-        END), 0)::int`,
+        amountCents: sql<number>`COALESCE(
+          SUM(${donations.amountBaseCents}) FILTER (WHERE ${donations.status} = 'cleared'),
+          0
+        )::int`,
       })
       .from(donations)
       .where(

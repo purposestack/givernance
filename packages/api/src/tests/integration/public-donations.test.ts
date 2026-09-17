@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { redis } from "../../lib/redis.js";
 import { createServer } from "../../server.js";
 import { authHeader, ensureTestTenants, ORG_A, signToken } from "../helpers/auth.js";
 import { db } from "../helpers/db.js";
@@ -71,6 +72,16 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
+// The donate route is capped at 10/min per IP and this file now makes more
+// than 10 donate calls, so the cap would bleed 429s across unrelated
+// assertions (and across back-to-back runs on a long-lived Redis). Same
+// idea as `postal-campaigns.test.ts`, but scoped to THIS route's counters —
+// Redis is shared, so we don't touch other suites' rate-limit keys.
+beforeEach(async () => {
+  const keys = await redis.keys("fastify-rate-limit-POST/v1/public/campaigns/:id/donate-*");
+  if (keys.length > 0) await redis.del(...keys);
+});
+
 // ─── Helper: create a campaign for tests ──────────────────────────────────
 
 async function createTestCampaign(name: string) {
@@ -81,7 +92,16 @@ async function createTestCampaign(name: string) {
     headers: authHeader(token),
     payload: { name, type: "digital" },
   });
-  return res.json<{ data: { id: string } }>().data;
+  const campaign = res.json<{ data: { id: string } }>().data;
+  // Campaigns are born `draft`; activate the way an operator does so the
+  // fixtures mirror a live campaign (#611 gates the page on "not closed").
+  await app.inject({
+    method: "PATCH",
+    url: `/v1/campaigns/${campaign.id}`,
+    headers: authHeader(token),
+    payload: { status: "active" },
+  });
+  return campaign;
 }
 
 // ─── PUT /v1/campaigns/:id/public-page (admin) ──────────────────────────
@@ -506,6 +526,82 @@ describe("GET /v1/public/campaigns/:id/page", () => {
 });
 
 // ─── POST /v1/public/campaigns/:id/donate (unauthenticated) ──────────────
+
+describe("campaign lifecycle gates the public page + donate intent (issue #611)", () => {
+  const donatePayload = {
+    amountCents: 5000,
+    currency: "EUR",
+    email: "donor@example.org",
+    firstName: "Jane",
+    lastName: "Doe",
+  };
+
+  it("closing a campaign 404s its published page immediately (cache busted) and rejects gifts", async () => {
+    const campaign = await createTestCampaign("Public Page Test Closed Lifecycle");
+    const token = signToken(app);
+    await app.inject({
+      method: "PUT",
+      url: `/v1/campaigns/${campaign.id}/public-page`,
+      headers: authHeader(token),
+      payload: { title: "Soon Closed", status: "published" },
+    });
+
+    // Warm the 30 s cache with the live payload.
+    const live = await app.inject({
+      method: "GET",
+      url: `/v1/public/campaigns/${campaign.id}/page`,
+    });
+    expect(live.statusCode).toBe(200);
+
+    const closeRes = await app.inject({
+      method: "POST",
+      url: `/v1/campaigns/${campaign.id}/close`,
+      headers: authHeader(token),
+    });
+    expect(closeRes.statusCode).toBe(200);
+
+    // No 30 s grace: the close path deleted the cache key.
+    const afterClose = await app.inject({
+      method: "GET",
+      url: `/v1/public/campaigns/${campaign.id}/page`,
+    });
+    expect(afterClose.statusCode).toBe(404);
+
+    const donate = await app.inject({
+      method: "POST",
+      url: `/v1/public/campaigns/${campaign.id}/donate`,
+      payload: donatePayload,
+    });
+    expect(donate.statusCode).toBe(404);
+    expect(mockPaymentIntentsCreate).not.toHaveBeenCalled();
+  });
+
+  it("a published page on a DRAFT campaign stays live — only `closed` gates the page", async () => {
+    // Nothing has ever required operators to activate a campaign before
+    // publishing its page, so gating on `active` would 404 pages that are
+    // live today. The lifecycle gate is "not closed".
+    const token = signToken(app);
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/v1/campaigns",
+      headers: authHeader(token),
+      payload: { name: "Public Page Test Draft Lifecycle", type: "digital" },
+    });
+    const campaignId = createRes.json<{ data: { id: string } }>().data.id;
+    await app.inject({
+      method: "PUT",
+      url: `/v1/campaigns/${campaignId}/public-page`,
+      headers: authHeader(token),
+      payload: { title: "Draft Campaign Page", status: "published" },
+    });
+
+    const page = await app.inject({
+      method: "GET",
+      url: `/v1/public/campaigns/${campaignId}/page`,
+    });
+    expect(page.statusCode).toBe(200);
+  });
+});
 
 describe("POST /v1/public/campaigns/:id/donate", () => {
   it("creates a Stripe PaymentIntent for a published campaign", async () => {

@@ -15,13 +15,14 @@ import {
   orgBrandingAssets,
   tenants,
 } from "@givernance/shared/schema";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull, ne, sql } from "drizzle-orm";
 import { db, systemDb, withTenantContext } from "../../lib/db.js";
 import { flagService } from "../../lib/flags/flag-service.js";
 import { redis } from "../../lib/redis.js";
 import { brandingPublicUrl } from "../../lib/s3.js";
 import { isUuid } from "../../lib/schemas.js";
 import { getStripe } from "../payments/service.js";
+import { PUBLIC_PAGE_CACHE_PREFIX } from "./cache.js";
 
 /**
  * Three-layer resolution of the donor-facing archetype (Epic #362).
@@ -55,7 +56,6 @@ function resolvePublicPageStyle(
  * the funds have already cleared in Stripe by the time the row exists.
  */
 const PUBLIC_PAGE_CACHE_TTL_SECONDS = 30;
-const PUBLIC_PAGE_CACHE_PREFIX = "public-page:v1:";
 
 /**
  * Resolve an opaque QR code scanned from a printed campaign letter.
@@ -269,6 +269,12 @@ async function loadPublicPage(campaignId: string) {
         and(
           eq(campaignPublicPages.orgId, basicPage.orgId),
           eq(campaignPublicPages.campaignId, campaignId),
+          // Issue #611: closing a campaign takes its page offline even if
+          // the page row is still `published`. Only `closed` gates — a page
+          // published on a `draft` campaign stays live, because nothing has
+          // ever required operators to activate before publishing and a
+          // stricter gate would 404 pages that are live today.
+          ne(campaigns.status, "closed"),
         ),
       );
 
@@ -403,7 +409,16 @@ export async function createDonationIntent(
         defaultCurrency: campaigns.defaultCurrency,
       })
       .from(campaigns)
-      .where(eq(campaigns.id, campaignId));
+      // Issue #611: a CLOSED campaign no longer accepts gifts — 404 here
+      // even if its public page is still `published` (the donor page may be
+      // cached / open in a tab when the operator closes the campaign).
+      .where(
+        and(
+          eq(campaigns.id, campaignId),
+          eq(campaigns.orgId, publicPage.orgId),
+          ne(campaigns.status, "closed"),
+        ),
+      );
 
     if (!campaign) return null;
 

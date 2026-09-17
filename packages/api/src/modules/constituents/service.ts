@@ -413,17 +413,16 @@ export async function listConstituents(orgId: string, query: ListConstituentsQue
     //
     // Epic #274 extends this aggregate with `lifetimeAmountCents` so the
     // same join can serve `minLifetimeAmountCents` / `maxLifetimeAmountCents`
-    // filters without a second pass over donations. Cleared minus refunded
-    // mirrors the campaign-stats convention.
+    // filters without a second pass over donations. Cleared rows only
+    // (refunds flip the row in place) — mirrors the campaign-stats convention.
     const donationAggregate = tx
       .select({
         constituentId: donations.constituentId,
         lastDonationAt: sql<string | null>`max(${donations.donatedAt})`.as("last_donation_at"),
-        lifetimeAmountCents: sql<number | null>`COALESCE(SUM(CASE
-          WHEN ${donations.status} = 'cleared' THEN ${donations.amountBaseCents}
-          WHEN ${donations.status} = 'refunded' THEN -${donations.amountBaseCents}
-          ELSE 0
-        END), 0)::int`.as("lifetime_amount_cents"),
+        lifetimeAmountCents: sql<number | null>`COALESCE(
+          SUM(${donations.amountBaseCents}) FILTER (WHERE ${donations.status} = 'cleared'),
+          0
+        )::int`.as("lifetime_amount_cents"),
       })
       .from(donations)
       .where(eq(donations.orgId, orgId))

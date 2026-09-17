@@ -28,6 +28,7 @@ import {
   inArray,
   lt,
   lte,
+  ne,
   or,
   sql,
 } from "drizzle-orm";
@@ -786,13 +787,18 @@ export type RefundDonationResult =
 
 /**
  * Issue a Stripe refund against the original PaymentIntent of a donation
- * and roll back the platform fee with `refund_application_fee: true`. The
- * actual donation-row update + campaign fee decrement happens in the
- * `charge.refunded` webhook handler (worker) so the change is observed
- * exactly once whether the refund originated from our UI or from the
- * NPO's Stripe dashboard. This route ALSO marks the donation as
- * `refunded` immediately for snappy UI feedback — the webhook handler
- * is idempotent on already-refunded rows.
+ * and roll back the platform fee with `refund_application_fee: true`.
+ *
+ * Public donations are DIRECT charges on the tenant's connected account
+ * (see `public/service.ts`), so the refund must be issued with
+ * `{ stripeAccount }` — without it Stripe answers "No such payment_intent".
+ *
+ * Two writers can observe the same refund: this route (operator clicked
+ * Refund) and the worker's `charge.refunded` handler (which also covers
+ * refunds issued from the NPO's Stripe dashboard). Whichever lands first
+ * does the COMPLETE write — `status`, `refunded_at`, campaign platform-fee
+ * rollback, outbox event — guarded by `status <> 'refunded'`; the other
+ * one matches zero rows and does nothing (issue #611).
  *
  * @returns discriminated union the route layer maps to HTTP status.
  */
@@ -800,10 +806,13 @@ export async function refundDonation(
   orgId: string,
   donationId: string,
   refundsApi: {
-    create: (params: {
-      payment_intent: string;
-      refund_application_fee?: boolean;
-    }) => Promise<unknown>;
+    create: (
+      params: {
+        payment_intent: string;
+        refund_application_fee?: boolean;
+      },
+      options: { stripeAccount: string; idempotencyKey: string },
+    ) => Promise<unknown>;
   },
   request?: FastifyRequest,
 ): Promise<RefundDonationResult> {
@@ -831,7 +840,12 @@ export async function refundDonation(
       })
       .from(donations)
       .where(and(eq(donations.id, donationId), eq(donations.orgId, orgId)));
-    return row ?? null;
+    if (!row) return null;
+    const [tenant] = await tx
+      .select({ stripeAccountId: tenants.stripeAccountId })
+      .from(tenants)
+      .where(eq(tenants.id, orgId));
+    return { ...row, stripeAccountId: tenant?.stripeAccountId ?? null };
   });
 
   if (!validation) return { kind: "not_found" } as const;
@@ -841,17 +855,29 @@ export async function refundDonation(
     // refund mechanism — out of scope here; route returns 422.
     return { kind: "not_stripe" } as const;
   }
+  if (!validation.stripeAccountId) {
+    // No connected account → the PaymentIntent cannot live anywhere we can
+    // refund it from (e.g. a manually-keyed `stripe` row on a tenant that
+    // never onboarded). Same 422 as an off-Stripe donation.
+    return { kind: "not_stripe" } as const;
+  }
   const paymentRef = validation.paymentRef;
+  const stripeAccount = validation.stripeAccountId;
 
   // Phase 2 — Stripe call. NO DB transaction held during this network
   // request. `refund_application_fee: true` rolls back the 1.5%+30¢
   // platform fee to the connected account at the same time as refunding
   // the donor — donor experience: "I got my €50 back, no fee."
+  // The idempotency key makes a double-click (or a retry after a lost
+  // response) return the SAME refund instead of a Stripe error.
   try {
-    await refundsApi.create({
-      payment_intent: paymentRef,
-      refund_application_fee: true,
-    });
+    await refundsApi.create(
+      {
+        payment_intent: paymentRef,
+        refund_application_fee: true,
+      },
+      { stripeAccount, idempotencyKey: `refund-${donationId}` },
+    );
   } catch (err) {
     const message = err instanceof Error ? err.message : "Stripe refund failed";
     return { kind: "stripe_error", message } as const;
@@ -859,18 +885,43 @@ export async function refundDonation(
 
   // Phase 3 — persist the local state change. There's a tiny race window
   // between phase 2 and phase 3 where the `charge.refunded` webhook can
-  // fire before we mark the row; both writers are idempotent on
-  // `status === "refunded"` so the second one short-circuits cleanly.
+  // fire before we mark the row. The `status <> 'refunded'` guard makes the
+  // flip a compare-and-set: exactly one writer gets a row back and performs
+  // the fee rollback + outbox emit; the other matches zero rows.
   await withTenantContext(orgId, async (tx) => {
-    await tx
+    const now = new Date();
+    const [flipped] = await tx
       .update(donations)
-      .set({ status: "refunded" })
-      .where(and(eq(donations.id, donationId), eq(donations.orgId, orgId)));
+      .set({ status: "refunded", refundedAt: now, updatedAt: now })
+      .where(
+        and(
+          eq(donations.id, donationId),
+          eq(donations.orgId, orgId),
+          ne(donations.status, "refunded"),
+        ),
+      )
+      .returning({
+        campaignId: donations.campaignId,
+        platformFeeCents: donations.platformFeeCents,
+      });
+
+    // The webhook handler won the race and already did the complete write.
+    if (!flipped) return;
+
+    // Same expression as the worker's `charge.refunded` handler
+    // (packages/worker/src/processors/stripe-webhook.ts).
+    if (flipped.campaignId && flipped.platformFeeCents > 0) {
+      await tx
+        .update(campaigns)
+        .set({
+          platformFeesCents: sql`GREATEST(${campaigns.platformFeesCents} - ${flipped.platformFeeCents}, 0)`,
+          updatedAt: now,
+        })
+        .where(and(eq(campaigns.id, flipped.campaignId), eq(campaigns.orgId, orgId)));
+    }
 
     // Emit the domain event from the API path too — mirrors what the
-    // webhook handler does. Outbox is keyed on `(tenantId, type,
-    // payload->>donationId)` only; if a duplicate emit happens, the
-    // relay's at-least-once delivery + downstream idempotency handles it.
+    // webhook handler does.
     await tx.insert(outboxEvents).values({
       tenantId: orgId,
       type: "donation.refunded",
