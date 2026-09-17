@@ -563,6 +563,115 @@ describe("Advanced Constituent Filters", () => {
     });
   });
 
+  describe("POST /v1/constituents/filter — ordering (issue #616)", () => {
+    // Matches all four ORG_A fixtures (every one is US).
+    const allUs: FilterQuery = {
+      operator: "AND",
+      conditions: [{ field: "address.countryCode", operator: "eq", value: "US" }],
+    };
+    const run = (payload: Record<string, unknown>) =>
+      app.inject({
+        method: "POST",
+        url: "/v1/constituents/filter",
+        headers: authHeader(token),
+        payload: { query: allUs, ...payload },
+      });
+
+    it("name desc reverses BOTH last and first name", async () => {
+      await withTenantContext(ORG_A, async (txDb) => {
+        await txDb.insert(constituents).values({
+          orgId: ORG_A,
+          firstName: "Zed",
+          lastName: "Doe",
+          type: "donor",
+          countryCode: "US",
+        });
+      });
+
+      const res = await run({ sort: { field: "name", order: "desc" } });
+      expect(res.statusCode).toBe(200);
+      const names = res
+        .json()
+        .data.data.map((c: TestConstituent) => `${c.lastName} ${c.firstName}`);
+      // The old `last_name, first_name DESC` fragment sorted last_name ASC.
+      expect(names).toEqual(["Williams Alice", "Smith Jane", "Johnson Bob", "Doe Zed", "Doe John"]);
+    });
+
+    it("aggregate sorts keep zero-donation constituents last under both directions", async () => {
+      for (const order of ["asc", "desc"] as const) {
+        const res = await run({ sort: { field: "totalDonations", order } });
+        expect(res.statusCode).toBe(200);
+        const rows = res.json().data.data as TestConstituent[];
+        // Alice Williams has no donations → NULL aggregate → always trails.
+        expect(rows.at(-1)?.firstName).toBe("Alice");
+      }
+    });
+
+    it("pages rows sharing a created_at exactly once (id tiebreak)", async () => {
+      // A bulk import stamps every row of a batch with the same `created_at`.
+      const stamp = new Date("2030-01-01T00:00:00.000Z");
+      await withTenantContext(ORG_A, async (txDb) => {
+        await txDb.insert(constituents).values(
+          Array.from({ length: 7 }, (_, i) => ({
+            orgId: ORG_A,
+            firstName: `Batch${i}`,
+            lastName: "Import",
+            type: "donor",
+            countryCode: "US",
+            createdAt: stamp,
+          })),
+        );
+      });
+
+      const seen: string[] = [];
+      for (const page of [1, 2, 3, 4]) {
+        // Default sort (created_at DESC): the batch fills the first pages.
+        const res = await run({ pagination: { page, perPage: 2 } });
+        expect(res.statusCode).toBe(200);
+        const rows = res.json().data.data as Array<TestConstituent & { id: string }>;
+        seen.push(...rows.filter((r) => r.lastName === "Import").map((r) => r.id));
+      }
+      expect(seen).toHaveLength(7);
+      expect(new Set(seen).size).toBe(7);
+      // Within the tie, rows come back in `id` order.
+      expect(seen).toEqual([...seen].sort());
+    });
+  });
+
+  describe("flag gate runs before auth (issue #616)", () => {
+    it("flag off + unauthenticated → 404, not 401", async () => {
+      await db
+        .update(featureFlags)
+        .set({ enabled: false })
+        .where(eq(featureFlags.key, FEATURE_FLAG_KEYS.ADVANCED_FILTERS));
+      await flagService.invalidate();
+
+      try {
+        const res = await app.inject({
+          method: "POST",
+          url: "/v1/constituents/filter",
+          payload: { query: { operator: "AND", conditions: [] } },
+        });
+        expect(res.statusCode).toBe(404);
+      } finally {
+        await db
+          .update(featureFlags)
+          .set({ enabled: true })
+          .where(eq(featureFlags.key, FEATURE_FLAG_KEYS.ADVANCED_FILTERS));
+        await flagService.invalidate();
+      }
+    });
+
+    it("flag on + unauthenticated → 401", async () => {
+      const res = await app.inject({
+        method: "POST",
+        url: "/v1/constituents/filter",
+        payload: { query: { operator: "AND", conditions: [] } },
+      });
+      expect(res.statusCode).toBe(401);
+    });
+  });
+
   describe("Advanced-filters audit fixes", () => {
     // Fixtures (ORG_A, seeded in beforeEach):
     //   John Doe   — donor, New York, email set, lifetime 3000 EUR (3×1000)

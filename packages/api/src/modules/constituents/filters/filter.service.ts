@@ -132,7 +132,7 @@ export class FilterService {
         .from(constituents)
         .leftJoin(donationStatsJoin(this.orgId).source, donationStatsJoin(this.orgId).on)
         .where(and(eq(constituents.orgId, this.orgId), isNull(constituents.deletedAt), whereClause))
-        .orderBy(orderByClause)
+        .orderBy(...orderByClause)
         .limit(perPage)
         .offset(offset)
         .execute();
@@ -486,36 +486,52 @@ export class FilterService {
   }
 
   /**
-   * Build ORDER BY clause
+   * Build ORDER BY clause.
+   *
+   * Every branch ends with the `constituents.id` tiebreaker (issue #616):
+   * bulk-imported rows share a `created_at`, and without a total order the
+   * offset pages duplicate / skip them. Same conventions as the list route's
+   * `buildConstituentOrderBy`: direction applies to BOTH name parts (the old
+   * `last_name, first_name DESC` fragment only reversed `first_name`), and
+   * nullable / aggregate columns are `NULLS LAST` under both directions.
    */
-  private buildOrderByClause(sort?: { field: string; order: "asc" | "desc" }): SQL {
+  private buildOrderByClause(sort?: { field: string; order: "asc" | "desc" }): SQL[] {
+    return [...this.buildPrimaryOrderBy(sort), asc(constituents.id)];
+  }
+
+  private buildPrimaryOrderBy(sort?: { field: string; order: "asc" | "desc" }): SQL[] {
     if (!sort) {
-      return desc(constituents.createdAt);
+      return [desc(constituents.createdAt)];
     }
 
     const { field, order } = sort;
     const direction = order === "asc" ? asc : desc;
+    const nullsLast = (expr: SQL) =>
+      order === "asc" ? sql`${expr} ASC NULLS LAST` : sql`${expr} DESC NULLS LAST`;
 
     // Custom fields sort on a validated cast of the JSONB value, NULLS LAST
     // so empty values always trail regardless of direction. Unknown or
     // non-sortable fields keep the existing silent fallback below.
     const customSort = this.buildCustomOrderByClause(field, order);
-    if (customSort) return customSort;
+    if (customSort) return [customSort];
 
     // Map sort fields to actual columns
     switch (field) {
       case "name":
-        return direction(sql`${constituents.lastName}, ${constituents.firstName}`);
+        return [
+          direction(sql`lower(${constituents.lastName}) COLLATE "und-x-icu"`),
+          direction(sql`lower(${constituents.firstName}) COLLATE "und-x-icu"`),
+        ];
       case "email":
-        return direction(constituents.email);
+        return [nullsLast(sql`lower(${constituents.email})`)];
       case "createdAt":
-        return direction(constituents.createdAt);
+        return [direction(constituents.createdAt)];
       case "lastDonation":
-        return direction(sql`donation_stats.last_donation_date`);
+        return [nullsLast(sql`donation_stats.last_donation_date`)];
       case "totalDonations":
-        return direction(sql`donation_stats.total_amount_cents`);
+        return [nullsLast(sql`donation_stats.total_amount_cents`)];
       default:
-        return desc(constituents.createdAt);
+        return [desc(constituents.createdAt)];
     }
   }
 

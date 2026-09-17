@@ -1,12 +1,25 @@
-import { donations } from "@givernance/shared/schema";
-import { sql } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
+import {
+  bankAccounts,
+  campaignConstituents,
+  campaignDocuments,
+  campaignQrCodes,
+  campaigns,
+  constituents,
+  donations,
+  pledges,
+  swissQrReferences,
+} from "@givernance/shared/schema";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { mergeConstituents } from "../../modules/constituents/service.js";
 import { createServer } from "../../server.js";
 import {
   authHeader,
   ensureTestTenants,
   ORG_A,
+  seedTenantUser,
   signToken,
   signTokenB,
   USER_A,
@@ -609,6 +622,28 @@ describe("Constituents viewer-role enforcement (issue #162)", () => {
     expect(res.statusCode).toBe(200);
   });
 
+  // Issue #616 — soft-deleted rows (merged duplicates, erasure candidates)
+  // are an org_admin-only view; the plain list stays open to every role.
+  it.each([
+    ["viewer", 403],
+    ["user", 403],
+    ["org_admin", 200],
+  ] as const)("GET /v1/constituents?includeDeleted=true as %s → %i", async (role, expected) => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/constituents?includeDeleted=true",
+      headers: authHeader(signToken(app, { role })),
+    });
+    expect(res.statusCode).toBe(expected);
+
+    const plain = await app.inject({
+      method: "GET",
+      url: "/v1/constituents?includeDeleted=false",
+      headers: authHeader(signToken(app, { role })),
+    });
+    expect(plain.statusCode).toBe(200);
+  });
+
   // Sanity: tightening writes mustn't over-block reads. If a future change
   // mass-replaces `requireAuth` → `requireWrite` (an easy mistake in the
   // donations follow-up #176), this test will catch it for constituents.
@@ -721,6 +756,71 @@ describe("Constituents duplicate detection", () => {
     });
 
     expect(res.statusCode).toBe(201);
+  });
+
+  // Issue #616 — the gate used to sit below a single name component's
+  // weight, so any shared first OR last name 409'd.
+  describe("threshold — one shared name component is not a duplicate", () => {
+    // Fully random, letters-only family names ("Jean Dupont" / "Marie Dupont"
+    // in spirit): a fixed stem would make this run's rows look like
+    // duplicates of a previous run's leftovers in the shared test database.
+    const randomName = () =>
+      `X${Array.from({ length: 9 }, () => String.fromCharCode(97 + Math.floor(Math.random() * 26))).join("")}`;
+    const family = randomName();
+    const otherFamily = randomName();
+    const email = `anselme.${family.toLowerCase()}@example.org`;
+    const createdIds: string[] = [];
+    let existingId: string;
+
+    async function create(payload: Record<string, unknown>) {
+      const res = await app.inject({
+        method: "POST",
+        url: "/v1/constituents",
+        headers: authHeader(signToken(app)),
+        payload: { type: "donor", ...payload },
+      });
+      if (res.statusCode === 201) createdIds.push(res.json<{ data: { id: string } }>().data.id);
+      return res;
+    }
+
+    beforeAll(async () => {
+      const res = await create({ firstName: "Anselme", lastName: family, email });
+      expect(res.statusCode).toBe(201);
+      existingId = res.json<{ data: { id: string } }>().data.id;
+    });
+
+    afterAll(async () => {
+      // Soft-delete: keeps later runs' first names from pairing with these rows.
+      await db
+        .update(constituents)
+        .set({ deletedAt: new Date() })
+        .where(and(eq(constituents.orgId, ORG_A), inArray(constituents.id, createdIds)));
+    });
+
+    it("same last name, different first name → created (no 409)", async () => {
+      const res = await create({ firstName: "Odile", lastName: family });
+      expect(res.statusCode).toBe(201);
+    });
+
+    it("same first name, different last name → created (no 409)", async () => {
+      const res = await create({ firstName: "Anselme", lastName: otherFamily });
+      expect(res.statusCode).toBe(201);
+    });
+
+    it("near-identical full name (one-letter typo) → 409 naming the existing record", async () => {
+      const typo = `${family.slice(0, -1)}${family.endsWith("q") ? "r" : "q"}`;
+      const res = await create({ firstName: "Anselme", lastName: typo });
+      expect(res.statusCode).toBe(409);
+      const ids = res.json<{ duplicates: { id: string }[] }>().duplicates.map((d) => d.id);
+      expect(ids).toContain(existingId);
+    });
+
+    it("same email, completely different name → 409", async () => {
+      const res = await create({ firstName: "Zoé", lastName: "Quatremère", email });
+      expect(res.statusCode).toBe(409);
+      const ids = res.json<{ duplicates: { id: string }[] }>().duplicates.map((d) => d.id);
+      expect(ids).toContain(existingId);
+    });
   });
 });
 
@@ -887,6 +987,278 @@ describe("Constituents merge", () => {
     });
 
     expect(res.statusCode).toBe(400);
+  });
+});
+
+// ─── Merge re-pointing (issue #616) ─────────────────────────────────────────
+//
+// The merge used to move donations only: pledges, campaign membership,
+// letters and QR / payment references stayed on the soft-deleted duplicate.
+// Runs in a dedicated tenant so the bank-account / export fixtures never
+// interfere with the suites that own ORG_A.
+
+describe("Constituents merge — re-points every dependent row (issue #616)", () => {
+  const orgId = randomUUID();
+  const sub = randomUUID();
+  let token: string;
+
+  async function createConstituent(payload: Record<string, unknown>): Promise<string> {
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/constituents?force=true",
+      headers: authHeader(token),
+      payload: { type: "donor", ...payload },
+    });
+    expect(res.statusCode).toBe(201);
+    return res.json<{ data: { id: string } }>().data.id;
+  }
+
+  async function getRow(id: string) {
+    const [row] = await db
+      .select()
+      .from(constituents)
+      .where(and(eq(constituents.orgId, orgId), eq(constituents.id, id)));
+    return row;
+  }
+
+  beforeAll(async () => {
+    await db.execute(
+      sql`INSERT INTO tenants (id, name, slug) VALUES (${orgId}, 'Merge Repoint Org', ${`merge-${orgId.slice(0, 8)}`})`,
+    );
+    await seedTenantUser(orgId, { sub });
+    token = signToken(app, { sub, org_id: orgId, email: `test-${sub}@example.org` });
+  });
+
+  afterAll(async () => {
+    // Replica role: skips the audit_logs immutability trigger and the
+    // bank-account RESTRICT FK so the fixture tenant can be removed whole.
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`SET LOCAL session_replication_role = 'replica'`);
+      for (const table of [
+        "swiss_qr_references",
+        "campaign_qr_codes",
+        "campaign_documents",
+        "campaign_constituents",
+        "campaign_postal_exports",
+        "pledges",
+        "donations",
+        "merge_history",
+        "audit_logs",
+        "bank_accounts",
+        "campaigns",
+        "constituents",
+        "users",
+      ]) {
+        await tx.execute(sql`DELETE FROM ${sql.identifier(table)} WHERE org_id = ${orgId}`);
+      }
+      await tx.execute(sql`DELETE FROM outbox_events WHERE tenant_id = ${orgId}`);
+      await tx.execute(sql`DELETE FROM tenants WHERE id = ${orgId}`);
+    });
+  });
+
+  it("moves pledges, membership, letters and QR / payment references; back-fills the address", async () => {
+    const primaryId = await createConstituent({ firstName: "Survivor", lastName: "Repoint" });
+    const duplicateId = await createConstituent({
+      firstName: "Survivor",
+      lastName: "Repoint",
+      types: ["volunteer"],
+      addressLine1: "12 rue des Lilas",
+      postalCode: "69003",
+      city: "Lyon",
+      countryCode: "FR",
+    });
+
+    const [c1, c2] = await db
+      .insert(campaigns)
+      .values([
+        { orgId, name: "Shared campaign", type: "nominative_postal" },
+        { orgId, name: "Duplicate-only campaign", type: "nominative_postal" },
+      ])
+      .returning({ id: campaigns.id });
+    // Raw insert with the minimal column set — every other column defaults.
+    const e1 = { id: randomUUID() };
+    const e2 = { id: randomUUID() };
+    await db.execute(sql`
+      INSERT INTO campaign_postal_exports (id, org_id, campaign_id, mode)
+      VALUES (${e1.id}, ${orgId}, ${c1!.id}, 'personalized'),
+             (${e2.id}, ${orgId}, ${c2!.id}, 'personalized')
+    `);
+    const [account] = await db
+      .insert(bankAccounts)
+      .values({
+        orgId,
+        holderName: "Merge Repoint Org",
+        holderStreet: "Rue du Test 1",
+        holderPostalCode: "1003",
+        holderTown: "Lausanne",
+        holderCountryCode: "CH",
+        iban: "CH9300762011623852957",
+        ibanKind: "iban",
+        bankName: "Test Bank",
+        currency: "CHF",
+      })
+      .returning({ id: bankAccounts.id });
+
+    await db.insert(campaignConstituents).values([
+      { orgId, campaignId: c1!.id, constituentId: primaryId },
+      { orgId, campaignId: c1!.id, constituentId: duplicateId },
+      { orgId, campaignId: c2!.id, constituentId: duplicateId },
+    ]);
+    const [pledge] = await db
+      .insert(pledges)
+      .values({
+        orgId,
+        constituentId: duplicateId,
+        amountCents: 2000,
+        amountBaseCents: 2000,
+        frequency: "monthly",
+      })
+      .returning({ id: pledges.id });
+    const [letter] = await db
+      .insert(campaignDocuments)
+      .values({ orgId, campaignId: c2!.id, constituentId: duplicateId, s3Path: "x/letter.pdf" })
+      .returning({ id: campaignDocuments.id });
+
+    const qr = (constituentId: string, campaignId: string, exportId: string | null, code: string) =>
+      ({ orgId, campaignId, constituentId, exportId, code }) as const;
+    await db.insert(campaignQrCodes).values([
+      qr(primaryId, c1!.id, e1.id, "qr-survivor-e1"),
+      qr(duplicateId, c1!.id, e1.id, "qr-dup-e1"), // same export as the survivor's → stays
+      qr(duplicateId, c2!.id, e2.id, "qr-dup-e2"),
+      qr(duplicateId, c2!.id, null, "qr-dup-legacy"),
+    ]);
+    const ref = (constituentId: string, campaignId: string, exportId: string, reference: string) =>
+      ({
+        orgId,
+        campaignId,
+        constituentId,
+        exportId,
+        bankAccountId: account!.id,
+        referenceType: "scor",
+        reference,
+        currency: "CHF",
+      }) as const;
+    await db.insert(swissQrReferences).values([
+      ref(primaryId, c1!.id, e1.id, "RF18000000000000000001"),
+      ref(duplicateId, c1!.id, e1.id, "RF18000000000000000002"), // stays
+      ref(duplicateId, c2!.id, e2.id, "RF18000000000000000003"),
+    ]);
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/constituents/${primaryId}/merge`,
+      headers: authHeader(token),
+      payload: { targetId: duplicateId },
+    });
+    expect(res.statusCode).toBe(200);
+
+    // Pledge + letter follow the survivor.
+    const [movedPledge] = await db.select().from(pledges).where(eq(pledges.id, pledge!.id));
+    expect(movedPledge?.constituentId).toBe(primaryId);
+    const [movedLetter] = await db
+      .select()
+      .from(campaignDocuments)
+      .where(eq(campaignDocuments.id, letter!.id));
+    expect(movedLetter?.constituentId).toBe(primaryId);
+
+    // Membership: survivor is in BOTH campaigns exactly once, duplicate in none.
+    const members = await db
+      .select({
+        campaignId: campaignConstituents.campaignId,
+        constituentId: campaignConstituents.constituentId,
+      })
+      .from(campaignConstituents)
+      .where(eq(campaignConstituents.orgId, orgId));
+    expect(members.every((m) => m.constituentId === primaryId)).toBe(true);
+    expect(members.map((m) => m.campaignId).sort()).toEqual([c1!.id, c2!.id].sort());
+
+    // QR codes: everything moves except the one colliding with the survivor's
+    // own code for the same export (unique `(export_id, constituent_id)`).
+    const codes = await db
+      .select({ code: campaignQrCodes.code, constituentId: campaignQrCodes.constituentId })
+      .from(campaignQrCodes)
+      .where(eq(campaignQrCodes.orgId, orgId));
+    const owner = Object.fromEntries(codes.map((c) => [c.code, c.constituentId]));
+    expect(owner).toEqual({
+      "qr-survivor-e1": primaryId,
+      "qr-dup-e1": duplicateId,
+      "qr-dup-e2": primaryId,
+      "qr-dup-legacy": primaryId,
+    });
+
+    const refs = await db
+      .select({
+        reference: swissQrReferences.reference,
+        constituentId: swissQrReferences.constituentId,
+      })
+      .from(swissQrReferences)
+      .where(eq(swissQrReferences.orgId, orgId));
+    expect(Object.fromEntries(refs.map((r) => [r.reference, r.constituentId]))).toEqual({
+      RF18000000000000000001: primaryId,
+      RF18000000000000000002: duplicateId,
+      RF18000000000000000003: primaryId,
+    });
+
+    // Address back-filled as a block; types untouched while the
+    // `constituents.multi_type` flag is off for the tenant.
+    const survivor = await getRow(primaryId);
+    expect(survivor).toMatchObject({
+      addressLine1: "12 rue des Lilas",
+      postalCode: "69003",
+      city: "Lyon",
+      countryCode: "FR",
+      types: ["donor"],
+      type: "donor",
+    });
+  });
+
+  it("never splices two addresses; unions types when the tenant is multi-type", async () => {
+    const primaryId = await createConstituent({
+      firstName: "Partial",
+      lastName: "Address",
+      city: "Paris",
+    });
+    const duplicateId = await createConstituent({
+      firstName: "Partial",
+      lastName: "Address",
+      types: ["volunteer"],
+      addressLine1: "5 quai de Saône",
+      postalCode: "69002",
+      city: "Lyon",
+    });
+
+    const result = await mergeConstituents(
+      orgId,
+      primaryId,
+      duplicateId,
+      { userId: sub },
+      { unionTypes: true },
+    );
+    expect(result?.merged).toBe(true);
+
+    const survivor = await getRow(primaryId);
+    expect(survivor).toMatchObject({
+      addressLine1: null,
+      postalCode: null,
+      city: "Paris",
+      types: ["donor", "volunteer"],
+      // Legacy shadow keeps mirroring `types[0]`.
+      type: "donor",
+    });
+  });
+
+  it("opposite concurrent merges (A←B and B←A) do not deadlock — exactly one wins", async () => {
+    for (let round = 0; round < 5; round++) {
+      const a = await createConstituent({ firstName: "Dead", lastName: `Lock${round}` });
+      const b = await createConstituent({ firstName: "Dead", lastName: `Lock${round}` });
+      const results = await Promise.all([
+        mergeConstituents(orgId, a, b, { userId: sub }),
+        mergeConstituents(orgId, b, a, { userId: sub }),
+      ]);
+      // The loser sees its survivor already soft-deleted → `null` (route 404).
+      expect(results.filter((r) => r?.merged)).toHaveLength(1);
+      expect(results.filter((r) => r === null)).toHaveLength(1);
+    }
   });
 });
 
