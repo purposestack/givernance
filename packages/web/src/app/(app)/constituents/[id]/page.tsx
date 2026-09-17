@@ -17,7 +17,7 @@ import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
 import { hasPermission, requireAuth } from "@/lib/auth/guards";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { type Constituent, fullName, initials } from "@/models/constituent";
+import { type Constituent, type ConstituentDetail, fullName, initials } from "@/models/constituent";
 import type { Donation, DonationListResponse } from "@/models/donation";
 import { ConstituentService } from "@/services/ConstituentService";
 import { DonationService } from "@/services/DonationService";
@@ -54,7 +54,7 @@ function parsePositiveInt(value: string | string[] | undefined, fallback: number
   return max ? Math.min(parsed, max) : parsed;
 }
 
-async function fetchConstituentOrNotFound(id: string): Promise<Constituent> {
+async function fetchConstituentOrNotFound(id: string): Promise<ConstituentDetail> {
   const client = await createServerApiClient();
   try {
     return await ConstituentService.getConstituent(client, id);
@@ -137,10 +137,8 @@ export default async function ConstituentDetailPage({ params, searchParams }: De
   const tCustom = await getTranslations("customFields");
   const locale = await getLocale();
 
-  const totalDonatedCents = donationsResult.data.reduce(
-    (sum: number, d: Donation) => sum + d.amountCents,
-    0,
-  );
+  // Timeline teaser only — the giving totals come from the API (issue #614),
+  // never from this one page of donations.
   const lastDonation = donationsResult.data[0];
 
   return (
@@ -186,9 +184,9 @@ export default async function ConstituentDetailPage({ params, searchParams }: De
         overview={
           <>
             <OverviewTab
-              totalDonatedCents={totalDonatedCents}
+              totalDonatedCents={constituent.lifetimeAmountCents}
               donationCount={donationsResult.pagination.total}
-              lastDonationAt={lastDonation?.donatedAt}
+              lastDonationAt={constituent.lastDonationAt}
               locale={locale}
               labels={{
                 ariaLabel: t("overview.ariaLabel"),
@@ -532,7 +530,7 @@ function OverviewTab({
 }: {
   totalDonatedCents: number;
   donationCount: number;
-  lastDonationAt: string | undefined;
+  lastDonationAt: string | null;
   locale: string;
   labels: OverviewLabels;
 }) {

@@ -2,6 +2,7 @@ import { sanitizeCustomValues } from "@/components/shared/custom-fields/definiti
 import type { ApiClient } from "@/lib/api";
 import type {
   Constituent,
+  ConstituentDetail,
   ConstituentDetailResponse,
   ConstituentListQuery,
   ConstituentListResponse,
@@ -169,11 +170,17 @@ export const ConstituentService = {
    * Fetch a single constituent by ID. The API resolves the orgId from the
    * JWT and returns 404 when the constituent belongs to another tenant.
    */
-  async getConstituent(client: ApiClient, id: string): Promise<Constituent> {
-    const response = await client.get<ConstituentDetailResponse>(
+  async getConstituent(client: ApiClient, id: string): Promise<ConstituentDetail> {
+    const response = await client.get<{ data: ConstituentDetail }>(
       `/v1/constituents/${encodeURIComponent(id)}`,
     );
-    return mapConstituent(response.data);
+    return {
+      ...mapConstituent(response.data),
+      // Issue #614 — server-computed giving totals (cleared donations only).
+      // Defensive defaults for an API build that predates the fields.
+      lifetimeAmountCents: response.data.lifetimeAmountCents ?? 0,
+      lastDonationAt: response.data.lastDonationAt ?? null,
+    };
   },
 
   /**

@@ -509,7 +509,30 @@ export async function getConstituent(orgId: string, id: string) {
 
     if (!row) return null;
 
-    return { ...row, activities: [] };
+    // Issue #614 — giving totals for the profile header. The page used to
+    // derive them from one page of 10 donations. CLEARED donations only
+    // (pending / failed / refunded gifts are not money received), in the
+    // tenant's base currency. Explicit org predicate (issue #430).
+    const [stats] = await tx
+      .select({
+        lifetimeAmountCents: sql<string>`COALESCE(SUM(${donations.amountBaseCents}), 0)::bigint`,
+        lastDonationAt: sql<string | null>`max(${donations.donatedAt})`,
+      })
+      .from(donations)
+      .where(
+        and(
+          eq(donations.orgId, orgId),
+          eq(donations.constituentId, id),
+          eq(donations.status, "cleared"),
+        ),
+      );
+
+    return {
+      ...row,
+      lifetimeAmountCents: Number(stats?.lifetimeAmountCents ?? 0),
+      lastDonationAt: stats?.lastDonationAt ? new Date(stats.lastDonationAt).toISOString() : null,
+      activities: [],
+    };
   });
 }
 
