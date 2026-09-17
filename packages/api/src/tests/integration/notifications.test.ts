@@ -849,8 +849,10 @@ describe("Notifications — (created_at, id) keyset at µs precision", () => {
       expect(await pending.raced).toBe("idle");
 
       // A genuinely new row is delivered by the still-pending `next()`.
+      // No `created_at` touch-up here: the 20 ms poller may deliver the row
+      // between the INSERT and an UPDATE, and moving `created_at` forward
+      // afterwards would legitimately put it past its own cursor again.
       const second = await seedNotification({ orgId: ORG_A, userId: USER_A_ROW_ID });
-      await db.execute(sql`UPDATE notifications SET created_at = now() WHERE id = ${second}`);
       const two = await pending.next;
       expect(two).not.toBe("done");
       if (two === "done") return;
