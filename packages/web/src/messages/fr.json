@@ -310,6 +310,7 @@
       "persistsMessage": "Si le problème persiste, contactez notre <link>support</link>."
     },
     "server": {
+      "illustrationLabel": "Illustration d'engrenages et d'une clé indiquant une maintenance en cours",
       "title": "Une erreur inattendue",
       "description": "Un problème est survenu de notre côté. Notre équipe a été notifiée et travaille à résoudre le problème.",
       "errorId": "ID erreur : {digest}",
@@ -3467,7 +3468,42 @@
     },
     "footer": {
       "institutionalSignature": "Cette campagne est animée par <org></org>. En donnant, vous acceptez les conditions de don affichées à l'étape de paiement.",
-      "termsOnly": "En donnant, vous acceptez les conditions de don affichées à l'étape de paiement."
+      "termsOnly": "En donnant, vous acceptez les conditions de don affichées à l'étape de paiement.",
+      "poweredBy": "Propulsé par Givernance"
+    },
+    "progress": {
+      "sectionLabel": "Progression de la campagne",
+      "ariaValueText": "{percent} pour cent financés — {raised} sur {goal}",
+      "labels": {
+        "raised": "Collecté",
+        "goal": "Objectif",
+        "supporters": "Soutiens",
+        "percentFunded": "% financés"
+      },
+      "meta": {
+        "calm-wellness": "<strong>{raised}</strong> collectés · <strong>{percent} %</strong> de l'objectif · {count, plural, one {# soutien} other {# soutiens}}",
+        "cosmic-gradient": "sur un objectif de <strong>{goal}</strong> · {count, plural, one {# contributeur} other {# contributeurs}} · <strong>{percent} %</strong> financés",
+        "editorial-story": "Objectif {goal} · {count, plural, one {# contributeur} other {# contributeurs}} · {percent} % de la cible",
+        "emergency-appeal": "▸ sur {goal} · {percent} % financés · {count, plural, one {# contributeur} other {# contributeurs}}",
+        "neo-brutalist": "/ {goal} · {percent} % · {count, plural, one {# contributeur} other {# contributeurs}}",
+        "retro-print": "sur {goal} · {count, plural, one {# souscripteur} other {# souscripteurs}}"
+      }
+    },
+    "metadata": {
+      "title": "{campaign} — {organisation}",
+      "unavailableTitle": "Page de don indisponible"
+    },
+    "notFound": {
+      "label": "Page indisponible",
+      "title": "Cette page de don n'est pas disponible",
+      "description": "La campagne est peut-être terminée, ou le lien ou le QR code utilisé n'est plus à jour.",
+      "hint": "Pour soutenir cette cause, contactez l'organisation qui vous a transmis ce lien."
+    },
+    "error": {
+      "title": "Impossible de charger cette page de don",
+      "description": "Un problème est survenu de notre côté. Réessayez dans un instant. Si vous aviez déjà validé un paiement, vérifiez si vous avez reçu un email de confirmation avant de refaire un don.",
+      "retry": "Réessayer",
+      "errorId": "ID erreur : {digest}"
     },
     "form": {
       "eyebrow": "Don en ligne",
@@ -3496,7 +3532,10 @@
         "emailRequired": "Saisissez votre adresse e-mail.",
         "emailInvalid": "Saisissez une adresse e-mail valide.",
         "amountRequired": "Saisissez un montant de don.",
-        "amountInvalid": "Le montant doit être d'au moins 1.",
+        "amountInvalid": "Saisissez un montant valide, par exemple 25 ou 12,50.",
+        "amountTooLow": "Le don minimum est de {amount}.",
+        "amountTooHigh": "Le don maximum en ligne est de {amount}. Pour un don plus important, contactez directement l'organisation.",
+        "validation": "Nous n'avons pas pu préparer votre don avec ces informations. Vérifiez-les puis réessayez.",
         "generic": "Une erreur est survenue lors de la préparation du paiement. Réessayez."
       },
       "success": {
@@ -3528,7 +3567,15 @@
         "checking": "Vérification du paiement auprès de Stripe…",
         "processing": "Votre paiement est en cours de traitement. Vous recevrez un email de confirmation sous peu.",
         "requiresAction": "Votre paiement n'a pas abouti. Essayez avec une autre carte ci-dessous.",
-        "startOver": "Recommencer un don"
+        "startOver": "Recommencer un don",
+        "failed": {
+          "stripeUnavailable": "Nous n'avons pas pu joindre notre prestataire de paiement pour vérifier votre paiement. Rechargez cette page avant de réessayer.",
+          "notConfirmed": "Nous n'avons pas pu confirmer votre paiement. Vérifiez si vous avez reçu un email de confirmation avant de réessayer.",
+          "notCompleted": "Votre paiement n'a pas abouti. Aucun montant n'a été prélevé."
+        }
+      },
+      "pending": {
+        "requiresAction": "Votre paiement nécessite une dernière étape. Suivez les instructions de votre banque ou de votre prestataire de paiement pour le finaliser — vous recevrez un email de confirmation une fois l'opération terminée."
       },
       "testMode": {
         "title": "Mode test — aucun débit réel",
