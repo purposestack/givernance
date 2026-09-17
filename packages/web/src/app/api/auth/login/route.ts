@@ -4,6 +4,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import {
   APP_URL,
   AUTH_ENDPOINT,
+  deleteReturnToCookie,
   generateCodeChallenge,
   generateRandom,
   KEYCLOAK_CLIENT_ID,
@@ -181,7 +182,7 @@ export async function GET(request: NextRequest) {
   // abandoned it, and triggered a fresh non-step-up login within the 5-min
   // TTL, the previous return_to would otherwise still bounce them after
   // re-auth instead of the default landing page (review N-2).
-  jar.delete(OIDC_RETURN_TO_COOKIE);
+  deleteReturnToCookie(jar);
   const rawReturnTo = url.searchParams.get("return_to");
   const returnTo = safeReturnToPath(rawReturnTo);
   if (rawReturnTo && !returnTo) {

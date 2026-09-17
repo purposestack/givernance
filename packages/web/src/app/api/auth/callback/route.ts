@@ -5,6 +5,7 @@ import {
   APP_URL,
   authScopedCookieOptions,
   deleteLegacyRootSessionCookies,
+  deleteReturnToCookie,
   ID_TOKEN_COOKIE_NAME,
   JWT_COOKIE_NAME,
   jwtCookieOptions,
@@ -76,7 +77,7 @@ function loginRedirectAfterCleanup(
   jar.delete(OIDC_STATE_COOKIE);
   jar.delete(OIDC_VERIFIER_COOKIE);
   jar.delete(OIDC_NONCE_COOKIE);
-  jar.delete(OIDC_RETURN_TO_COOKIE);
+  deleteReturnToCookie(jar);
   const loginUrl = new URL("/login", APP_URL);
   if (errorCode) loginUrl.searchParams.set("error", errorCode);
   return NextResponse.redirect(loginUrl.toString());
@@ -203,7 +204,7 @@ export async function GET(request: NextRequest) {
     jar.delete(OIDC_STATE_COOKIE);
     jar.delete(OIDC_VERIFIER_COOKIE);
     jar.delete(OIDC_NONCE_COOKIE);
-    jar.delete(OIDC_RETURN_TO_COOKIE);
+    deleteReturnToCookie(jar);
     jar.set(JWT_COOKIE_NAME, tokens.access_token, jwtCookieOptions(sessionMaxAge));
     jar.set(getCsrfCookieName(), crypto.randomUUID(), buildCsrfCookieOptions(sessionMaxAge));
     // Issue #296: id_token + refresh_token are scoped to `/api/auth` so the

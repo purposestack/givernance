@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { AuthCard } from "@/components/auth/auth-card";
 import { AuthLogo } from "@/components/auth/auth-logo";
+import { buildLoginHref } from "@/lib/auth/login-redirect";
 
 function LoginForm() {
   const t = useTranslations("auth.login");
@@ -28,6 +29,8 @@ function LoginForm() {
         return t("errors.interrupted");
       case "missing_org_id":
         return t("errors.authFailed");
+      case "no_tenants":
+        return t("errors.noTenants");
       default:
         return t("errors.generic");
     }
@@ -36,10 +39,16 @@ function LoginForm() {
   // Locale is driven by the NEXT_LOCALE cookie (set by LocalePicker in the
   // auth layout via setLocale()). The /api/auth/login route reads that cookie
   // and forwards it to Keycloak as kc_locale — no URL param needed here.
+  //
+  // Issue #613: `/api/auth/restore-session` lands an expired session here
+  // with `?redirect=<path>`. Forward it as the login route's `return_to` so
+  // the user ends up where they were headed; the route re-validates it
+  // server-side (`safeReturnToPath`).
+  const redirectParam = searchParams.get("redirect");
   const handleLogin = useCallback(() => {
     setRedirecting(true);
-    window.location.href = "/api/auth/login";
-  }, []);
+    window.location.href = buildLoginHref(redirectParam);
+  }, [redirectParam]);
 
   // The Keycloak redirect leaves the page in `redirecting=true` (disabled
   // button + spinner). Browsers serve the back navigation from bfcache,

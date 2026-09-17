@@ -56,7 +56,8 @@
         "authFailed": "Échec de l'authentification. Veuillez réessayer.",
         "generic": "Une erreur est survenue lors de la connexion. Veuillez réessayer.",
         "sessionExpired": "Session expirée. Veuillez vous reconnecter.",
-        "interrupted": "La session d'authentification a été interrompue. Veuillez réessayer."
+        "interrupted": "La session d'authentification a été interrompue. Veuillez réessayer.",
+        "noTenants": "Votre compte n'est encore rattaché à aucune organisation. Demandez à un administrateur de votre organisation de vous inviter, puis reconnectez-vous."
       }
     },
     "forgotPassword": {
@@ -297,6 +298,11 @@
       "errors": {
         "forbidden": "Vous ne pouvez pas ouvrir cet espace.",
         "generic": "Impossible de changer d'espace. Veuillez réessayer."
+      },
+      "loadError": {
+        "title": "Impossible de charger vos espaces",
+        "description": "Vos organisations n'ont pas pu être récupérées. Votre session reste active — le problème est généralement temporaire.",
+        "retry": "Réessayer"
       }
     }
   },

@@ -145,6 +145,20 @@ export const OIDC_NONCE_COOKIE = "oidc_nonce";
 /** Same-origin path the callback redirects to after a successful re-auth (issue #250 step-up). */
 export const OIDC_RETURN_TO_COOKIE = "oidc_return_to";
 
+/**
+ * Expire the `return_to` cookie. It is SET with `Path=/api/auth`
+ * (`returnToCookieOptions`), and a cookie is only cleared by a delete that
+ * names the same path — the bare `jar.delete(name)` form targets `Path=/`
+ * and silently left it alive, so a stale step-up target hijacked the next
+ * login within its 5-min TTL (issue #613). Path derived from the setter's
+ * options so the two can't drift.
+ */
+export function deleteReturnToCookie(jar: {
+  delete: (opts: { name: string; path: string }) => void;
+}): void {
+  jar.delete({ name: OIDC_RETURN_TO_COOKIE, path: returnToCookieOptions().path });
+}
+
 /** Generate a cryptographically random URL-safe string. */
 export function generateRandom(bytes = 32): string {
   return randomBytes(bytes).toString("base64url");
