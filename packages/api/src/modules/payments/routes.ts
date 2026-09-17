@@ -1,7 +1,7 @@
 /** Payment routes — Stripe Connect onboarding and webhook handler */
 
 import rateLimit from "@fastify/rate-limit";
-import { QUEUE_NAMES } from "@givernance/shared/jobs";
+import { defaultJobOptionsFor, QUEUE_NAMES } from "@givernance/shared/jobs";
 import { Type } from "@sinclair/typebox";
 import { Queue } from "bullmq";
 import type { FastifyInstance } from "fastify";
@@ -20,7 +20,15 @@ import {
   verifyStripeWebhook,
 } from "./service.js";
 
-const webhooksQueue = new Queue(QUEUE_NAMES.WEBHOOKS, { connection: redis });
+// BullMQ reads retry + retention from the Queue instance that `add()`s the
+// job, so this producer-side handle must carry them (issue #612). Without
+// it a single PG flake while processing `payment_intent.succeeded` lost the
+// donation for good (zero retries) and completed jobs — donor PII in the
+// payload — were retained in Redis forever.
+const webhooksQueue = new Queue(QUEUE_NAMES.WEBHOOKS, {
+  connection: redis,
+  defaultJobOptions: defaultJobOptionsFor(QUEUE_NAMES.WEBHOOKS),
+});
 
 /**
  * Pino-safe shape for Stripe error logging. The raw `Stripe.errors.StripeError`

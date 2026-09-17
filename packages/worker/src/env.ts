@@ -83,6 +83,14 @@ const EnvSchema = Type.Object({
   KEYCLOAK_ADMIN_CLIENT_SECRET: Type.Optional(Type.String({ minLength: 1 })),
   /** Log level */
   LOG_LEVEL: LogLevel,
+  /**
+   * Hard ceiling (ms) for the SIGTERM drain (issue #612): workers stop
+   * fetching and wait for active jobs; past this the process exits 1 and
+   * the unfinished jobs are recovered by BullMQ's stalled-job check. Keep
+   * it BELOW the container runtime's stop grace period, or the runtime's
+   * SIGKILL wins and the pools/connections are never closed.
+   */
+  WORKER_SHUTDOWN_TIMEOUT_MS: Type.Integer({ minimum: 1000, default: 25_000 }),
   /** Stripe secret key (sk_test_... or sk_live_...) */
   STRIPE_SECRET_KEY: Type.Optional(Type.String({ minLength: 1 })),
   /** ExchangeRate-API key used for currency conversion refreshes */

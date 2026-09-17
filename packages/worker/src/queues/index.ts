@@ -1,6 +1,6 @@
 /** Queue definitions — create BullMQ Queue instances */
 
-import { QUEUE_NAMES } from "@givernance/shared/jobs";
+import { defaultJobOptionsFor, QUEUE_NAMES } from "@givernance/shared/jobs";
 import { Queue } from "bullmq";
 import Redis from "ioredis";
 import { env } from "../env.js";
@@ -10,14 +10,23 @@ const connection = new Redis(env.REDIS_URL, {
   enableReadyCheck: false,
 });
 
+/**
+ * `defaultJobOptions` are per Queue INSTANCE (not stored in Redis), so every
+ * handle that can `add()` must carry the shared retry + retention policy
+ * (issue #612).
+ */
+function queueWithDefaults(name: string): Queue {
+  return new Queue(name, { connection, defaultJobOptions: defaultJobOptionsFor(name) });
+}
+
 /** Tax receipt generation queue */
-export const receiptsQueue = new Queue(QUEUE_NAMES.RECEIPTS, { connection });
+export const receiptsQueue = queueWithDefaults(QUEUE_NAMES.RECEIPTS);
 
 /** Bulk email sending queue */
-export const emailsQueue = new Queue(QUEUE_NAMES.EMAILS, { connection });
+export const emailsQueue = queueWithDefaults(QUEUE_NAMES.EMAILS);
 
 /** Data export queue */
-export const exportsQueue = new Queue(QUEUE_NAMES.EXPORTS, { connection });
+export const exportsQueue = queueWithDefaults(QUEUE_NAMES.EXPORTS);
 
 /** GDPR erasure queue */
-export const gdprQueue = new Queue(QUEUE_NAMES.GDPR, { connection });
+export const gdprQueue = queueWithDefaults(QUEUE_NAMES.GDPR);

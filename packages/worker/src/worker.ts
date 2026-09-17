@@ -3,6 +3,7 @@
 import { CUSTOM_FIELD_JOBS, CUSTOM_FIELDS_QUEUE } from "@givernance/shared/custom-fields";
 import {
   BRANDING_EVENT_TYPES,
+  defaultJobOptionsFor,
   FINANCE_DASHBOARD_JOBS,
   NOTIFICATIONS_DIGEST_JOBS,
   PLATFORM_REPORTS_JOBS,
@@ -14,9 +15,12 @@ import type { Job } from "bullmq";
 import { Queue, Worker } from "bullmq";
 import Redis from "ioredis";
 import { env } from "./env.js";
-import { assertWorkerAppRoleSecure } from "./lib/db.js";
+import { assertWorkerAppRoleSecure, closeDbPools } from "./lib/db.js";
+import { campaignDocumentsJobId, keycloakSyncOrgLogoJobId } from "./lib/job-ids.js";
 import { jobLogger, logger } from "./lib/logger.js";
+import { redis } from "./lib/redis.js";
 import { routeDomainEvent } from "./lib/route-domain-event.js";
+import { createGracefulShutdown } from "./lib/shutdown.js";
 import { extractTraceId } from "./lib/trace-context.js";
 import { processBrandingActivateLogo } from "./processors/branding-activate-logo.js";
 import { processBrandingGcAsset } from "./processors/branding-gc-asset.js";
@@ -52,25 +56,51 @@ import { processSurveyInvitationEmail } from "./processors/survey-invitation-ema
 import { processTeamInviteEmail } from "./processors/team-invite-email.js";
 import { processTenantLifecycle } from "./processors/tenant-lifecycle.js";
 
+/**
+ * Every ioredis connection this process opens for BullMQ. BullMQ treats a
+ * caller-supplied ioredis instance as shared and never closes it, so the
+ * graceful-shutdown path (issue #612) quits them itself.
+ */
+const bullConnections: Redis[] = [];
+
 /** Create a fresh ioredis connection — BullMQ requires separate connections for Queue vs Worker */
 function createRedisConnection() {
-  return new Redis(env.REDIS_URL, {
+  const connection = new Redis(env.REDIS_URL, {
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
   });
+  bullConnections.push(connection);
+  return connection;
 }
 
 /** Queue handles use their own Redis connection (separate from workers) */
 const queueConnection = createRedisConnection();
-const receiptsQueue = new Queue(QUEUE_NAMES.RECEIPTS, { connection: queueConnection });
-const campaignsQueue = new Queue(QUEUE_NAMES.CAMPAIGNS, { connection: queueConnection });
-const postalExportsQueue = new Queue(QUEUE_NAMES.POSTAL_EXPORTS, { connection: queueConnection });
-const emailsQueue = new Queue(QUEUE_NAMES.EMAILS, { connection: queueConnection });
-const tenantLifecycleQueue = new Queue(QUEUE_NAMES.TENANT_LIFECYCLE, {
-  connection: queueConnection,
-});
-const brandingQueue = new Queue(QUEUE_NAMES.BRANDING, { connection: queueConnection });
-const keycloakSyncQueue = new Queue(QUEUE_NAMES.KEYCLOAK_SYNC, { connection: queueConnection });
+
+/**
+ * Queue handle carrying the shared retry + retention policy (issue #612).
+ * BullMQ only honours `attempts` / `backoff` / `removeOn*` from the Queue
+ * that `add()`s the job — see `@givernance/shared/jobs` `queue-options.ts`
+ * for the baseline and the per-queue deviations (bulk-import, webhooks).
+ */
+function queueWithDefaults(name: string): Queue {
+  return new Queue(name, {
+    connection: queueConnection,
+    defaultJobOptions: defaultJobOptionsFor(name),
+  });
+}
+
+const receiptsQueue = queueWithDefaults(QUEUE_NAMES.RECEIPTS);
+const campaignsQueue = queueWithDefaults(QUEUE_NAMES.CAMPAIGNS);
+const postalExportsQueue = queueWithDefaults(QUEUE_NAMES.POSTAL_EXPORTS);
+// Retry-safe: the processor only targets recipients that are in neither
+// `delivered_constituent_ids` nor `failed_constituent_ids` and short-circuits
+// a terminal row, so a retry resumes where the last attempt stopped.
+const emailsQueue = queueWithDefaults(QUEUE_NAMES.EMAILS);
+// The API's signup-resend producer pins `attempts: 1` per add (token
+// rotation is not retry-safe); per-add opts win over these defaults.
+const tenantLifecycleQueue = queueWithDefaults(QUEUE_NAMES.TENANT_LIFECYCLE);
+const brandingQueue = queueWithDefaults(QUEUE_NAMES.BRANDING);
+const keycloakSyncQueue = queueWithDefaults(QUEUE_NAMES.KEYCLOAK_SYNC);
 const notificationsDigestQueue = new Queue(QUEUE_NAMES.NOTIFICATIONS_DIGEST, {
   connection: queueConnection,
   // BullMQ Worker constructors don't honour `attempts/backoff` — those
@@ -87,7 +117,9 @@ const notificationsDigestQueue = new Queue(QUEUE_NAMES.NOTIFICATIONS_DIGEST, {
     removeOnFail: { count: 50 },
   },
 });
-const bulkImportQueue = new Queue(QUEUE_NAMES.BULK_IMPORT, { connection: queueConnection });
+// `attempts: 1` — the processor restarts from row 0 on a re-run (see the
+// override in `queue-options.ts`); retention is still bounded.
+const bulkImportQueue = queueWithDefaults(QUEUE_NAMES.BULK_IMPORT);
 
 // Epic #539 — custom-field background work: option-merge backfills
 // (routed from the outbox) + the daily merge-undo purge cron. Carries a
@@ -147,9 +179,8 @@ async function scheduleRepeatableJobs() {
   // UTC (before the 03:xx cron cluster; the sweep lists the whole
   // bucket so it gets the quietest slot). Fixed `jobId` so worker
   // restarts don't fan out duplicate schedules. Retry opts are set
-  // per-add because `brandingQueue` deliberately carries no
-  // `defaultJobOptions` — the outbox-routed branding jobs manage their
-  // own retry posture and must not be changed by this cron.
+  // per-add: the cron wants the slower 60s backoff + small retention of
+  // the other nightly sweeps, not `brandingQueue`'s outbox-job defaults.
   await brandingQueue.add(
     BRANDING_EVENT_TYPES.ORPHAN_GC_SWEEP,
     {},
@@ -336,10 +367,14 @@ async function processDomainEvent(job: Job): Promise<void> {
         {
           donationId: decision.donationId,
           orgId: decision.orgId,
-          fiscalYear: new Date().getFullYear(),
+          // No `fiscalYear` here (issue #612): the processor derives it
+          // from the donation, not from the wall clock at routing time.
           locale: "en",
           traceparent: decision.traceparent,
         },
+        // Per-donation id: a receipt must be issued once. While the
+        // completed job is retained this dedupes a re-emitted event; past
+        // retention the processor's "receipt already exists" guard does.
         { jobId: `receipt-${decision.donationId}` },
       );
       log.info({ donationId: decision.donationId }, "Enqueued receipt generation");
@@ -355,7 +390,10 @@ async function processDomainEvent(job: Job): Promise<void> {
           constituentIds: decision.constituentIds,
           traceparent: decision.traceparent,
         },
-        { jobId: `campaign-docs-${decision.campaignId}` },
+        // Keyed on the outbox event, NOT the campaign (issue #612): BullMQ
+        // dedupes on jobId against retained completed jobs too, so a
+        // per-campaign id silently dropped every later document batch.
+        { jobId: campaignDocumentsJobId(id) },
       );
       log.info({ campaignId: decision.campaignId }, "Enqueued campaign document generation");
       return;
@@ -507,9 +545,13 @@ async function processDomainEvent(job: Job): Promise<void> {
       await keycloakSyncQueue.add(
         BRANDING_EVENT_TYPES.KEYCLOAK_SYNC_ORG_LOGO,
         { orgId: decision.orgId, traceparent: decision.traceparent },
-        // Per-tenant jobId so a flurry of activations + gc on the same
-        // tenant collapses to a single sync (last-write-wins).
-        { jobId: `kc-sync-org-logo-${decision.orgId}` },
+        // Keyed on the outbox event, NOT the tenant (issue #612). A
+        // per-tenant id did not give "last-write-wins": BullMQ drops an
+        // `add()` whose jobId matches a job in ANY state, so once the
+        // first sync completed every later logo change was discarded. The
+        // processor reads the tenant's current logo, so one run per event
+        // is idempotent and the final state is always the latest.
+        { jobId: keycloakSyncOrgLogoJobId(id) },
       );
       log.info({ tenantId: decision.orgId }, "Enqueued KC org logo sync");
       return;
@@ -603,13 +645,14 @@ async function processDomainEvent(job: Job): Promise<void> {
   }
 }
 
-/** Start all queue workers */
-function startWorkers() {
-  const defaultJobOpts = {
-    attempts: 3,
-    backoff: { type: "exponential" as const, delay: 5000 },
-  };
-
+/**
+ * Start all queue workers.
+ *
+ * Retry / retention policy is NOT set here: BullMQ `Worker` options have no
+ * `attempts` / `backoff` (they were silently ignored — issue #612). They live
+ * on the producing Queue's `defaultJobOptions`, see `queueWithDefaults`.
+ */
+function startWorkers(): Worker[] {
   /** Each Worker gets its own Redis connection per BullMQ best practices */
   // The receipts queue carries two job names: the per-donation
   // `generate-receipt` fan-out and the manual `receipts.rewrap_deks`
@@ -628,7 +671,6 @@ function startWorkers() {
     {
       connection: createRedisConnection(),
       concurrency: 5,
-      ...defaultJobOpts,
     },
   );
 
@@ -638,19 +680,16 @@ function startWorkers() {
   const emailsWorker = new Worker(QUEUE_NAMES.EMAILS, (job) => processSendBulkEmail(job), {
     connection: createRedisConnection(),
     concurrency: 2,
-    ...defaultJobOpts,
   });
 
   const gdprWorker = new Worker(QUEUE_NAMES.GDPR, processGdprErasure, {
     connection: createRedisConnection(),
     concurrency: 1,
-    ...defaultJobOpts,
   });
 
   const campaignsWorker = new Worker(QUEUE_NAMES.CAMPAIGNS, processGenerateCampaignDocuments, {
     connection: createRedisConnection(),
     concurrency: 3,
-    ...defaultJobOpts,
   });
 
   // Postal-export worker — concurrency 1 per process: each job streams a
@@ -661,19 +700,16 @@ function startWorkers() {
   const postalExportsWorker = new Worker(QUEUE_NAMES.POSTAL_EXPORTS, processGeneratePostalExport, {
     connection: createRedisConnection(),
     concurrency: 1,
-    ...defaultJobOpts,
   });
 
   const eventsWorker = new Worker(QUEUE_NAMES.EVENTS, processDomainEvent, {
     connection: createRedisConnection(),
     concurrency: 10,
-    ...defaultJobOpts,
   });
 
   const webhooksWorker = new Worker(QUEUE_NAMES.WEBHOOKS, processStripeWebhook, {
     connection: createRedisConnection(),
     concurrency: 5,
-    ...defaultJobOpts,
   });
 
   // Tenant-lifecycle carries two job names:
@@ -693,7 +729,6 @@ function startWorkers() {
     {
       connection: createRedisConnection(),
       concurrency: 1,
-      ...defaultJobOpts,
     },
   );
 
@@ -728,7 +763,6 @@ function startWorkers() {
     {
       connection: createRedisConnection(),
       concurrency: 1,
-      ...defaultJobOpts,
     },
   );
 
@@ -746,7 +780,6 @@ function startWorkers() {
     {
       connection: createRedisConnection(),
       concurrency: 1,
-      ...defaultJobOpts,
     },
   );
 
@@ -775,7 +808,6 @@ function startWorkers() {
     {
       connection: createRedisConnection(),
       concurrency: 1,
-      ...defaultJobOpts,
     },
   );
 
@@ -796,7 +828,6 @@ function startWorkers() {
       // a slow KC making logo syncs block forever, but we also don't
       // want 10 concurrent attribute writes contesting the same org.
       concurrency: 2,
-      ...defaultJobOpts,
     },
   );
 
@@ -810,7 +841,6 @@ function startWorkers() {
       // not flood the SMTP relay. Scale by adding worker pods if a
       // large tenant ever opts every member into the digest.
       concurrency: 1,
-      ...defaultJobOpts,
     },
   );
 
@@ -838,7 +868,6 @@ function startWorkers() {
     {
       connection: createRedisConnection(),
       concurrency: 1,
-      ...defaultJobOpts,
     },
   );
 
@@ -861,7 +890,6 @@ function startWorkers() {
     {
       connection: createRedisConnection(),
       concurrency: 1,
-      ...defaultJobOpts,
     },
   );
 
@@ -916,6 +944,7 @@ function startWorkers() {
   }
 
   logger.info({ workers: workers.map((w) => w.name) }, "Workers started");
+  return workers;
 }
 
 // Issue #430 — boot-time tenant-isolation guard. A misconfigured
@@ -925,7 +954,36 @@ function startWorkers() {
 // is a deploy failure, never a silent cross-tenant leak.
 async function main() {
   await assertWorkerAppRoleSecure();
-  startWorkers();
+  const workers = startWorkers();
+
+  // Issue #612 — drain on SIGTERM/SIGINT (every Kamal deploy stops the old
+  // container with SIGTERM). Registered before the repeatable-job upserts
+  // so a signal during boot still shuts down cleanly.
+  const shutdown = createGracefulShutdown({
+    workers,
+    queues: [
+      receiptsQueue,
+      campaignsQueue,
+      postalExportsQueue,
+      emailsQueue,
+      tenantLifecycleQueue,
+      brandingQueue,
+      keycloakSyncQueue,
+      notificationsDigestQueue,
+      bulkImportQueue,
+      customFieldsQueue,
+      financeDashboardQueue,
+      platformReportsQueue,
+    ],
+    connections: [...bullConnections, redis],
+    closePools: closeDbPools,
+    logger,
+    timeoutMs: env.WORKER_SHUTDOWN_TIMEOUT_MS,
+    exit: (code) => process.exit(code),
+  });
+  process.on("SIGTERM", () => void shutdown("SIGTERM"));
+  process.on("SIGINT", () => void shutdown("SIGINT"));
+
   await scheduleRepeatableJobs();
 }
 

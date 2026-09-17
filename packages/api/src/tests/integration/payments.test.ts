@@ -10,11 +10,15 @@ import { db } from "../helpers/db.js";
 // vi.hoisted runs before vi.mock hoisting — ensures mocks are defined before use
 const {
   mockQueueAdd,
+  queueConstructorCalls,
   mockVerifyStripeWebhook,
   mockStartStripeOnboarding,
   mockGetStripeConnectStatus,
 } = vi.hoisted(() => ({
   mockQueueAdd: vi.fn().mockResolvedValue({ id: "mock-job-id" }),
+  // Captured outside the spy: `afterEach(vi.clearAllMocks)` wipes the
+  // constructor's own call log, and the Queue is built once at module load.
+  queueConstructorCalls: [] as unknown[][],
   mockVerifyStripeWebhook: vi.fn(),
   mockStartStripeOnboarding: vi.fn(),
   mockGetStripeConnectStatus: vi.fn(),
@@ -23,7 +27,8 @@ const {
 // Mock BullMQ Queue to avoid needing a real Redis queue connection for route tests
 vi.mock("bullmq", () => ({
   // biome-ignore lint/complexity/useArrowFunction: constructor mock; vitest 4 rejects arrow impls when called with `new` (`() => ({...}) is not a constructor`)
-  Queue: vi.fn().mockImplementation(function () {
+  Queue: vi.fn().mockImplementation(function (...args: unknown[]) {
+    queueConstructorCalls.push(args);
     return { add: mockQueueAdd };
   }),
 }));
@@ -356,6 +361,27 @@ describe("POST /v1/admin/stripe-connect", () => {
 // ─── Stripe Webhook ────────────────────────────────────────────────────────
 
 describe("POST /v1/donations/stripe-webhook", () => {
+  // Issue #612 — BullMQ reads retry/retention from the Queue INSTANCE that
+  // add()s the job. This producer used to build a bare Queue, so webhook
+  // jobs ran with zero retries and completed jobs (donor PII) never expired.
+  it("builds the webhooks queue with the shared retry + retention defaults", () => {
+    const call = queueConstructorCalls.find(([name]) => name === "webhooks");
+    expect(call).toBeDefined();
+    const opts = call?.[1] as { defaultJobOptions?: Record<string, unknown> } | undefined;
+    expect(opts?.defaultJobOptions).toMatchObject({
+      attempts: 3,
+      backoff: { type: "exponential" },
+    });
+    expect(opts?.defaultJobOptions?.removeOnComplete).toMatchObject({
+      age: expect.any(Number),
+      count: expect.any(Number),
+    });
+    expect(opts?.defaultJobOptions?.removeOnFail).toMatchObject({
+      age: expect.any(Number),
+      count: expect.any(Number),
+    });
+  });
+
   it("returns 400 without stripe-signature header", async () => {
     const res = await app.inject({
       method: "POST",
