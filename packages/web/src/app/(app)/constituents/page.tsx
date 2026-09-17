@@ -64,6 +64,27 @@ function parsePositiveInt(value: string | string[] | undefined, fallback: number
   return max ? Math.min(parsed, max) : parsed;
 }
 
+/**
+ * Basic "More filters" dialog params (issue #614). The dialog writes full
+ * ISO-8601 instants (`2026-01-01T00:00:00.000Z`); the API querystring schema
+ * is `format: "date-time"`, so anything else (hand-edited URL) is dropped
+ * here rather than round-tripped into a 400.
+ */
+function parseIsoDateTime(value: string | string[] | undefined): string | undefined {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (!raw || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/.test(raw)) {
+    return undefined;
+  }
+  return Number.isNaN(Date.parse(raw)) ? undefined : raw;
+}
+
+function parseNonNegativeInt(value: string | string[] | undefined): number | undefined {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (!raw || !/^\d+$/.test(raw)) return undefined;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isSafeInteger(parsed) ? parsed : undefined;
+}
+
 export default async function ConstituentsPage({ searchParams }: ConstituentsPageProps) {
   const auth = await requireAuth();
   const canManageAdminActions = auth.roles.includes("org_admin");
@@ -164,6 +185,14 @@ export default async function ConstituentsPage({ searchParams }: ConstituentsPag
     sort,
     order,
     filters: effectiveFilters,
+    // Basic "More filters" dialog (issue #614) — the only filter entry point
+    // when `advanced_filters` is off. With the flag on the FilterBuilder
+    // replaces the dialog, so these params are not forwarded.
+    lastDonationFrom: advancedFiltersEnabled ? undefined : parseIsoDateTime(params.lastDonationFrom),
+    lastDonationTo: advancedFiltersEnabled ? undefined : parseIsoDateTime(params.lastDonationTo),
+    minLifetimeAmountCents: advancedFiltersEnabled
+      ? undefined
+      : parseNonNegativeInt(params.minLifetimeAmountCents),
   };
 
   let result: ConstituentListResponse;
