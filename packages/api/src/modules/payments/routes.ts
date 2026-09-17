@@ -15,6 +15,7 @@ import {
 } from "../../lib/schemas.js";
 import {
   createWebhookEvent,
+  findWebhookEventByStripeId,
   getStripeConnectStatus,
   startStripeOnboarding,
   verifyStripeWebhook,
@@ -226,25 +227,44 @@ export async function stripeWebhookRoute(app: FastifyInstance) {
           .send(problemDetail(400, "Bad Request", "Signature verification failed"));
       }
 
+      // Enqueue for async processing. `jobId` makes the add idempotent: BullMQ
+      // ignores an add whose job id already exists.
+      const enqueue = (webhookEventId: string) =>
+        webhooksQueue.add(
+          "process-stripe-webhook",
+          {
+            webhookEventId,
+            stripeEventId: event.id,
+            eventType: event.type,
+            accountId: event.account ?? null,
+            payload: event.data.object as unknown as Record<string, unknown>,
+          },
+          { jobId: `stripe-${event.id}` },
+        );
+
       // Atomic insert with ON CONFLICT — handles both first-seen and duplicate events
       const record = await createWebhookEvent(event);
       if (!record) {
+        // Duplicate delivery. Usually a plain Stripe retry of an event we
+        // already queued — but if the FIRST delivery persisted the row and
+        // then `queue.add` failed (Redis blip → 5xx → Stripe retries), the
+        // row is still `pending` and no job exists. Answering 200 here would
+        // lose the event for good (issue #611), so re-enqueue; the shared
+        // `jobId` makes this a no-op when the job is in fact already queued.
+        const existing = await findWebhookEventByStripeId(event.id);
+        if (existing?.status === "pending") {
+          await enqueue(existing.id);
+          request.log.info(
+            { stripeEventId: event.id, eventType: event.type },
+            "Duplicate webhook event still pending, re-enqueued",
+          );
+          return reply.status(200).send({ received: true });
+        }
         request.log.info({ stripeEventId: event.id }, "Duplicate webhook event, skipping");
         return reply.status(200).send({ received: true });
       }
 
-      // Enqueue for async processing
-      await webhooksQueue.add(
-        "process-stripe-webhook",
-        {
-          webhookEventId: record.id,
-          stripeEventId: event.id,
-          eventType: event.type,
-          accountId: event.account ?? null,
-          payload: event.data.object as unknown as Record<string, unknown>,
-        },
-        { jobId: `stripe-${event.id}` },
-      );
+      await enqueue(record.id);
 
       request.log.info({ stripeEventId: event.id, eventType: event.type }, "Webhook event queued");
       return reply.status(200).send({ received: true });

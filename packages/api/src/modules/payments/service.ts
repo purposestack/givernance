@@ -145,6 +145,23 @@ export async function createWebhookEvent(event: Stripe.Event) {
 }
 
 /**
+ * Look up an already-recorded webhook event by its Stripe event id.
+ *
+ * `webhook_events` is a platform table — no `org_id` column; the tenant is
+ * only resolved later, in the worker, from `account_id` — so there is no
+ * tenant predicate to add here. Used by the duplicate branch of the webhook
+ * route to detect an event that was persisted but never enqueued.
+ */
+export async function findWebhookEventByStripeId(stripeEventId: string) {
+  const [record] = await db
+    .select({ id: webhookEvents.id, status: webhookEvents.status })
+    .from(webhookEvents)
+    .where(eq(webhookEvents.stripeEventId, stripeEventId));
+
+  return record ?? null;
+}
+
+/**
  * Construct a Stripe event from raw body and signature header.
  * Throws if verification fails.
  */
