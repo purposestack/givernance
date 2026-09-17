@@ -306,8 +306,9 @@ export async function listCampaigns(orgId: string, query: ListCampaignsQuery) {
 
     const where = and(...conditions);
 
-    // Aggregate subquery: net raised cents per campaign (cleared minus
-    // refunded), mirrors the `getCampaignStats` formula. LEFT JOINed
+    // Aggregate subquery: raised cents per campaign (cleared rows only —
+    // a refund flips the original row to `refunded` in place, so it simply
+    // drops out), mirrors the `getCampaignStats` formula. LEFT JOINed
     // below so campaigns without donations still appear with NULL —
     // `buildCampaignOrderBy`'s `progress` branch coalesces NULL → 0
     // before dividing by goal, so a campaign with a goal but no
@@ -315,11 +316,8 @@ export async function listCampaigns(orgId: string, query: ListCampaignsQuery) {
     const raisedSq = tx
       .select({
         campaignId: donations.campaignId,
-        raisedCents: sql<number | null>`SUM(CASE
-          WHEN ${donations.status} = 'cleared' THEN ${donations.amountBaseCents}
-          WHEN ${donations.status} = 'refunded' THEN -${donations.amountBaseCents}
-          ELSE 0
-        END)`.as("raised_cents"),
+        raisedCents: sql<number | null>`SUM(${donations.amountBaseCents})
+          FILTER (WHERE ${donations.status} = 'cleared')`.as("raised_cents"),
       })
       .from(donations)
       .where(eq(donations.orgId, orgId))
@@ -665,21 +663,16 @@ export async function getCampaignStats(orgId: string, campaignId: string) {
 
     const [stats] = await tx
       .select({
-        totalRaisedCents: sql<number>`COALESCE(SUM(
-          CASE
-            WHEN ${donations.status} = 'cleared' THEN ${donations.amountBaseCents}
-            WHEN ${donations.status} = 'refunded' THEN -${donations.amountBaseCents}
-            ELSE 0
-          END
-        ), 0)`,
-        donationCount: sql<number>`COUNT(
-          CASE WHEN ${donations.status} IN ('cleared', 'refunded') THEN 1 END
+        // Cleared rows only (issue #611). A refund flips the ORIGINAL row to
+        // `refunded` in place — no negative row exists — so a refunded gift
+        // contributes 0, exactly like the public page + finance summary.
+        totalRaisedCents: sql<number>`COALESCE(
+          SUM(${donations.amountBaseCents}) FILTER (WHERE ${donations.status} = 'cleared'),
+          0
         )`,
-        uniqueDonors: sql<number>`COUNT(DISTINCT
-          CASE
-            WHEN ${donations.status} IN ('cleared', 'refunded') THEN ${donations.constituentId}
-          END
-        )`,
+        donationCount: sql<number>`COUNT(*) FILTER (WHERE ${donations.status} = 'cleared')`,
+        uniqueDonors: sql<number>`COUNT(DISTINCT ${donations.constituentId})
+          FILTER (WHERE ${donations.status} = 'cleared')`,
       })
       .from(donations)
       .where(and(eq(donations.campaignId, campaignId), eq(donations.orgId, orgId)));
@@ -693,7 +686,7 @@ export async function getCampaignStats(orgId: string, campaignId: string) {
   });
 }
 
-/** Get campaign ROI read-model — computed at read time from cleared/refunded donations only. */
+/** Get campaign ROI read-model — computed at read time from cleared donations only. */
 export async function getCampaignRoi(orgId: string, campaignId: string) {
   return withTenantContext(orgId, async (tx) => {
     const [campaign] = await tx
@@ -711,13 +704,10 @@ export async function getCampaignRoi(orgId: string, campaignId: string) {
 
     const [stats] = await tx
       .select({
-        rawRaisedCents: sql<number>`COALESCE(SUM(
-          CASE
-            WHEN ${donations.status} = 'cleared' THEN ${donations.amountBaseCents}
-            WHEN ${donations.status} = 'refunded' THEN -${donations.amountBaseCents}
-            ELSE 0
-          END
-        ), 0)`,
+        rawRaisedCents: sql<number>`COALESCE(
+          SUM(${donations.amountBaseCents}) FILTER (WHERE ${donations.status} = 'cleared'),
+          0
+        )`,
       })
       .from(donations)
       .where(and(eq(donations.campaignId, campaignId), eq(donations.orgId, orgId)));

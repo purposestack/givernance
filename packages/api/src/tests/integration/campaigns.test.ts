@@ -884,7 +884,7 @@ describe("Campaign Stats & ROI", () => {
     expect(body.data.roiPct).toBe(-100);
   });
 
-  it("GET /v1/campaigns/:id/roi counts cleared donations only, subtracts refunds, and ignores other campaigns", async () => {
+  it("GET /v1/campaigns/:id/roi counts cleared donations only — a refunded row contributes 0 — and ignores other campaigns", async () => {
     const token = signToken(app, { org_id: CAMPAIGN_STATS_ORG });
     const createRes = await app.inject({
       method: "POST",
@@ -932,9 +932,60 @@ describe("Campaign Stats & ROI", () => {
     const body = res.json<{
       data: { rawRaisedCents: number; totalCostCents: number; roiPct: number };
     }>();
-    expect(body.data.rawRaisedCents).toBe(1750);
+    // Issue #611: a refund flips the ORIGINAL row to `refunded` in place (no
+    // negative row exists), so the 250 refunded row contributes 0 — it must
+    // not ALSO be subtracted from the 2000 cleared gift.
+    expect(body.data.rawRaisedCents).toBe(2000);
     expect(body.data.totalCostCents).toBe(1000);
-    expect(body.data.roiPct).toBe(75);
+    expect(body.data.roiPct).toBe(100);
+  });
+
+  it("two 100.00 gifts with one refunded show 100.00 raised, 1 donation, 1 donor (issue #611)", async () => {
+    const token = signToken(app, { org_id: CAMPAIGN_STATS_ORG });
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/v1/campaigns",
+      headers: authHeader(token),
+      payload: { name: "Refund Totals Campaign", type: "digital", operationalCostCents: 5000 },
+    });
+    const refundCampaignId = createRes.json<{ data: { id: string } }>().data.id;
+
+    await db.execute(sql`
+      INSERT INTO donations (
+        org_id,
+        constituent_id,
+        amount_cents,
+        currency,
+        exchange_rate,
+        amount_base_cents,
+        campaign_id,
+        status,
+        donated_at
+      )
+      VALUES
+        (${CAMPAIGN_STATS_ORG}, ${statsConstituentId}, 10000, 'EUR', 1.00000000, 10000, ${refundCampaignId}, 'cleared', NOW()),
+        (${CAMPAIGN_STATS_ORG}, ${statsConstituentId}, 10000, 'EUR', 1.00000000, 10000, ${refundCampaignId}, 'refunded', NOW())
+    `);
+
+    const statsRes = await app.inject({
+      method: "GET",
+      url: `/v1/campaigns/${refundCampaignId}/stats`,
+      headers: authHeader(token),
+    });
+    expect(statsRes.statusCode).toBe(200);
+    const stats = statsRes.json<{
+      data: { totalRaisedCents: number; donationCount: number; uniqueDonors: number };
+    }>().data;
+    expect(stats.totalRaisedCents).toBe(10000);
+    expect(stats.donationCount).toBe(1);
+    expect(stats.uniqueDonors).toBe(1);
+
+    const roiRes = await app.inject({
+      method: "GET",
+      url: `/v1/campaigns/${refundCampaignId}/roi`,
+      headers: authHeader(token),
+    });
+    expect(roiRes.json<{ data: { rawRaisedCents: number } }>().data.rawRaisedCents).toBe(10000);
   });
 });
 

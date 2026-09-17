@@ -102,16 +102,16 @@ export async function listCampaignMembers(
 
     if (!campaign) return null;
 
-    // Per-campaign donation aggregate (cleared minus refunded). LEFT JOINed
+    // Per-campaign donation aggregate (cleared rows only — refunds flip the
+    // original row in place, so they drop out). LEFT JOINed
     // so a constituent linked but never donated still appears at 0.
     const aggregatedDonations = tx
       .select({
         constituentId: donations.constituentId,
-        totalCents: sql<number>`COALESCE(SUM(CASE
-          WHEN ${donations.status} = 'cleared' THEN ${donations.amountBaseCents}
-          WHEN ${donations.status} = 'refunded' THEN -${donations.amountBaseCents}
-          ELSE 0
-        END), 0)::int`.as("campaign_donation_cents"),
+        totalCents: sql<number>`COALESCE(
+          SUM(${donations.amountBaseCents}) FILTER (WHERE ${donations.status} = 'cleared'),
+          0
+        )::int`.as("campaign_donation_cents"),
       })
       .from(donations)
       .where(and(eq(donations.orgId, orgId), eq(donations.campaignId, campaignId)))
