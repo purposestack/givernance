@@ -502,6 +502,14 @@ describe("Donations CRUD", () => {
 // ─── Refund flow (issue #199) ───────────────────────────────────────────────
 
 describe("POST /v1/donations/:id/refund", () => {
+  // Refunds are issued on the tenant's connected account (direct charges,
+  // issue #611) — same fixture value as public-donations.test.ts.
+  beforeAll(async () => {
+    await db.execute(
+      sql`UPDATE tenants SET stripe_account_id = 'acct_test_org_a' WHERE id = ${ORG_A}`,
+    );
+  });
+
   it("calls Stripe with refund_application_fee=true and flips status to refunded", async () => {
     mockRefundsCreate.mockResolvedValueOnce({ id: "re_test_1", status: "succeeded" });
 
@@ -533,10 +541,16 @@ describe("POST /v1/donations/:id/refund", () => {
     // Stripe was called with the right payload — `refund_application_fee:
     // true` is the load-bearing flag that distinguishes our refund flow
     // from a stock Stripe refund (issue #199 / docs/payments-overview.md).
-    expect(mockRefundsCreate).toHaveBeenCalledWith({
-      payment_intent: paymentRef,
-      refund_application_fee: true,
-    });
+    // The second argument is equally load-bearing (issue #611): public
+    // donations are direct charges, so without `stripeAccount` Stripe answers
+    // "No such payment_intent"; the idempotency key absorbs a double-click.
+    expect(mockRefundsCreate).toHaveBeenCalledWith(
+      {
+        payment_intent: paymentRef,
+        refund_application_fee: true,
+      },
+      { stripeAccount: "acct_test_org_a", idempotencyKey: `refund-${donationId}` },
+    );
 
     // Donation row reflects the refund immediately (UI doesn't have to wait
     // for the webhook to fire — webhook handler is idempotent on already-
@@ -547,6 +561,105 @@ describe("POST /v1/donations/:id/refund", () => {
       headers: authHeader(tokenA),
     });
     expect(getRes.json<{ data: { status: string } }>().data.status).toBe("refunded");
+  });
+
+  it("sets refunded_at, rolls back the campaign platform fee and emits one outbox event", async () => {
+    mockRefundsCreate.mockResolvedValueOnce({ id: "re_test_fee", status: "succeeded" });
+    const tokenA = signToken(app);
+
+    const campaignRes = await app.inject({
+      method: "POST",
+      url: "/v1/campaigns",
+      headers: authHeader(tokenA),
+      payload: { name: `Refund fee rollback ${Date.now()}`, type: "digital" },
+    });
+    expect(campaignRes.statusCode).toBe(201);
+    const campaignId = campaignRes.json<{ data: { id: string } }>().data.id;
+
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/v1/donations",
+      headers: authHeader(tokenA),
+      payload: {
+        constituentId: constituentIdA,
+        amountCents: 10000,
+        campaignId,
+        paymentMethod: "stripe",
+        paymentRef: `pi_test_refund_fee_${Date.now()}`,
+      },
+    });
+    expect(createRes.statusCode).toBe(201);
+    const donationId = createRes.json<{ data: { id: string } }>().data.id;
+
+    // Mirror what the `payment_intent.succeeded` worker handler records: a
+    // per-donation fee + the campaign accumulator (not settable via the API).
+    await db.execute(
+      sql`UPDATE donations SET platform_fee_cents = 180 WHERE id = ${donationId} AND org_id = ${ORG_A}`,
+    );
+    await db.execute(
+      sql`UPDATE campaigns SET platform_fees_cents = 500 WHERE id = ${campaignId} AND org_id = ${ORG_A}`,
+    );
+
+    const refundRes = await app.inject({
+      method: "POST",
+      url: `/v1/donations/${donationId}/refund`,
+      headers: authHeader(tokenA),
+    });
+    expect(refundRes.statusCode).toBe(200);
+
+    const donationRows = await db.execute(
+      sql`SELECT status, refunded_at FROM donations WHERE id = ${donationId} AND org_id = ${ORG_A}`,
+    );
+    const donationRow = donationRows.rows[0] as { status: string; refunded_at: Date | null };
+    expect(donationRow.status).toBe("refunded");
+    expect(donationRow.refunded_at).not.toBeNull();
+
+    const campaignRows = await db.execute(
+      sql`SELECT platform_fees_cents FROM campaigns WHERE id = ${campaignId} AND org_id = ${ORG_A}`,
+    );
+    expect(Number((campaignRows.rows[0] as { platform_fees_cents: string }).platform_fees_cents)).toBe(
+      320,
+    );
+
+    const outboxRows = await db.execute(
+      sql`SELECT id FROM outbox_events
+          WHERE tenant_id = ${ORG_A}
+            AND type = 'donation.refunded'
+            AND payload->>'donationId' = ${donationId}`,
+    );
+    expect(outboxRows.rows).toHaveLength(1);
+  });
+
+  it("returns 422 without calling Stripe when the tenant has no connected account", async () => {
+    mockRefundsCreate.mockClear();
+    const tokenA = signToken(app);
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/v1/donations",
+      headers: authHeader(tokenA),
+      payload: {
+        constituentId: constituentIdA,
+        amountCents: 1000,
+        paymentMethod: "stripe",
+        paymentRef: `pi_test_no_account_${Date.now()}`,
+      },
+    });
+    const donationId = createRes.json<{ data: { id: string } }>().data.id;
+
+    await db.execute(sql`UPDATE tenants SET stripe_account_id = NULL WHERE id = ${ORG_A}`);
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: `/v1/donations/${donationId}/refund`,
+        headers: authHeader(tokenA),
+      });
+      expect(res.statusCode).toBe(422);
+      expect(mockRefundsCreate).not.toHaveBeenCalled();
+    } finally {
+      await db.execute(
+        sql`UPDATE tenants SET stripe_account_id = 'acct_test_org_a' WHERE id = ${ORG_A}`,
+      );
+    }
   });
 
   it("returns 422 for already-refunded donations", async () => {

@@ -14,7 +14,7 @@ import {
   webhookEvents,
 } from "@givernance/shared/schema";
 import type { Job } from "bullmq";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 import Stripe from "stripe";
 import { env } from "../env.js";
 import { db, withWorkerContext } from "../lib/db.js";
@@ -493,7 +493,11 @@ async function handleChargeRefunded(
       return;
     }
 
-    await tx
+    // Compare-and-set on `status <> 'refunded'` (issue #611): the API refund
+    // route does the same complete write, and can commit between the SELECT
+    // above and this UPDATE. Zero rows back = the route won the race and
+    // already rolled the fee back — decrementing again would double-count.
+    const [flipped] = await tx
       .update(donations)
       .set({
         status: "refunded",
@@ -502,7 +506,19 @@ async function handleChargeRefunded(
         // donation date (when the original gift cleared).
         refundedAt: new Date(),
       })
-      .where(and(eq(donations.id, donation.id), eq(donations.orgId, orgId)));
+      .where(
+        and(
+          eq(donations.id, donation.id),
+          eq(donations.orgId, orgId),
+          ne(donations.status, "refunded"),
+        ),
+      )
+      .returning({ id: donations.id });
+
+    if (!flipped) {
+      log.info({ donationId: donation.id }, "Donation refunded concurrently, skipping");
+      return;
+    }
 
     if (donation.campaignId && donation.platformFeeCents > 0) {
       await tx

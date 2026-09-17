@@ -163,6 +163,14 @@ export async function createServer(opts: CreateServerOpts = {}): Promise<Fastify
     // shows up only in proxy access logs with no stack to debug from.
     if (status >= 500) {
       request.log.error({ err: error }, "unhandled-route-error");
+      // Never reflect a 5xx message to the client: drizzle-orm wraps pg errors
+      // as `Failed query: <sql>\nparams: <values>`, which carries table/column
+      // names and bound PII (emails, payment refs). The full error is in the
+      // log line above.
+      return reply
+        .status(status)
+        .header("content-type", PROBLEM_JSON)
+        .send(problemDetail(status, "Internal Server Error", "An unexpected error occurred"));
     }
     const body = {
       ...problemDetail(

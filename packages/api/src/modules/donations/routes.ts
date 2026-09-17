@@ -1031,12 +1031,12 @@ export async function donationRoutes(app: FastifyInstance) {
    * Refund a Stripe donation (issue #199). Only org_admins, only Stripe-
    * sourced donations, and only ones not already refunded.
    *
-   * The actual donation-row update happens twice for idempotency: once
-   * synchronously here for snappy UI, and again on the `charge.refunded`
-   * webhook (which the worker handles regardless of refund origin — our
-   * UI or the NPO's Stripe dashboard). Both paths set `status =
-   * "refunded"`; the second one is a no-op when it sees the row is
-   * already refunded.
+   * Two writers observe the same refund: this route (synchronously, for
+   * snappy UI) and the worker's `charge.refunded` handler (which also
+   * covers refunds issued from the NPO's Stripe dashboard). Both do the
+   * complete write — `status`, `refunded_at`, campaign platform-fee
+   * rollback, outbox event — guarded by `status <> 'refunded'`, so
+   * whichever lands second matches zero rows and does nothing.
    */
   app.post(
     "/donations/:id/refund",
