@@ -44,11 +44,29 @@ async function nextReceiptNumber(
   return `REC-${fiscalYear}-${String(seq).padStart(4, "0")}`;
 }
 
+/**
+ * Fiscal year printed on the receipt and used for the `REC-<year>-NNNN`
+ * sequence (issue #612). It is a property of the DONATION, never of the
+ * moment the job happens to run: a 31 December gift whose receipt is
+ * generated on 2 January still belongs to the December tax year.
+ * `donations.fiscal_year` wins when the operator set it; otherwise the UTC
+ * year of `donated_at`.
+ */
+export function resolveReceiptFiscalYear(donation: {
+  fiscalYear: number | null;
+  donatedAt: Date;
+}): number {
+  return donation.fiscalYear ?? donation.donatedAt.getUTCFullYear();
+}
+
 /** Generate a tax receipt PDF and store it */
 export async function processGenerateReceipt(
   job: Job<GenerateReceiptJob["data"] & { traceparent?: string }>,
 ) {
-  const { donationId, orgId, fiscalYear, traceparent } = job.data;
+  // `job.data.fiscalYear` is deliberately NOT read: builds before issue #612
+  // stamped the routing-time wall-clock year there. Already-enqueued jobs
+  // still carry it; the donation is the source of truth.
+  const { donationId, orgId, traceparent } = job.data;
 
   // Structured pino child — `job.log(...)` only reaches BullBoard/Redis; pino
   // reaches Loki with typed fields (issue #56 Platform #10).
@@ -58,9 +76,9 @@ export async function processGenerateReceipt(
     traceId: extractTraceId(traceparent),
   });
 
-  log.info({ donationId, fiscalYear }, "Generating receipt");
+  log.info({ donationId }, "Generating receipt");
   // Duplicate into BullBoard so operators poking at a single job still see progress.
-  job.log(`Generating receipt for donation ${donationId} (org: ${orgId}, year: ${fiscalYear})`);
+  job.log(`Generating receipt for donation ${donationId} (org: ${orgId})`);
 
   // Envelope encryption gate (issue #228) — evaluated at pickup, BEFORE any
   // upload. Platform-scoped flag, so the global read is the full answer.
@@ -74,14 +92,39 @@ export async function processGenerateReceipt(
   }
 
   return withWorkerContext(orgId, async (tx) => {
+    // `FOR UPDATE` serialises concurrent runs for the same donation so the
+    // "already has a receipt" check below is race-free without a unique
+    // index on receipts(org_id, donation_id) (follow-up migration).
     const [donation] = await tx
       .select()
       .from(donations)
-      .where(and(eq(donations.id, donationId), eq(donations.orgId, orgId)));
+      .where(and(eq(donations.id, donationId), eq(donations.orgId, orgId)))
+      .for("update");
 
     if (!donation) {
       throw new Error(`Donation ${donationId} not found for org ${orgId}`);
     }
+
+    // Idempotency (issue #612): a receipt number is a gapless LEGAL sequence.
+    // A re-run (BullMQ retry after a lost ack, a re-emitted outbox event once
+    // the completed job aged out of Redis, a manual BullBoard replay) must
+    // never allocate a second number for the same donation.
+    const [existingReceipt] = await tx
+      .select({ receiptNumber: receipts.receiptNumber, s3Path: receipts.s3Path })
+      .from(receipts)
+      .where(and(eq(receipts.donationId, donationId), eq(receipts.orgId, orgId)))
+      .limit(1);
+
+    if (existingReceipt) {
+      log.info(
+        { donationId, receiptNumber: existingReceipt.receiptNumber },
+        "Receipt already exists for donation — skipping (idempotent re-run)",
+      );
+      job.log(`Receipt ${existingReceipt.receiptNumber} already exists — skipping`);
+      return { receiptNumber: existingReceipt.receiptNumber, s3Path: existingReceipt.s3Path };
+    }
+
+    const fiscalYear = resolveReceiptFiscalYear(donation);
 
     const [constituent] = await tx
       .select({
