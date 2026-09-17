@@ -548,7 +548,10 @@ describe("campaign lifecycle gates the public page + donate intent (issue #611)"
     });
 
     // Warm the 30 s cache with the live payload.
-    const live = await app.inject({ method: "GET", url: `/v1/public/campaigns/${campaign.id}/page` });
+    const live = await app.inject({
+      method: "GET",
+      url: `/v1/public/campaigns/${campaign.id}/page`,
+    });
     expect(live.statusCode).toBe(200);
 
     const closeRes = await app.inject({
@@ -590,7 +593,10 @@ describe("campaign lifecycle gates the public page + donate intent (issue #611)"
       payload: { title: "Draft Campaign Page", status: "published" },
     });
 
-    const page = await app.inject({ method: "GET", url: `/v1/public/campaigns/${campaignId}/page` });
+    const page = await app.inject({
+      method: "GET",
+      url: `/v1/public/campaigns/${campaignId}/page`,
+    });
     expect(page.statusCode).toBe(404);
 
     const donate = await app.inject({

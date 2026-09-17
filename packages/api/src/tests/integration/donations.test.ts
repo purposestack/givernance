@@ -617,9 +617,9 @@ describe("POST /v1/donations/:id/refund", () => {
     const campaignRows = await db.execute(
       sql`SELECT platform_fees_cents FROM campaigns WHERE id = ${campaignId} AND org_id = ${ORG_A}`,
     );
-    expect(Number((campaignRows.rows[0] as { platform_fees_cents: string }).platform_fees_cents)).toBe(
-      320,
-    );
+    expect(
+      Number((campaignRows.rows[0] as { platform_fees_cents: string }).platform_fees_cents),
+    ).toBe(320);
 
     const outboxRows = await db.execute(
       sql`SELECT id FROM outbox_events

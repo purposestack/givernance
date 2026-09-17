@@ -181,7 +181,7 @@ The trade-off: each NPO's Stripe account name is what donors see on their statem
 1. **Onboarding** — org admin opens **Settings → Stripe Connect → Connect Stripe**. Redirects to Stripe's hosted Express form. Fills business info, bank details, identity verification. Lands back on Givernance with a "Connected" badge. (Test mode: takes ~60 seconds with placeholder data, no verification.)
 2. **Receiving donations** — every public donation page now shows the Payment Element. Donors pay; charges appear in the NPO's Stripe Express dashboard within seconds.
 3. **Payouts** — Stripe automatically pays out the NPO's balance to their bank account on Stripe's schedule (typically 2-7 days for new accounts, faster once established). The NPO sees the payout schedule in their Express dashboard.
-4. **Refunds & disputes** — handled in the NPO's Stripe dashboard or via Givernance UI (the latter just calls Stripe APIs on the NPO's behalf). When a refund is issued, the platform fee is automatically returned to the NPO too — Stripe rolls it back.
+4. **Refunds & disputes** — handled in the NPO's Stripe dashboard or via Givernance UI (the latter just calls Stripe APIs on the NPO's connected account). When a refund is issued, the platform fee is returned to the NPO too (`refund_application_fee: true`). See "Common questions" below for the exact write path and how totals treat refunds.
 5. **Tax receipts** — handled by Givernance (the NPO's CRM). The Stripe receipt email is separate.
 
 ---
@@ -307,7 +307,19 @@ This document describes the architecture that is **implemented today**. Several 
 ## Common questions
 
 **Q: When an NPO refunds a donation, do we keep the platform fee?**
-No. By Stripe Connect default, refunding a charge also refunds the application fee. The €1.05 we collected is returned to the NPO's balance and the donor gets the full €50 back. We can override this (`refund_application_fee: false`) but currently don't.
+No. On direct charges Stripe's default is to *keep* the application fee on refund, so our refund call passes `refund_application_fee: true` explicitly: the €1.05 we collected is returned to the NPO's balance and the donor gets the full €50 back.
+
+**Q: How does a refund issued from the Givernance UI work, and what does it change in our data?**
+`POST /v1/donations/:id/refund` (org_admin only) issues the refund **on the NPO's connected account** (`stripeAccount: acct_…` — the charge is a direct charge, so it does not exist on the platform account) with the idempotency key `refund-<donationId>`, so a double-click returns the same refund instead of an error. A tenant with no connected account gets a 422. Two writers can then observe the same refund — the route itself, and the worker's `charge.refunded` handler (which also covers refunds issued from the NPO's Stripe dashboard). Whichever lands first does the complete write, guarded by `status <> 'refunded'`: `status = 'refunded'`, `refunded_at`, rollback of the campaign's `platform_fees_cents` accumulator, and one `donation.refunded` outbox event. The second writer matches zero rows and does nothing, so the fee is never rolled back twice.
+
+**Q: How do refunds show up in campaign totals, the dashboard and LYBUNT/SYBUNT?**
+A refund flips the **original** donation row to `refunded` in place — no negative row is ever written. Every "money raised" figure therefore sums `cleared` rows only (campaign list progress, campaign stats / ROI, per-constituent campaign totals, QR-attributed amounts, constituent lifetime amount, dashboard "total raised", and the donor page). A refunded gift contributes 0; it is not subtracted a second time. Donation counts, unique-donor counts and the LYBUNT/SYBUNT "gave that year" test follow the same rule: only `cleared` gifts count.
+
+**Q: What if the webhook row is saved but the enqueue fails (Redis blip)?**
+The first delivery answers 5xx, so Stripe retries. The retry hits the `ON CONFLICT DO NOTHING` duplicate branch; there we load the `webhook_events` row and, if it is still `pending`, re-add the job with the same deterministic `jobId` (`stripe-<event id>`) before answering 200. BullMQ ignores an add whose job id already exists, so an ordinary duplicate delivery is still processed exactly once.
+
+**Q: Can a donor still give to a campaign that was closed?**
+No. The public page and the donate endpoint both require the page to be `published` **and** `campaigns.status = 'active'`; a draft or closed campaign is a 404 on both. Closing a campaign (or any status change) deletes the 30-second public-page cache entry, so the page disappears immediately rather than after the TTL. Note that campaigns are created as `draft`: publishing the page is not enough — the campaign must be activated too.
 
 **Q: What if Stripe is down?**
 Donor sees a payment error. No PaymentIntent is created, no donation row is written. Givernance is operationally fine — the rest of the CRM keeps working. Stripe outages are rare and short.
