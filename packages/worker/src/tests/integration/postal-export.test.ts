@@ -62,8 +62,15 @@ const uploadCampaignMergedPdfMock = vi.fn(
     return `${orgId}/campaigns/${campaignId}/exports/${exportId}.pdf`;
   },
 );
+// Issue #612 — a test can swap in a PLAIN (non-spy) upload here. It has to
+// bypass `vi.fn`: the spy attaches its own `.then(_, onRejected)` to every
+// returned promise to record settled results, which marks the promise as
+// handled and would hide exactly the unhandled rejection we want to catch.
+type ZipUpload = typeof uploadCampaignZipMock;
+let zipUploadOverride: ((...args: Parameters<ZipUpload>) => Promise<string>) | null = null;
 vi.mock("../../lib/s3.js", () => ({
-  uploadCampaignZip: uploadCampaignZipMock,
+  uploadCampaignZip: (...args: Parameters<ZipUpload>) =>
+    zipUploadOverride ? zipUploadOverride(...args) : uploadCampaignZipMock(...args),
   uploadCampaignMergedPdf: uploadCampaignMergedPdfMock,
 }));
 
@@ -589,12 +596,94 @@ describe("processGeneratePostalExport — failure handling", () => {
     expect(post?.error).toContain("recipients");
   });
 
-  // Note: S3-failure path is implicitly covered by the partial-seed
-  // idempotency test above (`recovers from a crash mid-loop …`). A
-  // direct `mockRejectedValueOnce` test here triggers an out-of-band
-  // unhandled-rejection warning because the upload promise is
-  // synchronously created at the top of the archive loop and only
-  // awaited at the end — fine in production, noisy in vitest.
+  // Issue #612 — the ZIP upload runs concurrently with the render loop. It
+  // used to be a bare promise only awaited after rendering, so an S3
+  // failure in that window surfaced as an `unhandledRejection` — which in
+  // production kills the whole worker process (and every other in-flight
+  // job), not just this export.
+  it("fails the job cleanly — no unhandled rejection — when the S3 upload rejects during rendering", async () => {
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => {
+      unhandled.push(reason);
+    };
+    process.on("unhandledRejection", onUnhandled);
+
+    try {
+      // Rejects on the next microtask — long before the render loop (DB
+      // round-trips + PDFKit) reaches the point where the old code first
+      // awaited the upload.
+      zipUploadOverride = () => Promise.reject(new Error("s3 multipart upload exploded"));
+      const exportId = await createPostalExport("personalized", 2);
+
+      await expect(
+        processGeneratePostalExport(
+          makeMockJob({ exportId, campaignId, orgId: ORG_ID, mode: "personalized" }),
+        ),
+      ).rejects.toThrow("s3 multipart upload exploded");
+
+      // Give a would-be unhandled rejection a full macrotask turn to fire.
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(unhandled).toEqual([]);
+
+      const [post] = await db
+        .select({ status: campaignPostalExports.status, error: campaignPostalExports.error })
+        .from(campaignPostalExports)
+        .where(
+          and(eq(campaignPostalExports.id, exportId), eq(campaignPostalExports.orgId, ORG_ID)),
+        );
+      expect(post?.status).toBe("failed");
+      expect(post?.error).toContain("s3 multipart upload exploded");
+    } finally {
+      zipUploadOverride = null;
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
+
+  // Issue #612 — throws between the `processing` flip and the artefact
+  // `try` never reached `markFailed`, stranding the row in `processing`.
+  it("flips the row to failed when the run mode resolves to blocked after the processing flip", async () => {
+    // No bank account + no public page → `resolvePostalExportMode` = blocked.
+    const [blockedCampaign] = await db
+      .insert(campaigns)
+      .values({
+        orgId: ORG_ID,
+        name: "Blocked Postal Campaign",
+        type: "door_drop",
+        status: "active",
+      })
+      .returning();
+    const blockedCampaignId = blockedCampaign!.id;
+
+    const [row] = await db
+      .insert(campaignPostalExports)
+      .values({
+        orgId: ORG_ID,
+        campaignId: blockedCampaignId,
+        mode: "door_drop",
+        status: "pending",
+        totalCount: 1,
+      })
+      .returning();
+    const exportId = row!.id;
+
+    await expect(
+      processGeneratePostalExport(
+        makeMockJob({
+          exportId,
+          campaignId: blockedCampaignId,
+          orgId: ORG_ID,
+          mode: "door_drop",
+        }),
+      ),
+    ).rejects.toThrow(/mode=blocked/);
+
+    const [post] = await db
+      .select({ status: campaignPostalExports.status, error: campaignPostalExports.error })
+      .from(campaignPostalExports)
+      .where(and(eq(campaignPostalExports.id, exportId), eq(campaignPostalExports.orgId, ORG_ID)));
+    expect(post?.status).toBe("failed");
+    expect(post?.error).toContain("mode=blocked");
+  });
 });
 
 describe("processGeneratePostalExport — run-mode drift assertion (Epic #318 PR #4 MAJOR-1)", () => {
