@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { TRACEPARENT_RE } from "@givernance/shared/lib/trace-context";
-import { auditLogs, outboxEvents, tenantDomains, tenants } from "@givernance/shared/schema";
+import { auditLogs, outboxEvents, tenantDomains, tenants, users } from "@givernance/shared/schema";
 import { eq, inArray, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { createServer } from "../../server.js";
-import { authHeader, signToken } from "../helpers/auth.js";
+import { authHeader, seedTenantUser, signToken } from "../helpers/auth.js";
 import { db } from "../helpers/db.js";
 
 let app: FastifyInstance;
@@ -75,6 +75,7 @@ afterEach(async () => {
     await tx.delete(auditLogs).where(inArray(auditLogs.orgId, ids));
     await tx.delete(outboxEvents).where(inArray(outboxEvents.tenantId, ids));
     await tx.delete(tenantDomains).where(inArray(tenantDomains.orgId, ids));
+    await tx.delete(users).where(inArray(users.orgId, ids));
     await tx.delete(tenants).where(inArray(tenants.id, ids));
   });
   seededTenantIds.clear();
@@ -105,6 +106,105 @@ describe("GET /v1/superadmin/tenants", () => {
     expect(res.statusCode).toBe(200);
     const body = res.json<{ data: Array<{ name: string }> }>();
     expect(body.data.slice(0, 2).map((row) => row.name)).toEqual(["Alpha Relief", "Zulu Relief"]);
+  });
+});
+
+describe("GET /v1/superadmin/tenants — q combines with the other filters (issue #616)", () => {
+  it("status=active&q=<slug of a suspended tenant> returns nothing", async () => {
+    const token = makeSuperAdminToken();
+    const suspendedSlug = `susp-${randomUUID().slice(0, 8)}`;
+    const id = await seedTenant({
+      name: "Dormant Org",
+      slug: suspendedSlug,
+      createdVia: "enterprise",
+    });
+    await db.update(tenants).set({ status: "suspended" }).where(eq(tenants.id, id));
+
+    const active = await app.inject({
+      method: "GET",
+      url: `/v1/superadmin/tenants?status=active&q=${suspendedSlug}`,
+      headers: authHeader(token),
+    });
+    expect(active.statusCode).toBe(200);
+    expect(active.json<{ data: unknown[] }>().data).toEqual([]);
+
+    // Sanity: the same search under the matching status does find it.
+    const suspended = await app.inject({
+      method: "GET",
+      url: `/v1/superadmin/tenants?status=suspended&q=${suspendedSlug}`,
+      headers: authHeader(token),
+    });
+    expect(suspended.json<{ data: Array<{ id: string }> }>().data.map((t) => t.id)).toEqual([id]);
+  });
+});
+
+describe("tenant suspension is enforced on the tenant's users (issue #616)", () => {
+  async function seedTenantWithMember() {
+    const orgId = await seedTenant({
+      name: "Lifecycle Org",
+      slug: `life-${randomUUID().slice(0, 8)}`,
+      createdVia: "enterprise",
+    });
+    const sub = randomUUID();
+    await seedTenantUser(orgId, { sub });
+    const memberToken = signToken(app, { sub, org_id: orgId, email: `test-${sub}@example.org` });
+    return { orgId, memberToken };
+  }
+
+  function callAsMember(memberToken: string, url = "/v1/constituents") {
+    return app.inject({ method: "GET", url, headers: authHeader(memberToken) });
+  }
+
+  function lifecycle(superToken: string, orgId: string, action: string) {
+    return app.inject({
+      method: "POST",
+      url: `/v1/superadmin/tenants/${orgId}/lifecycle`,
+      headers: authHeader(superToken),
+      payload: { action, reason: "issue #616 test" },
+    });
+  }
+
+  it.each([
+    "suspend",
+    "archive",
+  ] as const)("%s → member 401s at once; activate → member works again", async (action) => {
+    const superToken = makeSuperAdminToken();
+    const { orgId, memberToken } = await seedTenantWithMember();
+
+    // Warms the positive active-membership cache — the rejection below
+    // therefore also proves the transition invalidated it (no 30 s wait).
+    expect((await callAsMember(memberToken)).statusCode).toBe(200);
+
+    expect((await lifecycle(superToken, orgId, action)).statusCode).toBe(200);
+
+    const rejected = await callAsMember(memberToken);
+    expect(rejected.statusCode).toBe(401);
+    expect(rejected.json<{ detail: string }>().detail).toBe("Account no longer active.");
+    // Served from the negative cache the second time — same outcome.
+    expect((await callAsMember(memberToken)).statusCode).toBe(401);
+
+    // Org picker stays reachable so a multi-org member can switch away.
+    expect((await callAsMember(memberToken, "/v1/users/me/organizations")).statusCode).toBe(200);
+
+    // Super-admin back office is unaffected by the tenant's status.
+    const detail = await app.inject({
+      method: "GET",
+      url: `/v1/superadmin/tenants/${orgId}/detail`,
+      headers: authHeader(superToken),
+    });
+    expect(detail.statusCode).toBe(200);
+
+    expect((await lifecycle(superToken, orgId, "activate")).statusCode).toBe(200);
+    expect((await callAsMember(memberToken)).statusCode).toBe(200);
+  });
+
+  it("does not affect members of other tenants", async () => {
+    const superToken = makeSuperAdminToken();
+    const { orgId } = await seedTenantWithMember();
+    const other = await seedTenantWithMember();
+
+    expect((await lifecycle(superToken, orgId, "suspend")).statusCode).toBe(200);
+    expect((await callAsMember(other.memberToken)).statusCode).toBe(200);
   });
 });
 

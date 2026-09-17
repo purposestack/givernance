@@ -418,6 +418,32 @@ describe("domain lifecycle", () => {
     expect((audit?.oldVals as { state: string } | null)?.state).toBe("verified");
   });
 
+  it("revoke → re-claim → verify picks the live claim, not the revoked row (issue #616)", async () => {
+    const orgId = await seedEnterpriseTenant({ keycloakOrgId: randomUUID() });
+    const dom = domain("reclaim");
+    const audit = { actorUserId: null };
+
+    const first = await claimDomain({ orgId, domain: dom, audit });
+    expect(first.ok).toBe(true);
+    expect((await revokeDomain({ orgId, domain: dom, audit })).ok).toBe(true);
+
+    const second = await claimDomain({ orgId, domain: dom, audit });
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+
+    const verify = await verifyDomain(
+      { orgId, domain: dom, audit },
+      { resolver: makeTxtStub([[second.dnsTxtValue]]), kc: makeKcStub() },
+    );
+    expect(verify).toEqual({ ok: true, domain: dom, state: "verified" });
+
+    const rows = await db
+      .select({ state: tenantDomains.state })
+      .from(tenantDomains)
+      .where(eq(tenantDomains.domain, dom));
+    expect(rows.map((r) => r.state).sort()).toEqual(["revoked", "verified"]);
+  });
+
   it("verify tolerates KC 409 on addOrgDomain (DATA-3)", async () => {
     const kcOrgId = randomUUID();
     const orgId = await seedEnterpriseTenant({ keycloakOrgId: kcOrgId });

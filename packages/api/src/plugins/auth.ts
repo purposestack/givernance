@@ -4,7 +4,7 @@ import { timingSafeEqual } from "node:crypto";
 
 import cookie from "@fastify/cookie";
 import type { AuthContext, UserRole } from "@givernance/shared";
-import { users } from "@givernance/shared/schema";
+import { tenants, users } from "@givernance/shared/schema";
 import { and, eq, isNull } from "drizzle-orm";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import fp from "fastify-plugin";
@@ -115,6 +115,17 @@ function isAuthExempt(url: string): boolean {
 }
 
 /**
+ * Routes that stay reachable for members of a `suspended` / `archived`
+ * tenant (issue #616): the org picker + switch-org, so a multi-org member
+ * is not trapped in the suspended tenant. Both are keyed on the JWT `sub`
+ * and read no tenant-scoped data. Exact pathname match, same as above.
+ */
+function isTenantStatusExempt(url: string): boolean {
+  const pathname = url.split("?", 1)[0] ?? url;
+  return pathname === "/v1/users/me/organizations" || pathname === "/v1/session/switch-org";
+}
+
+/**
  * Normalise OIDC `acr` to a scalar string. Keycloak occasionally emits
  * `["2"]` instead of `"2"` depending on broker / RequestedLevelOfAssurance
  * configuration — without this normalisation the impersonation step-up
@@ -136,7 +147,8 @@ function normaliseAcr(raw: unknown): string | undefined {
  *     guards 401 via the `requireAuth` path with "Authentication required."
  *   `"session_revoked"` — JTI on the session blocklist (switch-org revocation).
  *   `"user_revoked"` — `sub` on the user blocklist (post-soft-delete).
- *   `"no_active_membership"` — JWT carries `org_id` but no active `users` row resolves.
+ *   `"no_active_membership"` — JWT carries `org_id` but no active `users` row resolves,
+ *     OR the tenant itself is `suspended` / `archived` (issue #616).
  *
  * Note on the absent `no_org_claim` discriminator: `verifyKeycloakJwt`
  * already requires `org_id` to be present (every Keycloak token in this
@@ -225,7 +237,13 @@ async function applyAuthFromToken(request: FastifyRequest): Promise<TokenResult>
   let userRowId: string | null = null;
   if (!isSuperAdmin) {
     const membership = await resolveActiveMembership(decoded.sub, decoded.org_id);
-    if (!membership.active) return "no_active_membership";
+    // Issue #616 — a suspended / archived tenant is rejected exactly like a
+    // removed user. The two org-picker endpoints stay reachable (they are
+    // keyed on `sub`, not on the JWT's tenant) so a multi-org member whose
+    // current token points at the suspended tenant can still switch away.
+    const allowed =
+      membership.active || (membership.tenantInactive && isTenantStatusExempt(request.url));
+    if (!allowed) return "no_active_membership";
     userRowId = membership.userRowId;
   }
 
@@ -312,6 +330,9 @@ async function applyImpersonationFromToken(
   // expect the impersonation start flow to have already validated the
   // target's row).
   const membership = await resolveActiveMembership(decoded.sub, decoded.org_id);
+  // Issue #616 — impersonation START already refuses suspended / archived
+  // tenants; an in-flight session must not outlive the suspension either.
+  if (!membership.active && membership.tenantInactive) return "impersonation_revoked";
 
   request.auth = {
     userId: decoded.sub,
@@ -342,10 +363,17 @@ async function applyImpersonationFromToken(
  * user blocklist are still hard gates). Routes that depend on a
  * non-null row id (notifications, preferences) will 401 themselves when
  * `userRowId` is null.
+ *
+ * `tenantInactive: true` (issue #616) distinguishes "the `users` row is
+ * fine but `tenants.status` is `suspended` / `archived`" from "no active
+ * row" — both reject, but only the former keeps the org picker reachable.
  */
 type ActiveMembership =
   | { active: true; userRowId: string | null }
-  | { active: false; userRowId: null };
+  | { active: false; userRowId: null; tenantInactive: boolean };
+
+/** Tenant lifecycle states that lock the tenant's members out of the API. */
+const INACTIVE_TENANT_STATUSES: ReadonlySet<string> = new Set(["suspended", "archived"]);
 
 /**
  * Resolve `(sub, orgId)` against the active-row check (ADR-021). Reads
@@ -355,13 +383,24 @@ type ActiveMembership =
  * invalidation — callers that want zero-second propagation should also
  * call `invalidateActiveUserCache` from the session-service module.
  *
+ * Issue #616 — the same lookup reads `tenants.status`: members of a
+ * `suspended` / `archived` tenant resolve as inactive. `transitionTenantStatus`
+ * drops the tenant's cache entries on every transition; if that best-effort
+ * invalidation fails, the worst-case staleness is the cache TTL (30 s).
+ *
  * The returned row id powers `request.auth.userRowId` for routes that
  * must filter against schema columns FK'd to `users.id` (Epic #363
  * GLO-004: `notifications.user_id`, `notification_preferences.user_id`).
  */
-async function resolveActiveMembership(sub: string, orgId: string): Promise<ActiveMembership> {
+export async function resolveActiveMembership(
+  sub: string,
+  orgId: string,
+): Promise<ActiveMembership> {
   const cached = await getActiveUserCache(sub, orgId);
-  if (cached === "missing") return { active: false, userRowId: null };
+  if (cached === "missing") return { active: false, userRowId: null, tenantInactive: false };
+  if (cached === "tenant_inactive") {
+    return { active: false, userRowId: null, tenantInactive: true };
+  }
   if (cached !== null) return { active: true, userRowId: cached.userRowId };
 
   // Cache miss — query the source of truth. Filtered by tenant via
@@ -378,18 +417,23 @@ async function resolveActiveMembership(sub: string, orgId: string): Promise<Acti
   try {
     const rows = await withTenantContext(orgId, async (tx) =>
       tx
-        .select({ id: users.id })
+        .select({ id: users.id, tenantStatus: tenants.status })
         .from(users)
+        .innerJoin(tenants, and(eq(tenants.id, users.orgId), eq(tenants.id, orgId)))
         .where(and(eq(users.keycloakId, sub), eq(users.orgId, orgId), isNull(users.deletedAt)))
         .limit(1),
     );
-    const userRowId = rows[0]?.id ?? null;
-    if (userRowId !== null) {
-      await setActiveUserCache(sub, orgId, { active: true, userRowId });
-      return { active: true, userRowId };
+    const row = rows[0];
+    if (row && INACTIVE_TENANT_STATUSES.has(row.tenantStatus)) {
+      await setActiveUserCache(sub, orgId, { active: false, tenantInactive: true });
+      return { active: false, userRowId: null, tenantInactive: true };
+    }
+    if (row) {
+      await setActiveUserCache(sub, orgId, { active: true, userRowId: row.id });
+      return { active: true, userRowId: row.id };
     }
     await setActiveUserCache(sub, orgId, { active: false });
-    return { active: false, userRowId: null };
+    return { active: false, userRowId: null, tenantInactive: false };
   } catch (err) {
     // Module-scoped fallback log — the request-scoped pino logger isn't
     // reachable from the auth-resolver helper. Failing open returns

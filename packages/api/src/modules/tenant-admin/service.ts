@@ -52,6 +52,7 @@ import {
 import type { KeycloakAdminClient } from "../../lib/keycloak-admin.js";
 import { keycloakAdmin } from "../../lib/keycloak-admin.js";
 import { assertSafeUpstreamUrl } from "../../lib/url-safety.js";
+import { invalidateActiveUserCacheForTenant } from "../session/service.js";
 
 // ─── Shared helpers ─────────────────────────────────────────────────────────
 
@@ -351,7 +352,19 @@ async function loadVerifiableClaim(
         dnsTxtValue: tenantDomains.dnsTxtValue,
       })
       .from(tenantDomains)
-      .where(and(eq(tenantDomains.orgId, orgId), eq(tenantDomains.domain, domain)))
+      // Skip `revoked` rows (as `revokeDomain` does): a revoke + re-claim
+      // leaves the old revoked row next to the new `pending_dns` one, and an
+      // unordered `limit(1)` could return the dead row → the re-claimed domain
+      // could never be verified (issue #616). At most one non-revoked row
+      // exists per domain (partial unique index); the order is belt-and-braces.
+      .where(
+        and(
+          eq(tenantDomains.orgId, orgId),
+          eq(tenantDomains.domain, domain),
+          sql`${tenantDomains.state} <> 'revoked'`,
+        ),
+      )
+      .orderBy(desc(tenantDomains.createdAt), desc(tenantDomains.id))
       .limit(1),
   );
   if (!claim) return { ok: false, error: "not_found" };
@@ -389,7 +402,7 @@ async function commitDomainVerification(
     await tx
       .update(tenantDomains)
       .set({ state: "verified", verifiedAt: new Date() })
-      .where(eq(tenantDomains.id, claimId));
+      .where(and(eq(tenantDomains.id, claimId), eq(tenantDomains.orgId, input.orgId)));
 
     // Denormalised pointer on tenants; first verified domain wins.
     await tx
@@ -441,7 +454,10 @@ export async function revokeDomain(input: DomainVerifyInput): Promise<DomainRevo
       .limit(1);
     if (!prior) return null;
 
-    await tx.update(tenantDomains).set({ state: "revoked" }).where(eq(tenantDomains.id, prior.id));
+    await tx
+      .update(tenantDomains)
+      .set({ state: "revoked" })
+      .where(and(eq(tenantDomains.id, prior.id), eq(tenantDomains.orgId, input.orgId)));
 
     // Clear the tenants.primary_domain pointer if it matched this claim.
     await tx
@@ -769,8 +785,10 @@ export async function listTenantsForAdmin(filters: {
   }
   if (filters.q) {
     const like = `%${filters.q.trim().toLowerCase()}%`;
+    // Parenthesised: a bare `a OR b` fragment inside `and(...)` would let the
+    // slug match bypass the status / createdVia filters (issue #616).
     conditions.push(
-      sql`lower(${tenants.name}) LIKE ${like} OR lower(${tenants.slug}) LIKE ${like}`,
+      sql`(lower(${tenants.name}) LIKE ${like} OR lower(${tenants.slug}) LIKE ${like})`,
     );
   }
 
@@ -1115,6 +1133,19 @@ export async function transitionTenantStatus(input: {
       userAgent: input.audit.userAgent,
     });
   });
+
+  // Issue #616 — the auth plugin enforces `tenants.status` through the
+  // per-user active-membership cache (`auth:active-user:{sub}:{orgId}`).
+  // Drop this tenant's entries so the transition is observed on the next
+  // request rather than after the 30 s TTL. Best-effort: if Redis is down
+  // the max staleness is `ACTIVE_USER_CACHE_TTL_SECONDS`.
+  const members = await withTenantContext(input.orgId, (tx) =>
+    tx.select({ keycloakId: users.keycloakId }).from(users).where(eq(users.orgId, input.orgId)),
+  );
+  await invalidateActiveUserCacheForTenant(
+    input.orgId,
+    members.flatMap((m) => (m.keycloakId ? [m.keycloakId] : [])),
+  );
 
   return { ok: true, status: input.next };
 }
