@@ -1,8 +1,11 @@
 "use client";
 
 import { ShieldAlert, X } from "lucide-react";
-import { useTranslations } from "next-intl";
+import Link from "next/link";
+import { useLocale, useTranslations } from "next-intl";
 import { useCallback, useEffect, useState } from "react";
+
+import { formatDate } from "@/lib/format";
 
 export interface ProvisionalAdminInfo {
   /** ISO 8601 timestamp at which the provisional window ends. */
@@ -28,6 +31,7 @@ const DISMISS_STORAGE_KEY = "gv.provisional-admin-banner.dismissed-until";
  */
 export function ProvisionalAdminBanner({ info }: Props) {
   const t = useTranslations("appShell.provisionalAdmin");
+  const locale = useLocale();
   const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
@@ -60,9 +64,7 @@ export function ProvisionalAdminBanner({ info }: Props) {
 
   // FR: "Vous êtes l'administrateur provisoire jusqu'au <date>. Tout autre
   // membre vérifié peut contester." — matches doc 22 §3.1 copy.
-  const formattedDate = new Intl.DateTimeFormat(undefined, {
-    dateStyle: "long",
-  }).format(until);
+  const formattedDate = formatDate(until, locale, "long");
 
   return (
     <div
@@ -72,12 +74,15 @@ export function ProvisionalAdminBanner({ info }: Props) {
     >
       <ShieldAlert size={16} aria-hidden="true" className="shrink-0" />
       <span className="flex-1 text-center">{t("body", { date: formattedDate })}</span>
-      <a
-        href={`/${info.orgSlug}/settings/team?section=provisional`}
+      {/* Issue #614 — the members page is where a second admin is invited,
+          which is what ends the provisional window (doc 22 §3.1). The former
+          `/<slug>/settings/team` target never existed (404). */}
+      <Link
+        href="/settings/members"
         className="rounded-md border border-tertiary px-3 py-1 text-xs font-semibold text-tertiary transition-colors duration-normal ease-out hover:bg-tertiary hover:text-on-tertiary focus-visible:ring-2 focus-visible:ring-tertiary focus-visible:ring-offset-2"
       >
         {t("learnMore")}
-      </a>
+      </Link>
       <button
         type="button"
         onClick={handleDismiss}
