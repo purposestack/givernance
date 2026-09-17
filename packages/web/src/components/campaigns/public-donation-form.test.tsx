@@ -130,7 +130,7 @@ describe("PublicDonationForm", () => {
     expect(await screen.findByLabelText(/^First name/)).toHaveValue("Jane");
     expect(screen.getByLabelText(/^Last name/)).toHaveValue("Doe");
     expect(screen.getByLabelText(/^Email/)).toHaveValue("jane@example.org");
-    expect(screen.getByLabelText(/^Amount/)).toHaveValue(75);
+    expect(screen.getByLabelText(/^Amount/)).toHaveValue("75");
     expect(screen.queryByTestId("stripe-payment-element")).not.toBeInTheDocument();
   });
 
@@ -223,6 +223,151 @@ describe("PublicDonationForm", () => {
 
     expect(await screen.findByText(/NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY/i)).toBeInTheDocument();
     expect(screen.queryByTestId("stripe-payment-element")).not.toBeInTheDocument();
+  });
+
+  // ─── Issue #615: amount field + accessible validation ───────────────────
+
+  it("links each field error to its input and moves focus to the first invalid field", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <PublicDonationForm
+        campaignId="11111111-1111-4111-8111-111111111111"
+        colorPrimary="#08675b"
+        locale="en"
+        goalAmountCents={null}
+        publishableKey={null}
+        tenantStripeAccountId={null}
+      />,
+    );
+
+    const firstName = screen.getByLabelText(/^First name/);
+    expect(firstName).toHaveAttribute("aria-required", "true");
+    expect(firstName).not.toHaveAttribute("aria-describedby");
+
+    await user.type(firstName, "Jane");
+    await user.click(screen.getByRole("button", { name: "Continue to payment" }));
+
+    // First name is valid → focus lands on the FIRST invalid field, last name.
+    const lastName = screen.getByLabelText(/^Last name/);
+    expect(lastName).toHaveFocus();
+    expect(lastName).toHaveAttribute("aria-invalid", "true");
+    expect(lastName).toHaveAccessibleDescription("Enter your last name.");
+    expect(screen.getByLabelText(/^Amount/)).toHaveAccessibleDescription(
+      "Enter a donation amount.",
+    );
+    expect(firstName).toHaveAttribute("aria-invalid", "false");
+  });
+
+  it("accepts a decimal-comma amount and sends integer cents", async () => {
+    const user = userEvent.setup();
+
+    vi.spyOn(CampaignPublicPageService, "createPublicDonationIntent").mockResolvedValue({
+      clientSecret: "pi_secret_comma",
+      stripeAccountId: "acct_test_123",
+    });
+
+    render(
+      <PublicDonationForm
+        campaignId="11111111-1111-4111-8111-111111111111"
+        colorPrimary="#08675b"
+        locale="en"
+        goalAmountCents={null}
+        publishableKey="pk_test_dummy"
+        tenantStripeAccountId="acct_test_999"
+      />,
+    );
+
+    const amount = screen.getByLabelText(/^Amount/);
+    // A number input would wheel-scroll the amount and blank "12,50".
+    expect(amount).toHaveAttribute("type", "text");
+    expect(amount).toHaveAttribute("inputmode", "decimal");
+
+    await user.type(screen.getByLabelText(/^First name/), "Jane");
+    await user.type(screen.getByLabelText(/^Last name/), "Doe");
+    await user.type(screen.getByLabelText(/^Email/), "jane@example.org");
+    await user.type(amount, "12,50");
+    await user.click(screen.getByRole("button", { name: "Continue to payment" }));
+
+    await waitFor(() =>
+      expect(CampaignPublicPageService.createPublicDonationIntent).toHaveBeenCalledWith(
+        expect.anything(),
+        "11111111-1111-4111-8111-111111111111",
+        expect.objectContaining({ amountCents: 1250 }),
+        expect.any(String),
+      ),
+    );
+  });
+
+  it("blocks an amount above the API maximum with a localised limit, without calling the API", async () => {
+    const user = userEvent.setup();
+    const createIntent = vi.spyOn(CampaignPublicPageService, "createPublicDonationIntent");
+
+    render(
+      <PublicDonationForm
+        campaignId="11111111-1111-4111-8111-111111111111"
+        colorPrimary="#08675b"
+        locale="en"
+        goalAmountCents={null}
+        publishableKey="pk_test_dummy"
+        tenantStripeAccountId="acct_test_999"
+      />,
+    );
+
+    await user.type(screen.getByLabelText(/^First name/), "Jane");
+    await user.type(screen.getByLabelText(/^Last name/), "Doe");
+    await user.type(screen.getByLabelText(/^Email/), "jane@example.org");
+    await user.type(screen.getByLabelText(/^Amount/), "10000.01");
+    await user.click(screen.getByRole("button", { name: "Continue to payment" }));
+
+    expect(
+      await screen.findByText(/The maximum online donation is €10,000\.00/),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Amount/)).toHaveFocus();
+    expect(createIntent).not.toHaveBeenCalled();
+
+    await user.clear(screen.getByLabelText(/^Amount/));
+    await user.type(screen.getByLabelText(/^Amount/), "0,50");
+    await user.click(screen.getByRole("button", { name: "Continue to payment" }));
+
+    expect(await screen.findByText("The minimum donation is €1.00.")).toBeInTheDocument();
+    expect(createIntent).not.toHaveBeenCalled();
+  });
+
+  it("maps an API validation problem to translated copy instead of the raw schema message", async () => {
+    const user = userEvent.setup();
+
+    vi.spyOn(CampaignPublicPageService, "createPublicDonationIntent").mockRejectedValue(
+      new ApiProblem({
+        type: "about:blank",
+        title: "Bad Request",
+        status: 400,
+        detail: "body/amountCents must be <= 1000000",
+      }),
+    );
+
+    render(
+      <PublicDonationForm
+        campaignId="11111111-1111-4111-8111-111111111111"
+        colorPrimary="#08675b"
+        locale="en"
+        goalAmountCents={null}
+        publishableKey={null}
+        tenantStripeAccountId={null}
+      />,
+    );
+
+    await user.type(screen.getByLabelText(/^First name/), "Jane");
+    await user.type(screen.getByLabelText(/^Last name/), "Doe");
+    await user.type(screen.getByLabelText(/^Email/), "jane@example.org");
+    await user.type(screen.getByLabelText(/^Amount/), "50");
+    await user.click(screen.getByRole("button", { name: "Continue to payment" }));
+
+    await waitFor(() =>
+      expect(mockToast.error).toHaveBeenCalledWith(
+        "We couldn't prepare your donation with these details. Please check them and try again.",
+      ),
+    );
   });
 
   it("shows an API error toast when payment preparation fails", async () => {

@@ -1,7 +1,6 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { formatCurrency } from "@/lib/format";
 import type { ProgressSlotProps } from "../types";
 import { useProgressModel } from "../use-progress-model";
 
@@ -17,7 +16,7 @@ export function FoundationProgress({ data }: ProgressSlotProps) {
   const t = useTranslations("publicDonationPage");
   const model = useProgressModel(data);
   if (!model) return null;
-  const { goalCents, progressPercent, ariaValueText } = model;
+  const { progressPercent, raisedFormatted, goalFormatted, ariaValueText } = model;
 
   return (
     <div className="border-t border-outline-variant px-5 py-5 sm:px-8 sm:py-6 lg:px-10 lg:py-8">
@@ -30,9 +29,9 @@ export function FoundationProgress({ data }: ProgressSlotProps) {
         className="mt-2 font-heading text-2xl text-on-surface sm:text-3xl"
         style={{ fontVariantNumeric: "tabular-nums lining-nums" }}
       >
-        <span className="font-semibold">{formatCurrency(data.raisedCents, "en")}</span>
+        <span className="font-semibold">{raisedFormatted}</span>
         <span className="ml-1 text-sm font-normal text-on-surface-variant">
-          {t("metrics.goalSuffix")} {formatCurrency(goalCents, "en")}
+          {t("metrics.goalSuffix")} {goalFormatted}
         </span>
       </p>
       <div

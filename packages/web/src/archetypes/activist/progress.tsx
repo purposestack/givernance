@@ -1,4 +1,4 @@
-import { formatCurrency } from "@/lib/format";
+import { useTranslations } from "next-intl";
 import type { ProgressSlotProps } from "../types";
 import { useProgressModel } from "../use-progress-model";
 
@@ -7,9 +7,11 @@ import { useProgressModel } from "../use-progress-model";
  * eyebrow labels. Tabular-nums on every figure per slot contract.
  */
 export function ActivistProgress({ data }: ProgressSlotProps) {
+  const t = useTranslations("publicDonationPage.progress");
   const model = useProgressModel(data);
   if (!model) return null;
-  const { goalCents, progressPercent, ariaValueText } = model;
+  const { progressPercent, raisedFormatted, goalFormatted, donorCountFormatted, ariaValueText } =
+    model;
 
   return (
     <div
@@ -22,19 +24,19 @@ export function ActivistProgress({ data }: ProgressSlotProps) {
     >
       <div className="activist-progress__row">
         <div className="activist-progress__cell">
-          <p className="activist-progress__label">RAISED</p>
-          <p className="activist-progress__value">{formatCurrency(data.raisedCents, "en")}</p>
+          <p className="activist-progress__label">{t("labels.raised")}</p>
+          <p className="activist-progress__value">{raisedFormatted}</p>
         </div>
         <div className="activist-progress__cell">
-          <p className="activist-progress__label">GOAL</p>
-          <p className="activist-progress__value">{formatCurrency(goalCents, "en")}</p>
+          <p className="activist-progress__label">{t("labels.goal")}</p>
+          <p className="activist-progress__value">{goalFormatted}</p>
         </div>
         <div className="activist-progress__cell">
-          <p className="activist-progress__label">SUPPORTERS</p>
-          <p className="activist-progress__value">{data.donorCount.toLocaleString("en")}</p>
+          <p className="activist-progress__label">{t("labels.supporters")}</p>
+          <p className="activist-progress__value">{donorCountFormatted}</p>
         </div>
         <div className="activist-progress__cell">
-          <p className="activist-progress__label">% FUNDED</p>
+          <p className="activist-progress__label">{t("labels.percentFunded")}</p>
           <p className="activist-progress__value">{progressPercent}%</p>
         </div>
       </div>

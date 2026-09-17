@@ -2,6 +2,8 @@
 
 import { loadStripe } from "@stripe/stripe-js";
 
+import { resolvePaymentOutcome } from "@/components/campaigns/public-donation-payment-outcome";
+
 /**
  * Outcome of inspecting the URL after a Stripe redirect (typically a
  * 3DS / SCA challenge that bounced the donor back to `return_url`).
@@ -35,10 +37,18 @@ export type PostRedirectOutcome =
     }
   | {
       kind: "failed";
-      // Donor-facing message lifted from `last_payment_error.message` —
-      // already localised by Stripe.js per the donor's locale.
-      message: string;
+      // Why the payment is reported failed. The consumer renders the
+      // translated `publicDonationPage.payment.postRedirect.failed.<reason>`
+      // copy — this module is not a React component, so it never carries
+      // donor-facing English itself (issue #615).
+      reason: PostRedirectFailureReason;
+      // Donor-facing message lifted from Stripe (`error.message` /
+      // `last_payment_error.message`) — already localised by Stripe.js per
+      // the donor's locale. When present it wins over the `reason` copy.
+      message?: string;
     };
+
+export type PostRedirectFailureReason = "stripeUnavailable" | "notConfirmed" | "notCompleted";
 
 interface RetrieveOptions {
   publishableKey: string;
@@ -83,7 +93,7 @@ export async function retrievePostRedirectIntent(
     stripeAccount: options.stripeAccountId,
   });
   if (!stripe) {
-    return { kind: "failed", message: "Stripe.js failed to load" };
+    return { kind: "failed", reason: "stripeUnavailable" };
   }
 
   const { paymentIntent, error } = await stripe.retrievePaymentIntent(clientSecret);
@@ -99,13 +109,15 @@ export async function retrievePostRedirectIntent(
   }
 
   if (error) {
-    return { kind: "failed", message: error.message ?? "Payment could not be confirmed." };
+    return { kind: "failed", reason: "notConfirmed", message: error.message };
   }
   if (!paymentIntent) {
-    return { kind: "failed", message: "Payment could not be confirmed." };
+    return { kind: "failed", reason: "notConfirmed" };
   }
 
-  switch (paymentIntent.status) {
+  // Status → outcome mapping is shared with the inline `confirmPayment`
+  // path so the two can't disagree on what counts as an accepted payment.
+  switch (resolvePaymentOutcome(paymentIntent.status)) {
     case "succeeded":
       return {
         kind: "succeeded",
@@ -114,7 +126,7 @@ export async function retrievePostRedirectIntent(
       };
     case "processing":
       return { kind: "processing" };
-    case "requires_payment_method":
+    case "retryable":
     case "requires_action":
       return {
         kind: "requires_action",
@@ -125,7 +137,8 @@ export async function retrievePostRedirectIntent(
     default:
       return {
         kind: "failed",
-        message: paymentIntent.last_payment_error?.message ?? "Payment did not complete.",
+        reason: "notCompleted",
+        message: paymentIntent.last_payment_error?.message,
       };
   }
 }

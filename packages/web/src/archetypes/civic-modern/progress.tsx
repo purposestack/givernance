@@ -1,4 +1,4 @@
-import { formatCurrency } from "@/lib/format";
+import { useTranslations } from "next-intl";
 import type { ProgressSlotProps } from "../types";
 import { useProgressModel } from "../use-progress-model";
 
@@ -7,9 +7,11 @@ import { useProgressModel } from "../use-progress-model";
  * supporters, % funded). Stats foreground; the bar is secondary.
  */
 export function CivicProgress({ data }: ProgressSlotProps) {
+  const t = useTranslations("publicDonationPage.progress");
   const model = useProgressModel(data);
   if (!model) return null;
-  const { goalCents, progressPercent, ariaValueText } = model;
+  const { progressPercent, raisedFormatted, goalFormatted, donorCountFormatted, ariaValueText } =
+    model;
 
   return (
     <section
@@ -21,19 +23,19 @@ export function CivicProgress({ data }: ProgressSlotProps) {
       aria-valuetext={ariaValueText}
     >
       <div className="civic-progress__cell">
-        <p className="civic-progress__label">Raised</p>
-        <p className="civic-progress__value">{formatCurrency(data.raisedCents, "en")}</p>
+        <p className="civic-progress__label">{t("labels.raised")}</p>
+        <p className="civic-progress__value">{raisedFormatted}</p>
       </div>
       <div className="civic-progress__cell">
-        <p className="civic-progress__label">Goal</p>
-        <p className="civic-progress__value">{formatCurrency(goalCents, "en")}</p>
+        <p className="civic-progress__label">{t("labels.goal")}</p>
+        <p className="civic-progress__value">{goalFormatted}</p>
       </div>
       <div className="civic-progress__cell">
-        <p className="civic-progress__label">Supporters</p>
-        <p className="civic-progress__value">{data.donorCount.toLocaleString("en")}</p>
+        <p className="civic-progress__label">{t("labels.supporters")}</p>
+        <p className="civic-progress__value">{donorCountFormatted}</p>
       </div>
       <div className="civic-progress__cell">
-        <p className="civic-progress__label">% funded</p>
+        <p className="civic-progress__label">{t("labels.percentFunded")}</p>
         <p className="civic-progress__value">{progressPercent} %</p>
       </div>
       <div className="civic-progress__bar" aria-hidden="true">

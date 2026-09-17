@@ -28,7 +28,7 @@ export default function ErrorPage({
       <div
         className="relative mx-auto mb-8 h-[150px] w-[180px]"
         role="img"
-        aria-label="Gears and wrench illustration indicating maintenance in progress"
+        aria-label={t("server.illustrationLabel")}
       >
         {/* Accent dot */}
         <div className="absolute right-10 top-0 h-3 w-3 rounded-full bg-primary-100" />

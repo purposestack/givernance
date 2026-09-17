@@ -310,6 +310,7 @@
       "persistsMessage": "If the problem persists, contact our <link>support</link>."
     },
     "server": {
+      "illustrationLabel": "Gears and wrench illustration indicating maintenance in progress",
       "title": "An unexpected error",
       "description": "Something went wrong on our end. Our team has been notified and is working to resolve the issue.",
       "errorId": "Error ID: {digest}",
@@ -3467,7 +3468,42 @@
     },
     "footer": {
       "institutionalSignature": "This campaign is operated by <org></org>. By giving, you accept the donor terms displayed at the payment step.",
-      "termsOnly": "By giving, you accept the donor terms displayed at the payment step."
+      "termsOnly": "By giving, you accept the donor terms displayed at the payment step.",
+      "poweredBy": "Powered by Givernance"
+    },
+    "progress": {
+      "sectionLabel": "Campaign progress",
+      "ariaValueText": "{percent} percent funded — {raised} of {goal}",
+      "labels": {
+        "raised": "Raised",
+        "goal": "Goal",
+        "supporters": "Supporters",
+        "percentFunded": "% funded"
+      },
+      "meta": {
+        "calm-wellness": "<strong>{raised}</strong> raised · <strong>{percent} %</strong> of goal · {count, plural, one {# supporter} other {# supporters}}",
+        "cosmic-gradient": "of <strong>{goal}</strong> goal · {count, plural, one {# backer} other {# backers}} · <strong>{percent} %</strong> funded",
+        "editorial-story": "{goal} goal · {count, plural, one {# contributor} other {# contributors}} · {percent} % of target",
+        "emergency-appeal": "▸ of {goal} · {percent} % funded · {count, plural, one {# contributor} other {# contributors}}",
+        "neo-brutalist": "/ {goal} · {percent}% · {count, plural, one {# backer} other {# backers}}",
+        "retro-print": "of {goal} · {count, plural, one {# subscriber} other {# subscribers}}"
+      }
+    },
+    "metadata": {
+      "title": "{campaign} — {organisation}",
+      "unavailableTitle": "Donation page unavailable"
+    },
+    "notFound": {
+      "label": "Page unavailable",
+      "title": "This donation page isn't available",
+      "description": "The campaign may have ended, or the link or QR code you used may be out of date.",
+      "hint": "To support this cause, please get in touch with the organisation that shared this link with you."
+    },
+    "error": {
+      "title": "We couldn't load this donation page",
+      "description": "Something went wrong on our side. Please try again in a moment. If you had already confirmed a payment, check your email for a confirmation before donating again.",
+      "retry": "Try again",
+      "errorId": "Error ID: {digest}"
     },
     "form": {
       "eyebrow": "Online donation",
@@ -3496,7 +3532,10 @@
         "emailRequired": "Enter your email address.",
         "emailInvalid": "Enter a valid email address.",
         "amountRequired": "Enter a donation amount.",
-        "amountInvalid": "Amount must be at least 1.",
+        "amountInvalid": "Enter a valid amount, for example 25 or 12.50.",
+        "amountTooLow": "The minimum donation is {amount}.",
+        "amountTooHigh": "The maximum online donation is {amount}. For a larger gift, please contact the organisation directly.",
+        "validation": "We couldn't prepare your donation with these details. Please check them and try again.",
         "generic": "Something went wrong while preparing payment. Please try again."
       },
       "success": {
@@ -3528,7 +3567,15 @@
         "checking": "Verifying your payment with Stripe…",
         "processing": "Your payment is being processed. You'll receive a confirmation email shortly.",
         "requiresAction": "Your payment didn't complete. Try a different card below.",
-        "startOver": "Start a new donation"
+        "startOver": "Start a new donation",
+        "failed": {
+          "stripeUnavailable": "We couldn't reach our payment provider to check your payment. Please reload this page before trying again.",
+          "notConfirmed": "We couldn't confirm your payment. Check your email for a confirmation before trying again.",
+          "notCompleted": "Your payment did not complete. No money has been taken."
+        }
+      },
+      "pending": {
+        "requiresAction": "Your payment needs one more step. Follow the instructions from your bank or payment provider to complete it — you'll receive a confirmation email once it's done."
       },
       "testMode": {
         "title": "Test mode — no real charge",

@@ -1,15 +1,16 @@
-import { formatCurrency } from "@/lib/format";
+import { useTranslations } from "next-intl";
 import type { ProgressSlotProps } from "../types";
 import { useProgressModel } from "../use-progress-model";
 
 export function EditorialProgress({ data }: ProgressSlotProps) {
+  const t = useTranslations("publicDonationPage.progress");
   const model = useProgressModel(data);
   if (!model) return null;
-  const { goalCents, progressPercent, ariaValueText } = model;
+  const { progressPercent, raisedFormatted, goalFormatted, ariaValueText } = model;
 
   return (
-    <section className="editorial-progress" aria-label="Campaign progress">
-      <p className="editorial-progress__amount">{formatCurrency(data.raisedCents, "en")}</p>
+    <section className="editorial-progress" aria-label={t("sectionLabel")}>
+      <p className="editorial-progress__amount">{raisedFormatted}</p>
       <div>
         <div
           className="editorial-progress__bar"
@@ -22,8 +23,11 @@ export function EditorialProgress({ data }: ProgressSlotProps) {
           <span style={{ width: `${progressPercent}%` }} />
         </div>
         <p className="editorial-progress__meta">
-          {formatCurrency(goalCents, "en")} goal · {data.donorCount.toLocaleString("en")}{" "}
-          contributors · {progressPercent} % of target
+          {t("meta.editorial-story", {
+            goal: goalFormatted,
+            percent: progressPercent,
+            count: data.donorCount,
+          })}
         </p>
       </div>
     </section>

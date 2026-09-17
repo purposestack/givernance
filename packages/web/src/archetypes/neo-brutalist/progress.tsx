@@ -1,11 +1,12 @@
-import { formatCurrency } from "@/lib/format";
+import { useTranslations } from "next-intl";
 import type { ProgressSlotProps } from "../types";
 import { useProgressModel } from "../use-progress-model";
 
 export function NeoBrutalistProgress({ data }: ProgressSlotProps) {
+  const t = useTranslations("publicDonationPage.progress");
   const model = useProgressModel(data);
   if (!model) return null;
-  const { goalCents, progressPercent, ariaValueText } = model;
+  const { progressPercent, raisedFormatted, goalFormatted, ariaValueText } = model;
 
   return (
     <section
@@ -16,14 +17,17 @@ export function NeoBrutalistProgress({ data }: ProgressSlotProps) {
       aria-valuenow={progressPercent}
       aria-valuetext={ariaValueText}
     >
-      <p className="neo-progress__amount">{formatCurrency(data.raisedCents, "en")}</p>
+      <p className="neo-progress__amount">{raisedFormatted}</p>
       <div>
         <div className="neo-progress__bar" aria-hidden="true">
           <span style={{ width: `${progressPercent}%` }} />
         </div>
         <p className="neo-progress__meta">
-          / {formatCurrency(goalCents, "en")} · {progressPercent}% ·{" "}
-          {data.donorCount.toLocaleString("en")} backers
+          {t("meta.neo-brutalist", {
+            goal: goalFormatted,
+            percent: progressPercent,
+            count: data.donorCount,
+          })}
         </p>
       </div>
     </section>

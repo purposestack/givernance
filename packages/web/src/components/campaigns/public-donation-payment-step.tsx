@@ -6,8 +6,10 @@ import { ArrowLeft, CheckCircle2, FlaskConical, LoaderCircle } from "lucide-reac
 import { useTranslations } from "next-intl";
 import { type FormEvent, useMemo, useState } from "react";
 
+import { resolvePaymentOutcome } from "@/components/campaigns/public-donation-payment-outcome";
 import { Button } from "@/components/ui/button";
 import { getReadableTextColor } from "@/lib/color";
+import { cn } from "@/lib/utils";
 
 interface PublicDonationPaymentStepProps {
   clientSecret: string;
@@ -94,6 +96,28 @@ export function PublicDonationPaymentStep(props: PublicDonationPaymentStepProps)
   );
 }
 
+/**
+ * "Your payment is being processed" panel — the donor-facing state for an
+ * accepted-but-not-yet-settled payment (SEPA Debit, Bacs). One component so
+ * the inline `confirmPayment` path and the post-redirect path show the
+ * exact same copy.
+ */
+export function PaymentProcessingNotice({ className }: { className?: string }) {
+  const t = useTranslations("publicDonationPage.payment");
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className={cn(
+        "rounded-2xl border border-outline-variant bg-surface px-4 py-3 text-sm text-on-surface-variant",
+        className,
+      )}
+    >
+      {t("postRedirect.processing")}
+    </div>
+  );
+}
+
 function PaymentForm({
   amountSummary,
   colorPrimary,
@@ -114,6 +138,7 @@ function PaymentForm({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [paid, setPaid] = useState(false);
+  const [pending, setPending] = useState<"processing" | "requires_action" | null>(null);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -140,13 +165,42 @@ function PaymentForm({
       return;
     }
 
-    if (result.paymentIntent?.status === "succeeded") {
+    // Same status → outcome mapping as the post-redirect path (issue #615).
+    // `processing` is an ACCEPTED payment (SEPA Debit / Bacs settle days
+    // later) — treating it as an error invited donors to retry and be
+    // debited twice. Only `retryable` / `failed` keep the form open.
+    const outcome = result.paymentIntent
+      ? resolvePaymentOutcome(result.paymentIntent.status)
+      : "failed";
+    if (outcome === "succeeded") {
       setPaid(true);
       onPaid();
+    } else if (outcome === "processing" || outcome === "requires_action") {
+      setPending(outcome);
     } else {
       setError(t("errors.generic"));
     }
     setSubmitting(false);
+  }
+
+  if (pending === "processing") {
+    return <PaymentProcessingNotice />;
+  }
+
+  if (pending === "requires_action") {
+    // Stripe.js already drove every step it can drive in-page (3DS modal,
+    // voucher / bank-instructions display). What remains happens outside
+    // this page, so the form is withdrawn — a second submit would create a
+    // second payment on top of the pending one.
+    return (
+      <div
+        role="status"
+        aria-live="polite"
+        className="rounded-2xl border border-outline-variant bg-surface px-4 py-3 text-sm text-on-surface-variant"
+      >
+        {t("pending.requiresAction")}
+      </div>
+    );
   }
 
   if (paid) {
@@ -211,7 +265,11 @@ function PaymentForm({
 
       <PaymentElement options={{ layout: "tabs" }} />
 
-      {error ? <p className="text-sm text-error">{error}</p> : null}
+      {error ? (
+        <p role="alert" className="text-sm text-error">
+          {error}
+        </p>
+      ) : null}
 
       <Button
         type="submit"

@@ -4,8 +4,19 @@ import { CheckCircle2, HeartHandshake, LoaderCircle } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 
-import { PublicDonationPaymentStep } from "@/components/campaigns/public-donation-payment-step";
-import { retrievePostRedirectIntent } from "@/components/campaigns/public-donation-post-redirect";
+import {
+  PUBLIC_DONATION_MAX_CENTS,
+  PUBLIC_DONATION_MIN_CENTS,
+  parseDonationAmount,
+} from "@/components/campaigns/public-donation-amount";
+import {
+  PaymentProcessingNotice,
+  PublicDonationPaymentStep,
+} from "@/components/campaigns/public-donation-payment-step";
+import {
+  type PostRedirectOutcome,
+  retrievePostRedirectIntent,
+} from "@/components/campaigns/public-donation-post-redirect";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -93,18 +104,23 @@ interface PaymentSession {
  * mount — i.e., the donor was redirected here after a 3DS challenge. See
  * `public-donation-post-redirect.ts` for the full type and rationale.
  */
-type PostRedirectState =
-  | { kind: "checking" }
-  | { kind: "succeeded"; amountCents: number; currency: string }
-  | {
-      kind: "requires_action";
-      clientSecret: string;
-      amountCents: number;
-      currency: string;
-    }
-  | { kind: "processing" }
-  | { kind: "failed"; message: string }
-  | null;
+type PostRedirectState = { kind: "checking" } | PostRedirectOutcome | null;
+
+/**
+ * DOM ids of the validated inputs, in visual order — `handleSubmit` moves
+ * focus to the first one that failed validation (WCAG 3.3.1), and `Field`
+ * derives the `aria-describedby` error id from the same value.
+ */
+const FIELD_INPUT_IDS = {
+  firstName: "public-donation-first-name",
+  lastName: "public-donation-last-name",
+  email: "public-donation-email",
+  amount: "public-donation-amount",
+} as const satisfies Record<keyof FormErrors, string>;
+
+function fieldErrorId(inputId: string): string {
+  return `${inputId}-error`;
+}
 
 const SUGGESTED_AMOUNTS = [25, 50, 100] as const;
 
@@ -165,26 +181,44 @@ export function PublicDonationForm({
       })
       .catch(() => {
         if (!active) return;
-        setPostRedirect({ kind: "failed", message: tPayment("errors.generic") });
+        setPostRedirect({ kind: "failed", reason: "notConfirmed" });
       });
 
     return () => {
       active = false;
     };
-    // tPayment is stable per locale; we intentionally fire this once on mount.
-  }, [postRedirect, publishableKey, tenantStripeAccountId, tPayment]);
+  }, [postRedirect, publishableKey, tenantStripeAccountId]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    const nextErrors = validate(values, t);
+    // Limits are shown in the page locale + the currency the donor picked.
+    const nextErrors = validate(values, t, {
+      belowMin: t("errors.amountTooLow", {
+        amount: formatCurrency(PUBLIC_DONATION_MIN_CENTS, locale, values.currency),
+      }),
+      aboveMax: t("errors.amountTooHigh", {
+        amount: formatCurrency(PUBLIC_DONATION_MAX_CENTS, locale, values.currency),
+      }),
+    });
     setErrors(nextErrors);
-    if (Object.keys(nextErrors).length > 0) return;
+    const firstInvalid = (Object.keys(FIELD_INPUT_IDS) as Array<keyof FormErrors>).find(
+      (field) => nextErrors[field],
+    );
+    if (firstInvalid) {
+      // Send keyboard / screen-reader donors straight to the field to fix;
+      // its error text is announced through `aria-describedby`.
+      document.getElementById(FIELD_INPUT_IDS[firstInvalid])?.focus();
+      return;
+    }
+
+    const parsedAmount = parseDonationAmount(values.amount);
+    if (!parsedAmount.ok) return;
+    const amountCents = parsedAmount.cents;
 
     setIsSubmitting(true);
 
     try {
-      const amountCents = parseAmountToCents(values.amount);
       const result = await CampaignPublicPageService.createPublicDonationIntent(
         createClientApiClient(),
         campaignId,
@@ -209,11 +243,7 @@ export function PublicDonationForm({
       });
       toast.success(t("success.intentCreated"));
     } catch (error) {
-      const message =
-        error instanceof ApiProblem
-          ? (error.detail ?? error.title ?? t("errors.generic"))
-          : t("errors.generic");
-      toast.error(message);
+      toast.error(resolveIntentErrorMessage(error, t));
     } finally {
       setIsSubmitting(false);
     }
@@ -394,39 +424,47 @@ function DonorDetailsForm({
       >
         <div className="grid gap-4 sm:grid-cols-2">
           <Field
-            inputId="public-donation-first-name"
+            inputId={FIELD_INPUT_IDS.firstName}
             label={t("fields.firstName")}
             error={errors.firstName}
             required
             input={
               <Input
-                id="public-donation-first-name"
+                id={FIELD_INPUT_IDS.firstName}
                 value={values.firstName}
                 onChange={(event) => {
                   onValuesChange((current) => ({ ...current, firstName: event.target.value }));
                   onErrorsChange((current) => ({ ...current, firstName: undefined }));
                 }}
                 placeholder={t("fields.firstNamePlaceholder")}
+                aria-required="true"
                 aria-invalid={Boolean(errors.firstName)}
+                aria-describedby={
+                  errors.firstName ? fieldErrorId(FIELD_INPUT_IDS.firstName) : undefined
+                }
                 autoComplete="given-name"
               />
             }
           />
           <Field
-            inputId="public-donation-last-name"
+            inputId={FIELD_INPUT_IDS.lastName}
             label={t("fields.lastName")}
             error={errors.lastName}
             required
             input={
               <Input
-                id="public-donation-last-name"
+                id={FIELD_INPUT_IDS.lastName}
                 value={values.lastName}
                 onChange={(event) => {
                   onValuesChange((current) => ({ ...current, lastName: event.target.value }));
                   onErrorsChange((current) => ({ ...current, lastName: undefined }));
                 }}
                 placeholder={t("fields.lastNamePlaceholder")}
+                aria-required="true"
                 aria-invalid={Boolean(errors.lastName)}
+                aria-describedby={
+                  errors.lastName ? fieldErrorId(FIELD_INPUT_IDS.lastName) : undefined
+                }
                 autoComplete="family-name"
               />
             }
@@ -434,13 +472,13 @@ function DonorDetailsForm({
         </div>
 
         <Field
-          inputId="public-donation-email"
+          inputId={FIELD_INPUT_IDS.email}
           label={t("fields.email")}
           error={errors.email}
           required
           input={
             <Input
-              id="public-donation-email"
+              id={FIELD_INPUT_IDS.email}
               type="email"
               value={values.email}
               onChange={(event) => {
@@ -448,14 +486,16 @@ function DonorDetailsForm({
                 onErrorsChange((current) => ({ ...current, email: undefined }));
               }}
               placeholder={t("fields.emailPlaceholder")}
+              aria-required="true"
               aria-invalid={Boolean(errors.email)}
+              aria-describedby={errors.email ? fieldErrorId(FIELD_INPUT_IDS.email) : undefined}
               autoComplete="email"
             />
           }
         />
 
         <Field
-          inputId="public-donation-amount"
+          inputId={FIELD_INPUT_IDS.amount}
           label={t("fields.amount")}
           error={errors.amount}
           required
@@ -464,20 +504,24 @@ function DonorDetailsForm({
               <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-on-surface-variant">
                 {getCurrencySymbol(values.currency)}
               </span>
+              {/* `type="text"` on purpose — see `public-donation-amount.ts`
+                  (a number input changes the amount on wheel-scroll and
+                  blanks its value on a decimal comma). */}
               <Input
-                id="public-donation-amount"
-                type="number"
-                min="1"
-                step="1"
+                id={FIELD_INPUT_IDS.amount}
+                type="text"
                 value={values.amount}
                 onChange={(event) => {
                   onValuesChange((current) => ({ ...current, amount: event.target.value }));
                   onErrorsChange((current) => ({ ...current, amount: undefined }));
                 }}
                 placeholder={t("fields.amountPlaceholder")}
+                aria-required="true"
                 aria-invalid={Boolean(errors.amount)}
+                aria-describedby={errors.amount ? fieldErrorId(FIELD_INPUT_IDS.amount) : undefined}
                 className="pl-7"
                 inputMode="decimal"
+                autoComplete="transaction-amount"
               />
             </div>
           }
@@ -570,7 +614,13 @@ function Field({
         {required ? <span className="ml-1 text-error">*</span> : null}
       </label>
       {input}
-      {error ? <span className="block text-sm text-error">{error}</span> : null}
+      {error ? (
+        // The id is what the input's `aria-describedby` points at, so the
+        // message is read with the field instead of floating beside it.
+        <span id={inputId ? fieldErrorId(inputId) : undefined} className="block text-sm text-error">
+          {error}
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -578,6 +628,9 @@ function Field({
 function validate(
   values: PublicDonationFormValues,
   t: ReturnType<typeof useTranslations>,
+  // Pre-resolved by the caller: interpolating `{amount}` through the
+  // un-namespaced `t` above trips TS2589 (excessively deep instantiation).
+  amountLimitMessages: { belowMin: string; aboveMax: string },
 ): FormErrors {
   const errors: FormErrors = {};
 
@@ -591,18 +644,37 @@ function validate(
     errors.email = t("errors.emailInvalid");
   }
 
-  const amount = Number(values.amount);
-  if (!values.amount.trim()) {
-    errors.amount = t("errors.amountRequired");
-  } else if (!Number.isFinite(amount) || amount < 1) {
-    errors.amount = t("errors.amountInvalid");
+  const amount = parseDonationAmount(values.amount);
+  if (!amount.ok) {
+    switch (amount.error) {
+      case "required":
+        errors.amount = t("errors.amountRequired");
+        break;
+      case "belowMin":
+        errors.amount = amountLimitMessages.belowMin;
+        break;
+      case "aboveMax":
+        errors.amount = amountLimitMessages.aboveMax;
+        break;
+      default:
+        errors.amount = t("errors.amountInvalid");
+    }
   }
 
   return errors;
 }
 
-function parseAmountToCents(value: string): number {
-  return Math.round(Number(value) * 100);
+/**
+ * Toast copy for a failed donate-intent call. A 400 / 422 is the API's
+ * schema validator speaking (`body/amountCents must be <= 1000000`) —
+ * developer text, English-only, never donor copy — so it maps to a
+ * translated generic message. Client-side validation mirrors the API
+ * bounds, so reaching this branch means drift, not a donor mistake.
+ */
+function resolveIntentErrorMessage(error: unknown, t: ReturnType<typeof useTranslations>): string {
+  if (!(error instanceof ApiProblem)) return t("errors.generic");
+  if (error.status === 400 || error.status === 422) return t("errors.validation");
+  return error.detail ?? error.title ?? t("errors.generic");
 }
 
 function createIdempotencyKey(): string {
@@ -672,15 +744,7 @@ function PostRedirectView({
   }
 
   if (state.kind === "processing") {
-    return (
-      <div
-        role="status"
-        aria-live="polite"
-        className="mt-6 rounded-2xl border border-outline-variant bg-surface px-4 py-3 text-sm text-on-surface-variant"
-      >
-        {t("postRedirect.processing")}
-      </div>
-    );
+    return <PaymentProcessingNotice className="mt-6" />;
   }
 
   if (state.kind === "requires_action") {
@@ -725,7 +789,7 @@ function PostRedirectView({
         role="alert"
         className="rounded-2xl border border-error bg-error-container px-4 py-3 text-sm text-on-error-container"
       >
-        {state.message}
+        {state.message ?? t(`postRedirect.failed.${state.reason}`)}
       </div>
       <Button variant="ghost" size="sm" onClick={onDismiss}>
         {t("postRedirect.startOver")}

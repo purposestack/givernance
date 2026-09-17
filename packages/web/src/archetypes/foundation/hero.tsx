@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { InitialLetterAvatar } from "@/components/branding/initial-letter-avatar";
+import { getReadableTextColor } from "@/lib/color";
 import type { HeroSlotProps } from "../types";
 
 /**
@@ -12,15 +13,20 @@ import type { HeroSlotProps } from "../types";
  * depend on the archetype's lazy-loaded CSS file landing before
  * paint. Tailwind classes are JIT-compiled into the page's main CSS
  * bundle and always available. Only the brand-colour
- * (`backgroundColor`) is dynamic — everything else is reachable
- * via the design tokens that ship with the app shell.
+ * (`backgroundColor`) and the text colour derived from it are dynamic —
+ * everything else is reachable via the design tokens that ship with
+ * the app shell.
  */
 export function FoundationHero({ data }: HeroSlotProps) {
+  // Same helper as the hardcoded layout: white on a dark brand colour,
+  // near-black on a light one (a pastel or yellow brand made the forced
+  // white headline unreadable — issue #615).
+  const onPrimary = getReadableTextColor(data.colorPrimary);
   return (
     <div className="overflow-hidden rounded-2xl border border-outline-variant bg-surface-container-lowest shadow-card sm:rounded-3xl">
       <div
         className="relative px-5 py-6 sm:px-7 sm:py-8 lg:px-10 lg:py-12"
-        style={{ background: "var(--brand-primary)", color: "#ffffff" }}
+        style={{ background: "var(--brand-primary)", color: onPrimary }}
       >
         {/* Subtle radial highlight for dimensional lighting on the
             solid brand panel. Pure CSS, no color-mix(). */}
@@ -55,7 +61,7 @@ export function FoundationHero({ data }: HeroSlotProps) {
           {data.organisationName ? (
             <p
               className="text-[11px] font-medium uppercase tracking-[0.16em] sm:text-xs sm:tracking-[0.18em]"
-              style={{ color: "#ffffff", opacity: 0.85 }}
+              style={{ color: onPrimary, opacity: 0.85 }}
             >
               {data.organisationName}
             </p>
@@ -63,7 +69,7 @@ export function FoundationHero({ data }: HeroSlotProps) {
           {data.title ? (
             <h1
               className="mt-3 max-w-[24ch] text-balance font-heading text-2xl leading-tight sm:mt-4 sm:text-3xl lg:text-4xl"
-              style={{ color: "#ffffff" }}
+              style={{ color: onPrimary }}
             >
               {data.title}
             </h1>
@@ -71,7 +77,7 @@ export function FoundationHero({ data }: HeroSlotProps) {
           {data.description ? (
             <p
               className="mt-3 max-w-[52ch] text-sm leading-relaxed sm:mt-4 sm:text-base"
-              style={{ color: "#ffffff", opacity: 0.9 }}
+              style={{ color: onPrimary, opacity: 0.9 }}
             >
               {data.description}
             </p>
@@ -79,7 +85,7 @@ export function FoundationHero({ data }: HeroSlotProps) {
           {data.organisationMission ? (
             <p
               className="mt-3 max-w-[52ch] font-heading text-xs italic leading-relaxed sm:text-sm"
-              style={{ color: "#ffffff", opacity: 0.78 }}
+              style={{ color: onPrimary, opacity: 0.78 }}
             >
               {data.organisationMission}
             </p>
