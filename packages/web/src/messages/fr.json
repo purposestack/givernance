@@ -1779,6 +1779,8 @@
       "errors": {
         "resendGeneric": "Impossible de renvoyer l'invitation. Veuillez réessayer.",
         "revokeGeneric": "Impossible de révoquer l'invitation. Veuillez réessayer.",
+        "removeSelf": "Vous ne pouvez pas retirer votre propre compte de l'espace.",
+        "removeLastAdmin": "Impossible de retirer le·la dernier·ère admin de l'espace — promouvez d'abord un·e autre admin.",
         "removeGeneric": "Impossible de retirer le membre. Veuillez réessayer."
       }
     },

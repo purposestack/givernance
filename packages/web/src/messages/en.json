@@ -1779,6 +1779,8 @@
       "errors": {
         "resendGeneric": "Couldn't resend the invitation. Please try again.",
         "revokeGeneric": "Couldn't revoke the invitation. Please try again.",
+        "removeSelf": "You can't remove your own account from the workspace.",
+        "removeLastAdmin": "Can't remove the last admin in this workspace — promote another admin first.",
         "removeGeneric": "Couldn't remove the member. Please try again."
       }
     },

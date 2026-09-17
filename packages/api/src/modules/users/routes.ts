@@ -108,7 +108,15 @@ async function loadAndGuardUserUpdate(
     const countRows = await tx
       .select({ count: sql<number>`count(*)::int` })
       .from(users)
-      .where(and(eq(users.orgId, orgId), eq(users.role, "org_admin"), ne(users.id, existing.id)));
+      .where(
+        and(
+          eq(users.orgId, orgId),
+          eq(users.role, "org_admin"),
+          ne(users.id, existing.id),
+          // Issue #614 — a soft-deleted admin is not a remaining admin.
+          isNull(users.deletedAt),
+        ),
+      );
     const remainingAdmins = countRows[0]?.count ?? 0;
     if (remainingAdmins === 0) {
       return { kind: "cannot_demote_last_admin" };
@@ -942,11 +950,19 @@ export async function userRoutes(app: FastifyInstance) {
       schema: {
         tags: ["Users"],
         params: IdParams,
-        response: { 200: DataResponse(UserResponse), ...ErrorResponses },
+        response: {
+          200: DataResponse(UserResponse),
+          // 422 carries the structured `cannot_remove_self` /
+          // `cannot_remove_last_admin` codes (issue #614), same shape as
+          // the PATCH role-change guards.
+          422: ProblemDetailSchema,
+          ...ErrorResponses,
+        },
       },
     },
     async (request, reply) => {
       const orgId = request.auth?.orgId as string;
+      const callerKcId = request.auth?.userId as string;
       const { id } = request.params as { id: string };
 
       const result = await withTenantContext(orgId, async (tx) => {
@@ -958,6 +974,7 @@ export async function userRoutes(app: FastifyInstance) {
           .select({
             id: users.id,
             keycloakId: users.keycloakId,
+            role: users.role,
             deletedAt: users.deletedAt,
           })
           .from(users)
@@ -980,6 +997,35 @@ export async function userRoutes(app: FastifyInstance) {
             keycloakId: existing.keycloakId,
             row,
           };
+        }
+
+        // Self-removal lock (issue #614) — a caller removing their own row
+        // walks out of their own org. The UI hides "Remove" on the caller's
+        // row, but the API gate is the durable enforcement (mirrors the
+        // PATCH `cannot_self_demote` guard).
+        if (existing.keycloakId !== null && existing.keycloakId === callerKcId) {
+          return { kind: "cannot_remove_self" as const };
+        }
+
+        // Last-admin lock-out (issue #614) — refuse to remove the only
+        // remaining ACTIVE org_admin. Recovery from a zero-admin tenant
+        // requires super_admin intervention.
+        if (existing.role === "org_admin") {
+          const countRows = await tx
+            .select({ count: sql<number>`count(*)::int` })
+            .from(users)
+            .where(
+              and(
+                eq(users.orgId, orgId),
+                eq(users.role, "org_admin"),
+                ne(users.id, existing.id),
+                isNull(users.deletedAt),
+              ),
+            );
+          const remainingAdmins = countRows[0]?.count ?? 0;
+          if (remainingAdmins === 0) {
+            return { kind: "cannot_remove_last_admin" as const };
+          }
         }
 
         // Soft-delete: clear keycloakId so any future query treating it
@@ -1022,6 +1068,28 @@ export async function userRoutes(app: FastifyInstance) {
           title: "Not Found",
           status: 404,
           detail: t("errors.notFound", { resource: t("resources.user") }),
+        });
+      }
+      if (result.kind === "cannot_remove_self") {
+        // Structured 422 — `code: cannot_remove_self` lets the UI render a
+        // targeted message without string-matching the detail.
+        return reply.status(422).send({
+          ...problemDetail(
+            422,
+            "Unprocessable Entity",
+            "An org_admin cannot remove their own account from the organisation.",
+          ),
+          errorCode: "cannot_remove_self",
+        });
+      }
+      if (result.kind === "cannot_remove_last_admin") {
+        return reply.status(422).send({
+          ...problemDetail(
+            422,
+            "Unprocessable Entity",
+            "Cannot remove the last org_admin in this tenant — promote another admin first.",
+          ),
+          errorCode: "cannot_remove_last_admin",
         });
       }
 
