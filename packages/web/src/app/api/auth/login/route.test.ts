@@ -72,14 +72,15 @@ describe("GET /api/auth/login — return_to cookie", () => {
     expect(store.get(key("oidc_return_to", "/api/auth"))).toBe("/donations");
   });
 
-  it.each(["https://evil.example/", "//evil.example/", "dashboard"])(
-    "rejects the cross-origin / malformed return_to %s and clears the stale one",
-    async (raw) => {
-      store.set(key("oidc_return_to", "/api/auth"), "/admin/impersonation/new");
+  it.each([
+    "https://evil.example/",
+    "//evil.example/",
+    "dashboard",
+  ])("rejects the cross-origin / malformed return_to %s and clears the stale one", async (raw) => {
+    store.set(key("oidc_return_to", "/api/auth"), "/admin/impersonation/new");
 
-      await GET(makeRequest(`?return_to=${encodeURIComponent(raw)}`));
+    await GET(makeRequest(`?return_to=${encodeURIComponent(raw)}`));
 
-      expect(store.has(key("oidc_return_to", "/api/auth"))).toBe(false);
-    },
-  );
+    expect(store.has(key("oidc_return_to", "/api/auth"))).toBe(false);
+  });
 });

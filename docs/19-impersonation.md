@@ -129,6 +129,13 @@ Mode-specific claim differences:
 
 The cookie is `httpOnly; SameSite=Lax; Secure` (in production). Tokens are not renewable — a new INITIATE is required.
 
+**Interaction with the web silent refresh (issue #613).** While a session is active, `givernance_jwt` holds the impersonation token but the operator's own Keycloak `refresh_token` cookie is still present (scoped to `/api/auth`). The two web routes that use it treat an impersonation cookie differently, on purpose:
+
+| Route | Trigger | With an impersonation token in `givernance_jwt` |
+|---|---|---|
+| `POST /api/auth/refresh` | background timer in the `AuthProvider` (~every 4 min, ADR-029) | **No-op**: `200 { ok: true, skipped: "impersonation" }`, no cookie written, Keycloak not called. Overwriting the cookie here would silently turn a read-only impersonation into a plain super-admin session and drop the `act` double attribution while the page still shows the impersonation banner. Detection is an unverified peek at `iss === "givernance-impersonation"` **or** an `act.sub` claim (Keycloak Token Exchange path) — it can only suppress the caller's own rotation, never grant anything. |
+| `GET /api/auth/restore-session` | explicit full-page navigation: the proxy (expired JWT), the browser client's 401 interceptor during impersonation, and the page guards when the cookie fails verification (e.g. rotated `IMPERSONATION_JWT_SECRET`) | **Restores the operator's session**: every caller reaches it only once the impersonation token is dead (expired, revoked within its `exp`, unverifiable). The fresh access token is verified before it is written; the operator lands back on `/admin/impersonation` with the banner gone. |
+
 ## 4. Session lifecycle
 
 ```

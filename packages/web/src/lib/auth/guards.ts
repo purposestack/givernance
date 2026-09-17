@@ -76,7 +76,7 @@ export async function requireAuth(): Promise<ServerAuthContext> {
 
   const payload = await verifyJwt(token);
   if (!payload) {
-    redirect("/login");
+    redirect(sessionRecoveryPath(token));
   }
 
   if (payload.kind === "impersonation") {
@@ -122,6 +122,30 @@ export async function requireAuth(): Promise<ServerAuthContext> {
         }
       : undefined,
   };
+}
+
+/**
+ * Where to send a request whose session cookie is PRESENT but failed
+ * verification (JWKS unreachable, rotated impersonation secret, `exp`
+ * crossed between the proxy check and this guard).
+ *
+ * Issue #613: this used to be `/login`, which loops — the proxy only checks
+ * `exp`, so it still sees a signed-in user on `/login` and bounces them to
+ * `/dashboard`, whose guard fails again. `/api/auth/restore-session` is the
+ * existing route that resolves the cookie one way or the other: it swaps in
+ * a fresh access token (verified before it is written, so it can't hand us
+ * back another unverifiable one) or clears the session cookies and only
+ * then redirects to `/login`. Either way the next hop differs from this one.
+ *
+ * Server Components can't see the request path, so the return target is the
+ * route's default (`/dashboard`) — except for a dead impersonation token,
+ * where the operator belongs back on the session list (same target as the
+ * browser client's impersonation-expiry recovery).
+ */
+function sessionRecoveryPath(token: string): string {
+  return looksLikeImpersonationToken(token)
+    ? "/api/auth/restore-session?return=%2Fadmin%2Fimpersonation"
+    : "/api/auth/restore-session";
 }
 
 type VerifiedPayload =
