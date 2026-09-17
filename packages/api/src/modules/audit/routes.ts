@@ -2,13 +2,17 @@
 
 import { auditLogs } from "@givernance/shared/schema";
 import type { Pagination } from "@givernance/shared/types";
-import { PaginationQuerySchema, parseSchema } from "@givernance/shared/validators";
 import { Type } from "@sinclair/typebox";
 import { desc, eq, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { withTenantContext } from "../../lib/db.js";
 import { requireOrgAdmin } from "../../lib/guards.js";
-import { DataArrayResponse, ErrorResponses, UuidSchema } from "../../lib/schemas.js";
+import {
+  DataArrayResponse,
+  ErrorResponses,
+  PaginationQuery,
+  UuidSchema,
+} from "../../lib/schemas.js";
 
 const AuditLogResponse = Type.Object({
   id: UuidSchema,
@@ -37,12 +41,16 @@ export async function auditRoutes(app: FastifyInstance) {
       preHandler: requireOrgAdmin,
       schema: {
         tags: ["Audit"],
+        // Validated at the Fastify layer so `?page=0` / `?perPage=1000` are a
+        // 400 Problem Detail instead of a 500 from a thrown parse (issue #616).
+        querystring: PaginationQuery,
         response: { 200: DataArrayResponse(AuditLogResponse), ...ErrorResponses },
       },
     },
     async (request, reply) => {
-      const query = parseSchema(PaginationQuerySchema, request.query);
-      const { page, perPage } = query;
+      const query = request.query as { page?: number; perPage?: number };
+      const page = query.page ?? 1;
+      const perPage = query.perPage ?? 20;
       const offset = (page - 1) * perPage;
       const orgId = request.auth?.orgId as string;
 
@@ -52,7 +60,9 @@ export async function auditRoutes(app: FastifyInstance) {
             .select()
             .from(auditLogs)
             .where(eq(auditLogs.orgId, orgId))
-            .orderBy(desc(auditLogs.createdAt))
+            // `id` tiebreak: rows written in one transaction share `created_at`,
+            // and offset paging needs a total order to not duplicate / skip them.
+            .orderBy(desc(auditLogs.createdAt), desc(auditLogs.id))
             .limit(perPage)
             .offset(offset),
           tx

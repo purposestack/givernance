@@ -180,7 +180,7 @@ export async function dispatchBulkEmail(
           completedAt: new Date(),
           updatedAt: new Date(),
         })
-        .where(eq(bulkEmailJobs.id, job.id));
+        .where(and(eq(bulkEmailJobs.id, job.id), eq(bulkEmailJobs.orgId, orgId)));
       return { jobId: job.id, queued: 0, skippedNoEmail };
     }
 
