@@ -97,13 +97,34 @@ Allowed `types` values (closed set): `donor`, `volunteer`, `member`, `beneficiar
 
 **Persisted-segment translation semantics.** The DSL operator translation is exact for the common cases — `eq → arrayContains` ("holds this one type"), `in → arrayOverlaps` ("holds any of these"). `neq` translates to **`NOT arrayContains`** = "does *not* hold this type at all". For single-type rows this is identical to the legacy scalar `!=`; for a genuinely multi-type row `[donor, volunteer]`, a segment `type neq donor` now *excludes* it (it holds `donor`). This is the intended contract and is why no special-casing is needed — but it is the one operator whose meaning shifts on multi-type data, so audit any business-critical saved `neq` segment after enabling the flag. The advanced-filter `constituent.type` field is **array-typed regardless of the flag** (the column is always `text[]`, and filtering by several values is orthogonal to whether a constituent can hold several) — a hard single-select gate would invalidate array-operator segments saved while the flag was on, so it is deliberately not gated. Only the constituent **form** (assignment) is single-value when the flag is off.
 
+### 3.1 Duplicate detection + merge (issue #616)
+
+**Duplicate detection** (`findDuplicates` — the `POST /v1/constituents` 409 pre-check and `GET /v1/constituents/duplicates/search`). A row is a candidate when its email matches exactly (case-insensitive) **or** its *full name* (`first_name || ' ' || last_name`) has a `pg_trgm` similarity ≥ **0.6** with the submitted full name. The weighted score (0.35 first + 0.35 last + 0.30 email) only *ranks* the candidates. Sharing a single name component is not enough: "Marie Dupont" vs "Jean Dupont" (0.39) creates without a dialog; "Jean Dupont" vs "Jean Dupond" (0.71), a swapped first/last name (1.0), or the same email under a different name all raise the 409. `?force=true` still bypasses the check. The bulk-import worker keeps its own copy of the older, looser rule — aligning it is tracked separately.
+
+**Merge** (`POST /v1/constituents/:id/merge`, survivor = `:id`, duplicate = `targetId`) runs in one transaction, every statement carrying the explicit `org_id` predicate:
+
+| Data | Rule |
+|---|---|
+| Row locks | both rows `FOR UPDATE`, taken in **sorted-id order** so two opposite merges (A←B, B←A) cannot deadlock — the loser sees a soft-deleted row and gets a 404 |
+| `email`, `phone` | survivor wins; filled from the duplicate when empty |
+| Postal address | copied from the duplicate **as a block**, only when the survivor has no address at all — never field-by-field (would splice two addresses into an undeliverable one) |
+| `types` | union (survivor's order first, `type` shadow unchanged) when `constituents.multi_type` is on for the tenant; flag off → survivor keeps its single type |
+| `tags` | union |
+| `custom` | survivor wins, missing keys copied (Epic #539) |
+| `donations`, `pledges`, `campaign_documents` | re-pointed to the survivor |
+| `campaign_constituents` | survivor enrolled in every campaign of the duplicate (`ON CONFLICT DO NOTHING`), duplicate's membership rows removed |
+| `campaign_qr_codes`, `swiss_qr_references` | re-pointed, **except** rows whose postal export already holds a row for the survivor (unique `(export_id, constituent_id)`): the survivor's row wins and the duplicate's stays on the soft-deleted record so an already-printed QR / payment reference keeps resolving |
+| `bulk_import_results`, `bulk_email_jobs` id snapshots | untouched — point-in-time reports |
+
+The duplicate is then soft-deleted, `merge_history` stores the before/after snapshots (GDPR Art. 5(2)), and `constituent.merged` + `constituent.deleted` are emitted through the outbox.
+
 ## 4. Permissions matrix
 
 No new endpoints — the change rides existing constituent routes; guards are unchanged.
 
 | Endpoint | Guard | Multi-type behaviour |
 |---|---|---|
-| `GET /v1/constituents` | `requireAuth` | accepts `?types=` (repeatable) + legacy `?type=`; overlap filter |
+| `GET /v1/constituents` | `requireAuth` (`?includeDeleted=true` additionally requires `org_admin` → 403 otherwise, issue #616) | accepts `?types=` (repeatable) + legacy `?type=`; overlap filter |
 | `GET /v1/constituents/:id` | `requireAuth` | returns `types` + `type` |
 | `POST /v1/constituents` | `requireWrite` | accepts `types`; 422 if >1 and flag off |
 | `PUT /v1/constituents/:id` | `requireWrite` | accepts `types`; 422 if >1 and flag off |

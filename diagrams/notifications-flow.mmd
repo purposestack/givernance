@@ -39,7 +39,7 @@ sequenceDiagram
   API->>API: requireFlag(...) + requireAuth(...)
   API-->>Bell: event: ready
   loop polling generator
-    API->>DB: SELECT FROM notifications WHERE created_at > cursor
+    API->>DB: SELECT FROM notifications WHERE (created_at, id) > cursor
     DB-->>API: new rows (if any)
     API-->>Bell: event: notification\nid: <ISO>\ndata: <json>
   end

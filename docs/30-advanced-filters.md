@@ -257,7 +257,16 @@ No new tables. Donation metrics come from an inline `donation_stats` subquery
 With the `advanced_filters` flag **off**, every route returns 404, the
 campaign "Build a filter" surface is hidden, and the constituents list page
 shows only the legacy basic dialog (no builder button, no chip strip, no
-`?filters=` passthrough).
+`?filters=` passthrough). The flag gate is registered **before** `requireAuth`
+(issue #616), so flag-off + unauthenticated is a 404 too — a scanner cannot
+tell a gated route from a missing one.
+
+**Result ordering** (`POST /v1/constituents/filter`, issue #616): every sort ends
+with an `id ASC` tiebreaker, so offset pages never duplicate / skip rows sharing
+a sort key (a bulk import stamps a whole batch with one `created_at`). `name`
+applies the direction to both `last_name` and `first_name` (accent-aware ICU
+collation, same as the list page); `email`, `lastDonation`, `totalDonations` and
+custom-field sorts keep empty values last under both directions.
 
 ## 5. Privacy / GDPR posture
 - **Soft-delete**: `deleted_at IS NOT NULL` constituents are excluded from every

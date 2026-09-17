@@ -72,9 +72,9 @@ Givernance NPO Platform
 
 **Key flows**:
 
-1. **Create constituent** — POST with deduplication check (exact email match + fuzzy name); if match found, return conflict with merge option.
+1. **Create constituent** — POST with deduplication check (exact email match, or fuzzy match on the **full** name — a single shared first or last name is not a duplicate); if match found, return conflict with merge option. Thresholds and merge rules: [docs/34](./34-constituents.md) § 3.1.
 2. **View 360 timeline** — single endpoint returning chronological feed of: donations, enrollments, volunteer hours, communications, notes, consent changes.
-3. **Merge duplicates** — staff selects primary record; secondary's transactions re-pointed to primary; secondary soft-deleted with merge metadata.
+3. **Merge duplicates** — staff selects primary record; secondary's donations, pledges, campaign memberships, letters and QR / payment references re-pointed to primary; secondary soft-deleted with merge metadata.
 4. **GDPR Subject Access Request** — `GET /v1/constituents/{id}/sar` returns full data export (JSON/PDF) within seconds.
 
 **Business rules**:

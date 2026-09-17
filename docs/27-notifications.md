@@ -49,7 +49,7 @@ sequenceDiagram
   Worker->>DB: INSERT notifications (one per recipient)
   Worker->>Worker: routeDomainEvent → existing receipt PDF job
   Bell->>API: EventSource /v1/notifications/stream
-  API->>DB: SELECT new rows WHERE created_at > cursor (polling loop)
+  API->>DB: SELECT new rows WHERE (created_at, id) > cursor (polling loop)
   API-->>Bell: event: notification (SSE frame)
   Bell->>Panel: re-render badge + new row at the top
   Operator->>Panel: clicks row → /donations/<id>
@@ -235,6 +235,12 @@ The same discipline applies to other FK columns pointing at `users.id` across th
 | `/v1/notification-preferences` | GET | `requireAuth` | Returns the closed set (every registered type), defaults merged in. |
 | `/v1/notification-preferences/:type` | PATCH | `requireAuth` | Upsert (idempotent). Body `{ inApp, emailDigest }`. |
 | `/profile/notifications` | GET | requireAuth (SSR) | The preferences page — reachable by any authenticated tenant role. |
+
+### 4.1 Cursor precision + stream re-authorisation (issue #616)
+
+- **One keyset, µs precision.** `notifications.created_at` is a µs `timestamptz`; a JS `Date` only holds ms. Both the list (`nextCursor`) and the SSE stream therefore use the same opaque cursor — base64url of `<created_at as UTC ISO text with 6 fractional digits>|<id>` — compared in SQL as `(created_at, id) < / > (cursor_ts::timestamptz, cursor_id::uuid)`. Rows written by one fanout transaction share an identical `now()`; the `id` half breaks the tie so they are paged / streamed exactly once. The keyset stays served by `notifications_user_created_idx (user_id, created_at)` (index range on `created_at`, incremental sort on `id`) — no new index.
+- **SSE event id = that cursor.** The stream tracks the last *emitted* `(created_at, id)` and sends it as the frame's `id:`, so the browser's automatic `Last-Event-ID` reconnect resumes strictly after the last delivered row. A legacy ISO-timestamp `Last-Event-ID` (clients connected across the deploy) is still accepted. A malformed cursor degrades to "first page" / "start from now", never a 500.
+- **Re-authorisation on every poll.** The auth hook only runs at the SSE handshake, so the route passes an `isStillAuthorised` closure the 5 s poll loop calls first: user blocklist (soft-delete), session (`jti`) blocklist, impersonation session still active, and the active-membership check — which includes the tenant's `suspended` / `archived` status ([docs/22](./22-tenant-onboarding.md) § 6.5). A revoked caller's stream closes within one polling interval.
 
 ## 5. GDPR posture
 
