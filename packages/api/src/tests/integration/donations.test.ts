@@ -359,6 +359,61 @@ describe("Donations CRUD", () => {
     }
   });
 
+  it("GET /v1/donations/:id exposes the campaign name + status; the list row carries status (issue #614)", async () => {
+    const tokenA = signToken(app);
+    const campaignRes = await app.inject({
+      method: "POST",
+      url: "/v1/campaigns",
+      headers: authHeader(tokenA),
+      payload: { name: `Detail Campaign ${Date.now()}`, type: "digital" },
+    });
+    expect(campaignRes.statusCode).toBe(201);
+    const campaign = campaignRes.json<{ data: { id: string; name: string } }>().data;
+
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/v1/donations",
+      headers: authHeader(tokenA),
+      payload: {
+        constituentId: constituentIdA,
+        amountCents: 4200,
+        paymentMethod: "cash",
+        campaignId: campaign.id,
+      },
+    });
+    expect(createRes.statusCode).toBe(201);
+    const attributedId = createRes.json<{ data: { id: string } }>().data.id;
+
+    const detail = await app.inject({
+      method: "GET",
+      url: `/v1/donations/${attributedId}`,
+      headers: authHeader(tokenA),
+    });
+    expect(detail.statusCode).toBe(200);
+    const detailBody = detail.json<{
+      data: { status: string; campaign: { id: string; name: string } | null };
+    }>();
+    expect(detailBody.data.campaign).toEqual({ id: campaign.id, name: campaign.name });
+    expect(detailBody.data.status).toBe("cleared");
+
+    // Unattributed donation → campaign: null (not an absent key).
+    const plain = await app.inject({
+      method: "GET",
+      url: `/v1/donations/${donationId}`,
+      headers: authHeader(tokenA),
+    });
+    expect(plain.json<{ data: { campaign: unknown } }>().data.campaign).toBeNull();
+
+    const list = await app.inject({
+      method: "GET",
+      url: `/v1/donations?campaignId=${campaign.id}`,
+      headers: authHeader(tokenA),
+    });
+    expect(list.statusCode).toBe(200);
+    const rows = list.json<{ data: Array<{ id: string; status: string }> }>().data;
+    expect(rows.find((r) => r.id === attributedId)?.status).toBe("cleared");
+  });
+
   it("GET /v1/donations/:id returns 404 for non-existent ID", async () => {
     const tokenA = signToken(app);
     const res = await app.inject({

@@ -39,6 +39,8 @@ export interface Donation {
 }
 
 export interface DonationListRow extends Donation {
+  /** Lifecycle status (issue #614) — drives the list's status badge. */
+  status: DonationStatus;
   constituent: { firstName: string; lastName: string } | null;
   campaign: { name: string } | null;
   receiptStatus: ReceiptStatus | null;
@@ -107,6 +109,8 @@ export interface DonationDetail extends Donation {
     lastName: string;
     email: string | null;
   };
+  /** Attributed campaign's display name (issue #614); null when unattributed. */
+  campaign: { id: string; name: string } | null;
   allocations: DonationAllocation[];
   /** Cross-domain projection — see `DonationListRow.donorCustom`. */
   donorCustom?: CustomFieldValues;

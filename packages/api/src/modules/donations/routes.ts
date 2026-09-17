@@ -432,6 +432,13 @@ const DonationResponse = Type.Object({
   custom: Type.Optional(CustomValuesResponseSchema),
 });
 
+const DonationStatusSchema = Type.Union([
+  Type.Literal("pending"),
+  Type.Literal("cleared"),
+  Type.Literal("refunded"),
+  Type.Literal("failed"),
+]);
+
 /** Donation list row — enriched with constituent name and latest receipt status for list views */
 const DonationListRow = Type.Object({
   id: UuidSchema,
@@ -442,6 +449,9 @@ const DonationListRow = Type.Object({
   campaignId: Type.Union([UuidSchema, Type.Null()]),
   paymentMethod: Type.Union([Type.String(), Type.Null()]),
   paymentRef: Type.Union([Type.String(), Type.Null()]),
+  // Issue #614: lifecycle status, so the list can badge refunded / failed /
+  // pending rows instead of presenting every gift as settled.
+  status: DonationStatusSchema,
   donatedAt: Type.String(),
   fiscalYear: Type.Union([Type.Integer(), Type.Null()]),
   createdAt: Type.String(),
@@ -467,13 +477,6 @@ const DonationListRow = Type.Object({
   donorCustom: Type.Optional(CustomValuesResponseSchema),
 });
 
-const DonationStatusSchema = Type.Union([
-  Type.Literal("pending"),
-  Type.Literal("cleared"),
-  Type.Literal("refunded"),
-  Type.Literal("failed"),
-]);
-
 const DonationDetailResponse = Type.Object({
   id: UuidSchema,
   orgId: UuidSchema,
@@ -497,6 +500,9 @@ const DonationDetailResponse = Type.Object({
     lastName: Type.String(),
     email: Type.Union([Type.String(), Type.Null()]),
   }),
+  // Issue #614: the attributed campaign's display name, so the detail page
+  // doesn't print a raw UUID. Null when unattributed.
+  campaign: Type.Union([Type.Object({ id: UuidSchema, name: Type.String() }), Type.Null()]),
   allocations: Type.Array(
     Type.Object({
       id: UuidSchema,

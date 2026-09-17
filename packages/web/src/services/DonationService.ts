@@ -120,6 +120,7 @@ function mapDonationRow(raw: DonationListRow): DonationListRow {
     campaignId: raw.campaignId,
     paymentMethod: raw.paymentMethod,
     paymentRef: raw.paymentRef,
+    status: raw.status,
     donatedAt: raw.donatedAt,
     fiscalYear: raw.fiscalYear,
     createdAt: raw.createdAt,

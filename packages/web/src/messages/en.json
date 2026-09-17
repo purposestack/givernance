@@ -2189,7 +2189,8 @@
       "paymentMethod": "Payment method",
       "receipt": "Receipt",
       "actions": "Actions",
-      "tags": "Tags"
+      "tags": "Tags",
+      "status": "Status"
     },
     "receiptStatus": {
       "pending": "Pending",
@@ -2488,6 +2489,23 @@
         "error": "Could not open the receipt. Please try again.",
         "missing": "No receipt available yet."
       }
+    },
+    "status": {
+      "pending": "Pending",
+      "cleared": "Cleared",
+      "refunded": "Refunded",
+      "failed": "Failed"
+    },
+    "paymentMethods": {
+      "wire": "Bank transfer",
+      "bank_transfer": "Bank transfer",
+      "cheque": "Cheque",
+      "check": "Cheque",
+      "card": "Card",
+      "stripe": "Online payment (Stripe)",
+      "sepa": "SEPA direct debit",
+      "cash": "Cash",
+      "other": "Other"
     }
   },
   "constituents": {

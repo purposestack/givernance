@@ -568,14 +568,26 @@ export async function getDonation(orgId: string, id: string) {
       .innerJoin(funds, and(eq(funds.id, donationAllocations.fundId), eq(funds.orgId, orgId)))
       .where(and(eq(donationAllocations.donationId, id), eq(donationAllocations.orgId, orgId)));
 
+    // Issue #614 — campaign display name for the detail page. Explicit org
+    // predicate (issue #430): a cross-tenant campaign id never resolves.
+    let campaign: { id: string; name: string } | null = null;
+    if (donation.campaignId) {
+      const [campaignRow] = await tx
+        .select({ id: campaigns.id, name: campaigns.name })
+        .from(campaigns)
+        .where(and(eq(campaigns.id, donation.campaignId), eq(campaigns.orgId, orgId)));
+      campaign = campaignRow ?? null;
+    }
+
     if (!constituent) {
-      return { ...donation, constituent: null, donorCustomRaw: {}, allocations };
+      return { ...donation, constituent: null, campaign, donorCustomRaw: {}, allocations };
     }
 
     const { custom: donorCustom, deletedAt: donorDeletedAt, ...constituentPublic } = constituent;
     return {
       ...donation,
       constituent: constituentPublic,
+      campaign,
       // Soft-deleted (erased) donors project nothing — Epic #539 §6. The
       // route serializes this through the projectable-definitions filter.
       donorCustomRaw: donorDeletedAt === null ? (donorCustom ?? {}) : {},

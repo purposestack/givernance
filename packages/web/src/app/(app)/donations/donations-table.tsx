@@ -14,6 +14,7 @@ import {
   type FilterQuery,
   isFilterCondition,
 } from "@/components/constituents/filters/filter-types";
+import { DonationStatusBadge } from "@/components/donations/donation-status-badge";
 import {
   DONATION_FILTER_ENDPOINTS,
   DONATION_FILTERS_NAMESPACE,
@@ -51,6 +52,7 @@ import { toast } from "@/components/ui/toast";
 import { ApiProblem } from "@/lib/api";
 import { createClientApiClient } from "@/lib/api/client-browser";
 import { formatCurrency, formatDate } from "@/lib/format";
+import { paymentMethodLabel } from "@/lib/payment-method";
 import {
   type DonationListRow,
   type DonationSortField,
@@ -176,6 +178,7 @@ export function DonationsTable({
   const locale = useLocale();
   const t = useTranslations("donations");
   const tReceipt = useTranslations("donations.receiptStatus");
+  const tPaymentMethods = useTranslations("donations.paymentMethods");
   const tFilters = useTranslations("donations.filters");
   const tCustom = useTranslations("customFields");
   const [donationToDelete, setDonationToDelete] = useState<DonationListRow | null>(null);
@@ -474,8 +477,19 @@ export function DonationsTable({
         accessorKey: "paymentMethod",
         header: () => t("columns.paymentMethod"),
         cell: ({ row }) => (
-          <span className="text-on-surface-variant">{row.original.paymentMethod ?? "—"}</span>
+          <span className="text-on-surface-variant">
+            {paymentMethodLabel(tPaymentMethods, row.original.paymentMethod) ?? "—"}
+          </span>
         ),
+      },
+      {
+        // Issue #614 — lifecycle status (refunded / failed / pending were
+        // indistinguishable from settled gifts). Mockup order: after payment.
+        id: "status",
+        header: () => t("columns.status"),
+        enableSorting: false,
+        cell: ({ row }) =>
+          row.original.status ? <DonationStatusBadge status={row.original.status} /> : null,
       },
       {
         id: "receipt",
@@ -528,7 +542,7 @@ export function DonationsTable({
           ]
         : []),
     ],
-    [canDelete, canWrite, customFieldDefs, donorCustomDefs, locale, t, tCustom],
+    [canDelete, canWrite, customFieldDefs, donorCustomDefs, locale, t, tCustom, tPaymentMethods],
   );
 
   return (

@@ -6,6 +6,7 @@ import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
 
 import { DeleteDonationButton } from "@/components/donations/delete-donation-button";
+import { DonationStatusBadge } from "@/components/donations/donation-status-badge";
 import { ReceiptPreviewButton } from "@/components/donations/receipt-preview-button";
 import { RefundDonationButton } from "@/components/donations/refund-donation-button";
 import {
@@ -31,6 +32,7 @@ import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
 import { hasPermission, requireAuth } from "@/lib/auth/guards";
 import { formatCurrency, formatDate } from "@/lib/format";
+import { paymentMethodLabel } from "@/lib/payment-method";
 import type { DonationAllocation, DonationDetail } from "@/models/donation";
 import { donationDetailDonorName } from "@/models/donation";
 import { DonationService } from "@/services/DonationService";
@@ -113,6 +115,7 @@ export default async function DonationDetailPage({ params }: DonationDetailPageP
     <>
       <PageHeader
         title={`${t("title")} — ${amountLabel}`}
+        titleBadge={<DonationStatusBadge status={donation.status} />}
         description={donorName}
         breadcrumbs={[
           { label: t("breadcrumbRoot"), href: "/dashboard" },
@@ -230,7 +233,10 @@ async function InfoCard({
   amountLabel: string;
   locale: string;
 }) {
-  const t = await getTranslations("donations.detail");
+  const [t, tPaymentMethods] = await Promise.all([
+    getTranslations("donations.detail"),
+    getTranslations("donations.paymentMethods"),
+  ]);
 
   return (
     <Card className="p-6">
@@ -251,7 +257,7 @@ async function InfoCard({
           <span className="font-mono font-semibold tabular-nums">{amountLabel}</span>
         </DetailRow>
         <DetailRow label={t("fields.paymentMethod")}>
-          {donation.paymentMethod ?? t("notRecorded")}
+          {paymentMethodLabel(tPaymentMethods, donation.paymentMethod) ?? t("notRecorded")}
         </DetailRow>
         <DetailRow label={t("fields.paymentRef")}>
           {donation.paymentRef ? (
@@ -266,7 +272,9 @@ async function InfoCard({
               href={`/campaigns/${donation.campaignId}`}
               className="text-sky-text hover:underline"
             >
-              {donation.campaignId}
+              {/* Name from the API (issue #614); the id is only a fallback for
+                  a campaign row the org predicate could not resolve. */}
+              {donation.campaign?.name ?? donation.campaignId}
             </Link>
           ) : (
             t("notRecorded")

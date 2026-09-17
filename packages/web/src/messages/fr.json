@@ -2189,7 +2189,8 @@
       "paymentMethod": "Paiement",
       "receipt": "Reçu",
       "actions": "Actions",
-      "tags": "Tags"
+      "tags": "Tags",
+      "status": "Statut"
     },
     "receiptStatus": {
       "pending": "En attente",
@@ -2488,6 +2489,23 @@
         "error": "Impossible d'ouvrir le reçu. Réessayez.",
         "missing": "Aucun reçu disponible pour l'instant."
       }
+    },
+    "status": {
+      "pending": "En attente",
+      "cleared": "Encaissé",
+      "refunded": "Remboursé",
+      "failed": "Échoué"
+    },
+    "paymentMethods": {
+      "wire": "Virement bancaire",
+      "bank_transfer": "Virement bancaire",
+      "cheque": "Chèque",
+      "check": "Chèque",
+      "card": "Carte bancaire",
+      "stripe": "Paiement en ligne (Stripe)",
+      "sepa": "Prélèvement SEPA",
+      "cash": "Espèces",
+      "other": "Autre"
     }
   },
   "constituents": {
