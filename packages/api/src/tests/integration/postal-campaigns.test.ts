@@ -882,6 +882,13 @@ describe("QR tracking metrics", () => {
     const freshCampaignId = await createCampaign("QR Stats Refunded", "nominative_postal");
 
     const seedSuffix = Date.now().toString(36);
+    // Dedicated donor: the shared `constituentAId` / `constituentBId` fixtures
+    // must stay donation-free for the lifetime-amount filter tests below.
+    const donorId = await createConstituent(
+      "Rita",
+      "Refunded",
+      `rita.refunded.${seedSuffix}@example.org`,
+    );
     const qrRows = await db.execute(sql`
       INSERT INTO campaign_qr_codes (org_id, campaign_id, constituent_id, code, scanned_at)
       VALUES (${ORG_A}::uuid, ${freshCampaignId}::uuid, NULL, ${`qrtoken_refund_${seedSuffix}`}, now())
@@ -895,8 +902,8 @@ describe("QR tracking metrics", () => {
         amount_base_cents, campaign_id, qr_code_id, status, donated_at
       )
       VALUES
-        (${ORG_A}::uuid, ${constituentAId}::uuid, 10000, 'EUR', 1.00000000, 10000, ${freshCampaignId}::uuid, ${qrCodeId}::uuid, 'cleared', NOW()),
-        (${ORG_A}::uuid, ${constituentAId}::uuid, 10000, 'EUR', 1.00000000, 10000, ${freshCampaignId}::uuid, ${qrCodeId}::uuid, 'refunded', NOW())
+        (${ORG_A}::uuid, ${donorId}::uuid, 10000, 'EUR', 1.00000000, 10000, ${freshCampaignId}::uuid, ${qrCodeId}::uuid, 'cleared', NOW()),
+        (${ORG_A}::uuid, ${donorId}::uuid, 10000, 'EUR', 1.00000000, 10000, ${freshCampaignId}::uuid, ${qrCodeId}::uuid, 'refunded', NOW())
     `);
 
     const res = await app.inject({
