@@ -70,14 +70,40 @@ export async function verifyImpersonationJwt(token: string): Promise<Impersonati
  * verifier the caller dispatches to.
  */
 export function looksLikeImpersonationToken(token: string): boolean {
+  return peekUnverifiedPayload(token)?.iss === IMPERSONATION_TOKEN_ISSUER;
+}
+
+/**
+ * Whether the session cookie holds an impersonation / delegation token of
+ * EITHER flavour (docs/19-impersonation.md §3): the app-layer HS256 token
+ * (`iss === "givernance-impersonation"`) or the realm-signed Keycloak Token
+ * Exchange token, which keeps the realm issuer and is only recognisable by
+ * its RFC 8693 `act.sub` actor claim.
+ *
+ * Unverified on purpose, like `looksLikeImpersonationToken`: the only caller
+ * (`/api/auth/refresh`, issue #613) uses it to REFUSE to overwrite the
+ * cookie. A forged payload can therefore only suppress the caller's own
+ * token rotation — it never grants anything.
+ */
+export function isImpersonationSessionToken(token: string): boolean {
+  const payload = peekUnverifiedPayload(token);
+  if (!payload) return false;
+  if (payload.iss === IMPERSONATION_TOKEN_ISSUER) return true;
+  const act = (payload as Record<string, unknown>).act;
+  return (
+    typeof act === "object" &&
+    act !== null &&
+    typeof (act as Record<string, unknown>).sub === "string"
+  );
+}
+
+function peekUnverifiedPayload(token: string): JWTPayload | null {
   const parts = token.split(".");
-  if (parts.length !== 3) return false;
+  if (parts.length !== 3) return null;
   try {
-    const payload = JSON.parse(
-      Buffer.from(parts[1] ?? "", "base64url").toString("utf8"),
-    ) as JWTPayload;
-    return payload.iss === IMPERSONATION_TOKEN_ISSUER;
+    const payload: unknown = JSON.parse(Buffer.from(parts[1] ?? "", "base64url").toString("utf8"));
+    return typeof payload === "object" && payload !== null ? (payload as JWTPayload) : null;
   } catch {
-    return false;
+    return null;
   }
 }

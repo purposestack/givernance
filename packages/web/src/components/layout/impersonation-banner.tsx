@@ -37,10 +37,10 @@ export function ImpersonationBanner({ impersonation, userName }: ImpersonationBa
   /**
    * End the impersonation session and reload onto /login.
    *
-   * Inlined here (not delegated to `useAuth().endImpersonation`) because:
-   *   - `useAuth` reads the session id off `/v1/users/me`, which doesn't
-   *     include `imp_session_id` — the value would always be undefined
-   *     and the call would silently no-op.
+   * Lives here (not on `useAuth()` — the dead `endImpersonation` there was
+   * removed in issue #613) because:
+   *   - `useAuth` hydrates from `/v1/users/me`, which doesn't include
+   *     `imp_session_id` — the client context can never know the session.
    *   - The banner already has `impersonation.sessionId` via SSR props,
    *     so the SSR path is the source of truth and doesn't need a
    *     client-side round-trip to discover it.

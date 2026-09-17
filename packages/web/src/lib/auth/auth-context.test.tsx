@@ -20,12 +20,15 @@ import { render, screen, waitFor } from "@/tests/test-utils";
 import { AuthProvider, useAuth } from "./auth-context";
 
 function HydratedUserBadge() {
-  const { user, loading, error } = useAuth();
+  const { user, loading, error, hasRole, hasAppRole } = useAuth();
   return (
     <div>
       <span data-testid="loading">{loading ? "1" : "0"}</span>
       <span data-testid="error">{error ?? ""}</span>
       <span data-testid="user">{user?.email ?? ""}</span>
+      <span data-testid="user-id">{user?.id ?? ""}</span>
+      <span data-testid="is-org-admin">{hasAppRole("org_admin") ? "1" : "0"}</span>
+      <span data-testid="is-super-admin">{hasRole("super_admin") ? "1" : "0"}</span>
     </div>
   );
 }
@@ -34,14 +37,27 @@ function Wrapper({ children }: { children: ReactNode }) {
   return <AuthProvider>{children}</AuthProvider>;
 }
 
+// The REAL `GET /v1/users/me` payload (`MeResponse` in
+// packages/api/src/modules/users/routes.ts). Issue #613: the previous
+// fixture invented `userId` + `roles`, which is the only reason the
+// refresh-loop tests passed while the loop never ran in production.
 const ME_RESPONSE = {
   data: {
-    userId: "user-1",
-    orgId: "org-1",
+    id: "0190a1b2-0000-7000-8000-000000000001",
+    orgId: "0190a1b2-0000-7000-8000-0000000000aa",
+    keycloakId: "kc-user-1",
     email: "claire@solidarite-med.org",
     firstName: "Claire",
     lastName: "Dubois",
-    roles: [],
+    role: "org_admin",
+    firstAdmin: true,
+    provisionalUntil: null,
+    locale: null,
+    tenantDefaultLocale: "fr",
+    orgSlug: "solidarite-med",
+    orgName: "Solidarité Méditerranée",
+    createdAt: "2026-01-05T09:00:00.000Z",
+    updatedAt: "2026-01-05T09:00:00.000Z",
   },
 };
 
@@ -193,5 +209,126 @@ describe("AuthProvider silent refresh", () => {
       expect(screen.getByTestId("user").textContent).toBe("");
     });
     expect(screen.getByTestId("error").textContent).toBe("refresh_unreachable");
+  });
+
+  it("schedules the refresh timer once the real /me shape hydrates (issue #613)", async () => {
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+    vi.stubGlobal(
+      "fetch",
+      mockFetchImpl(
+        () => new Response(JSON.stringify(ME_RESPONSE), { status: 200 }),
+        () => new Response(JSON.stringify({ ok: true, expiresIn: 300 }), { status: 200 }),
+      ),
+    );
+
+    render(
+      <Wrapper>
+        <HydratedUserBadge />
+      </Wrapper>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("user-id").textContent).toBe(ME_RESPONSE.data.id);
+    });
+
+    // The loop is keyed on `user.id`; its first timer is the 240s cadence.
+    expect(setTimeoutSpy.mock.calls.some(([, delay]) => delay === 240 * 1000)).toBe(true);
+    // Roles derive from the single `role` field — no `roles[]` on the wire.
+    expect(screen.getByTestId("is-org-admin").textContent).toBe("1");
+    expect(screen.getByTestId("is-super-admin").textContent).toBe("0");
+    setTimeoutSpy.mockRestore();
+  });
+
+  it("treats a /me payload without an id as a failed hydration (no refresh loop)", async () => {
+    const refreshHandler = vi.fn(() => new Response("{}", { status: 200 }));
+    vi.stubGlobal(
+      "fetch",
+      mockFetchImpl(
+        () =>
+          new Response(JSON.stringify({ data: { userId: "legacy", email: "x@y.z", roles: [] } }), {
+            status: 200,
+          }),
+        refreshHandler,
+      ),
+    );
+
+    render(
+      <Wrapper>
+        <HydratedUserBadge />
+      </Wrapper>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("error").textContent).toContain("Malformed user profile");
+    });
+    await vi.advanceTimersByTimeAsync(245 * 1000);
+    expect(refreshHandler).not.toHaveBeenCalled();
+  });
+
+  it("keeps the user hydrated and the loop alive on the impersonation no-op response", async () => {
+    const refreshHandler = vi.fn(
+      () =>
+        new Response(JSON.stringify({ ok: true, skipped: "impersonation", expiresIn: null }), {
+          status: 200,
+        }),
+    );
+    vi.stubGlobal(
+      "fetch",
+      mockFetchImpl(
+        () => new Response(JSON.stringify(ME_RESPONSE), { status: 200 }),
+        refreshHandler,
+      ),
+    );
+
+    render(
+      <Wrapper>
+        <HydratedUserBadge />
+      </Wrapper>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("user").textContent).toBe("claire@solidarite-med.org");
+    });
+
+    await vi.advanceTimersByTimeAsync(245 * 1000);
+    expect(refreshHandler).toHaveBeenCalledOnce();
+    expect(screen.getByTestId("user").textContent).toBe("claire@solidarite-med.org");
+    expect(screen.getByTestId("error").textContent).toBe("");
+
+    // No expiresIn → default cadence; the next tick still fires.
+    await vi.advanceTimersByTimeAsync(245 * 1000);
+    expect(refreshHandler).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries a 503 from the refresh route instead of clearing the session", async () => {
+    const refreshHandler = vi.fn(
+      () => new Response(JSON.stringify({ error: "network_failure" }), { status: 503 }),
+    );
+    vi.stubGlobal(
+      "fetch",
+      mockFetchImpl(
+        () => new Response(JSON.stringify(ME_RESPONSE), { status: 200 }),
+        refreshHandler,
+      ),
+    );
+
+    render(
+      <Wrapper>
+        <HydratedUserBadge />
+      </Wrapper>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("user").textContent).toBe("claire@solidarite-med.org");
+    });
+
+    await vi.advanceTimersByTimeAsync(245 * 1000);
+    expect(refreshHandler).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("user").textContent).toBe("claire@solidarite-med.org");
+
+    // Retried on the 30s backoff, not the 240s cadence.
+    await vi.advanceTimersByTimeAsync(31 * 1000);
+    expect(refreshHandler).toHaveBeenCalledTimes(2);
+    expect(screen.getByTestId("error").textContent).toBe("");
   });
 });

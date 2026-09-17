@@ -10,26 +10,36 @@ import {
   useRef,
   useState,
 } from "react";
-import { getCsrfHeaderName, readCsrfTokenFromDocumentCookie } from "@/lib/auth/csrf";
 
-/** User profile shape as returned by GET /v1/users/me. */
+/** Application role as stored on `users.role`; platform admins get `super_admin`. */
+export type UserRole = "org_admin" | "user" | "viewer" | "super_admin";
+
+/**
+ * User profile shape as returned by GET /v1/users/me (`MeResponse` in
+ * packages/api/src/modules/users/routes.ts). The endpoint answers from the
+ * TARGET's perspective during an impersonation session and carries no
+ * impersonation claims — that state is SSR-resolved from the JWT (see
+ * `requireAuth` in guards.ts) and threaded to `ImpersonationBanner` as props.
+ */
 export interface UserProfile {
-  userId: string;
+  /** `users.id` (or `platform_admins.id` for a super-admin). */
+  id: string;
   orgId: string;
+  keycloakId: string | null;
   email: string;
-  firstName?: string;
-  lastName?: string;
-  roles: string[];
-  /** Application role — derived from Keycloak realm roles. */
-  role?: "org_admin" | "user" | "viewer";
-  /** RFC 8693 actor claim — present when an admin is impersonating this user. */
-  act?: { sub: string };
-  /** Organisation name for display (from GET /v1/users/me response). */
-  orgName?: string;
-  /** Impersonation session ID — for ending the session via DELETE. */
-  impSessionId?: string;
-  /** Mandatory reason for impersonation (e.g. "Support ticket #1234"). */
-  impReason?: string;
+  firstName: string;
+  lastName: string;
+  /** Undefined when the API returns a role this client doesn't know. */
+  role: UserRole | undefined;
+  firstAdmin: boolean;
+  provisionalUntil: string | null;
+  locale: string | null;
+  tenantDefaultLocale: string;
+  orgSlug: string;
+  /** Organisation name for display. */
+  orgName: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface AuthState {
@@ -39,14 +49,14 @@ interface AuthState {
 }
 
 interface AuthContextValue extends AuthState {
-  /** Check if the current user has a specific Keycloak realm role. */
+  /**
+   * Check the current user's role. `/v1/users/me` exposes a single `role`
+   * (no realm-role list), so this compares against it — `"super_admin"`
+   * matches platform admins.
+   */
   hasRole: (role: string) => boolean;
   /** Check if the current user has a specific application role. */
   hasAppRole: (role: "org_admin" | "user" | "viewer") => boolean;
-  /** Whether the current session is an impersonation session. */
-  isImpersonating: boolean;
-  /** End impersonation session — calls DELETE /admin/impersonation/:sessionId. */
-  endImpersonation: () => void;
   /** Sign out — clears cookie via API route and redirects. */
   logout: () => void;
   /** Re-fetch the user profile. */
@@ -89,8 +99,51 @@ async function fetchMe(): Promise<UserProfile> {
   // which the sidebar reads to display the active org. The server-side
   // fetcher in `(app)/layout.tsx` already handles this correctly; this
   // brings the client-side fetcher into line.
-  const body = (await res.json()) as { data: Record<string, unknown> };
-  return body.data as unknown as UserProfile;
+  const body = (await res.json()) as { data?: Record<string, unknown> | null };
+  return toUserProfile(body.data);
+}
+
+const USER_ROLES: readonly string[] = ["org_admin", "user", "viewer", "super_admin"];
+
+function str(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function strOrNull(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+/**
+ * Map the `/v1/users/me` payload field by field instead of casting it.
+ * Issue #613: a blind cast let the client type drift from `MeResponse`
+ * (`userId` / `roles` never existed on the wire), which silently disabled
+ * the refresh loop below. A payload without a usable `id` is a contract
+ * break — fail the hydration rather than run with a half-typed user.
+ */
+function toUserProfile(data: Record<string, unknown> | null | undefined): UserProfile {
+  if (!data || typeof data.id !== "string" || data.id.length === 0) {
+    throw new Error("Malformed user profile: missing id");
+  }
+  return {
+    id: data.id,
+    orgId: str(data.orgId),
+    keycloakId: strOrNull(data.keycloakId),
+    email: str(data.email),
+    firstName: str(data.firstName),
+    lastName: str(data.lastName),
+    role:
+      typeof data.role === "string" && USER_ROLES.includes(data.role)
+        ? (data.role as UserRole)
+        : undefined,
+    firstAdmin: data.firstAdmin === true,
+    provisionalUntil: strOrNull(data.provisionalUntil),
+    locale: strOrNull(data.locale),
+    tenantDefaultLocale: str(data.tenantDefaultLocale),
+    orgSlug: str(data.orgSlug),
+    orgName: str(data.orgName),
+    createdAt: str(data.createdAt),
+    updatedAt: str(data.updatedAt),
+  };
 }
 
 /**
@@ -103,7 +156,6 @@ async function fetchMe(): Promise<UserProfile> {
  * Exposes:
  * - `user`, `loading`, `error` — auth state
  * - `hasRole()`, `hasAppRole()` — permission checks
- * - `isImpersonating` — true when JWT contains RFC 8693 `act` claim
  * - `logout()` — calls /api/auth/logout
  * - `refresh()` — re-fetches user profile
  */
@@ -141,11 +193,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // every 5 minutes. On refresh failure, clear local auth state so the
   // next protected navigation falls through to the middleware redirect.
   //
-  // Depends on `state.user?.userId` (stable string), not the full user
+  // Depends on `state.user?.id` (stable string), not the full user
   // object, so a re-fetch of /v1/users/me that returns content-equal
   // data doesn't cancel-and-re-schedule the timer mid-cycle
   // (PR #360 review Frontend M5).
-  const userId = state.user?.userId;
+  const userId = state.user?.id;
   useEffect(() => {
     if (!userId) return;
 
@@ -195,36 +247,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [userId]);
 
-  const hasRole = useCallback(
-    (role: string) => state.user?.roles.includes(role) ?? false,
-    [state.user],
-  );
+  const hasRole = useCallback((role: string) => state.user?.role === role, [state.user]);
 
   const hasAppRole = useCallback(
     (role: "org_admin" | "user" | "viewer") => state.user?.role === role,
     [state.user],
   );
-
-  /** Read CSRF token from the double-submit cookie on demand. */
-  const getCsrfToken = useCallback((): string | undefined => {
-    return readCsrfTokenFromDocumentCookie();
-  }, []);
-
-  const endImpersonation = useCallback(() => {
-    const sessionId = state.user?.impSessionId;
-    if (!sessionId) return;
-
-    const csrfToken = getCsrfToken();
-    // DELETE per doc/19-impersonation.md § 4 — ends the session, revokes token
-    fetch(`${API_URL}/admin/impersonation/${sessionId}`, {
-      method: "DELETE",
-      credentials: "include",
-      headers: csrfToken ? { [getCsrfHeaderName()]: csrfToken } : {},
-    }).then(() => {
-      // Redirect to admin dashboard after ending impersonation
-      window.location.href = "/dashboard";
-    });
-  }, [state.user?.impSessionId, getCsrfToken]);
 
   const logout = useCallback(() => {
     // Submit a form POST rather than fetch() so the browser can natively
@@ -243,12 +271,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ...state,
       hasRole,
       hasAppRole,
-      isImpersonating: !!state.user?.act,
-      endImpersonation,
       logout,
       refresh: loadUser,
     }),
-    [state, hasRole, hasAppRole, endImpersonation, logout, loadUser],
+    [state, hasRole, hasAppRole, logout, loadUser],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -298,6 +324,14 @@ async function runRefreshIteration(
     return;
   }
 
+  if (res.status >= 500) {
+    // The refresh route answers 503 (cookies kept) when Keycloak is
+    // unreachable — same retry budget as a browser-side network error,
+    // not a session loss.
+    handleRefreshNetworkError(ctx, scheduleNext);
+    return;
+  }
+
   if (!res.ok) {
     // Refresh refused (refresh-token revoked / session ended via
     // back-channel logout / admin sign-out-all). Mark the local
@@ -308,6 +342,10 @@ async function runRefreshIteration(
     return;
   }
 
+  // A 200 also covers the impersonation no-op (`skipped: "impersonation"`,
+  // `expiresIn: null`): the route left the cookies alone, the user stays
+  // hydrated, and the loop keeps ticking at the default cadence so rotation
+  // resumes on its own once the operator's session is back.
   ctx.retryCount = 0;
   ctx.lastSuccessAt = Date.now();
   const expiresInMs = await readExpiresInMs(res);

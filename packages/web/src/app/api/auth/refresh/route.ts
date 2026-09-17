@@ -14,6 +14,7 @@ import {
   TOKEN_ENDPOINT,
 } from "@/lib/auth/keycloak";
 import { logAuthEvent } from "@/lib/auth/log";
+import { isImpersonationSessionToken } from "@/lib/auth/verify-impersonation-jwt";
 
 /**
  * POST /api/auth/refresh — silent access-token rotation (issue #76 / PR-3).
@@ -25,6 +26,8 @@ import { logAuthEvent } from "@/lib/auth/log";
  * expires.
  *
  * Behaviour:
+ *   - If `givernance_jwt` is an impersonation / delegation token: 200 no-op
+ *     (`{ ok: true, skipped: "impersonation" }`), nothing read or written.
  *   - Reads the `givernance_refresh_token` cookie.
  *   - Calls Keycloak's token endpoint with `grant_type=refresh_token`.
  *   - On success: writes the new access / id / refresh tokens to their
@@ -52,6 +55,26 @@ import { logAuthEvent } from "@/lib/auth/log";
  */
 export async function POST(_request: NextRequest) {
   const jar = await cookies();
+
+  // Issue #613 — never overwrite an impersonation session. During
+  // impersonation `givernance_jwt` holds the (non-renewable) impersonation
+  // token while the refresh cookie still belongs to the OPERATOR. Rotating
+  // here would silently swap a read-only / delegated session for a plain
+  // super-admin one and drop the `act` double-attribution
+  // (docs/19-impersonation.md §3). Answer 200 with no cookie writes and no
+  // Keycloak call so the client loop stays alive without clearing its auth
+  // state; the operator's session is restored by the explicit full-page
+  // `/api/auth/restore-session` navigation when the impersonation ends.
+  // Checked before the refresh cookie so a missing one can't clear the
+  // impersonation cookie either.
+  const currentJwt = jar.get(JWT_COOKIE_NAME)?.value;
+  if (currentJwt && isImpersonationSessionToken(currentJwt)) {
+    return NextResponse.json(
+      { ok: true, skipped: "impersonation", expiresIn: null },
+      { status: 200, headers: { "cache-control": "no-store" } },
+    );
+  }
+
   const refreshToken = jar.get(REFRESH_TOKEN_COOKIE_NAME)?.value;
 
   if (!refreshToken) {
