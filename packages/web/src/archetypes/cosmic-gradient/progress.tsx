@@ -1,4 +1,4 @@
-import { formatCurrency } from "@/lib/format";
+import { useTranslations } from "next-intl";
 import type { ProgressSlotProps } from "../types";
 import { useProgressModel } from "../use-progress-model";
 
@@ -8,13 +8,14 @@ import { useProgressModel } from "../use-progress-model";
  * layout.
  */
 export function CosmicProgress({ data }: ProgressSlotProps) {
+  const t = useTranslations("publicDonationPage.progress");
   const model = useProgressModel(data);
   if (!model) return null;
-  const { goalCents, progressPercent, ariaValueText } = model;
+  const { progressPercent, raisedFormatted, goalFormatted, ariaValueText } = model;
 
   return (
-    <section className="cosmic-progress" aria-label="Campaign progress">
-      <p className="cosmic-progress__amount">{formatCurrency(data.raisedCents, "en")}</p>
+    <section className="cosmic-progress" aria-label={t("sectionLabel")}>
+      <p className="cosmic-progress__amount">{raisedFormatted}</p>
       <div>
         <div
           className="cosmic-progress__bar"
@@ -27,9 +28,12 @@ export function CosmicProgress({ data }: ProgressSlotProps) {
           <span style={{ width: `${progressPercent}%` }} />
         </div>
         <p className="cosmic-progress__meta">
-          of <strong>{formatCurrency(goalCents, "en")}</strong> goal ·{" "}
-          {data.donorCount.toLocaleString("en")} backers · <strong>{progressPercent} %</strong>{" "}
-          funded
+          {t.rich("meta.cosmic-gradient", {
+            goal: goalFormatted,
+            percent: progressPercent,
+            count: data.donorCount,
+            strong: (chunks) => <strong>{chunks}</strong>,
+          })}
         </p>
       </div>
     </section>

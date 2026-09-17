@@ -1,11 +1,12 @@
-import { formatCurrency } from "@/lib/format";
+import { useTranslations } from "next-intl";
 import type { ProgressSlotProps } from "../types";
 import { useProgressModel } from "../use-progress-model";
 
 export function CalmProgress({ data }: ProgressSlotProps) {
+  const t = useTranslations("publicDonationPage.progress");
   const model = useProgressModel(data);
   if (!model) return null;
-  const { progressPercent, ariaValueText } = model;
+  const { progressPercent, raisedFormatted, ariaValueText } = model;
 
   return (
     <div className="calm-progress">
@@ -20,9 +21,12 @@ export function CalmProgress({ data }: ProgressSlotProps) {
         <span style={{ width: `${progressPercent}%` }} />
       </div>
       <p className="calm-progress__meta">
-        <strong>{formatCurrency(data.raisedCents, "en")}</strong> raised ·{" "}
-        <strong>{progressPercent} %</strong> of goal · {data.donorCount.toLocaleString("en")}{" "}
-        supporters
+        {t.rich("meta.calm-wellness", {
+          raised: raisedFormatted,
+          percent: progressPercent,
+          count: data.donorCount,
+          strong: (chunks) => <strong>{chunks}</strong>,
+        })}
       </p>
     </div>
   );
