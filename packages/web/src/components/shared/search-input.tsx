@@ -1,6 +1,7 @@
 "use client";
 
 import { Search, X } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { forwardRef, type InputHTMLAttributes } from "react";
 
 import { cn } from "@/lib/utils";
@@ -11,6 +12,7 @@ export interface SearchInputProps extends Omit<InputHTMLAttributes<HTMLInputElem
 
 export const SearchInput = forwardRef<HTMLInputElement, SearchInputProps>(
   ({ className, onClear, value, placeholder = "Search…", ...props }, ref) => {
+    const t = useTranslations("common.actions");
     const hasValue = typeof value === "string" ? value.length > 0 : Boolean(value);
     return (
       <div className={cn("relative flex items-center", className)}>
@@ -40,7 +42,7 @@ export const SearchInput = forwardRef<HTMLInputElement, SearchInputProps>(
           <button
             type="button"
             onClick={onClear}
-            aria-label="Clear search"
+            aria-label={t("clearSearch")}
             className={cn(
               "absolute right-2 flex h-6 w-6 items-center justify-center",
               "rounded-[var(--radius-sm)] text-on-surface-variant",

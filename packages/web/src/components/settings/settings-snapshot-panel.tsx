@@ -1,7 +1,7 @@
 "use client";
 
 import { Download, Lock } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -32,6 +32,7 @@ function formatSnapshotFilename(orgName: string | undefined, orgId: string) {
 
 export function SettingsSnapshotPanel({ orgId, canExport }: SettingsSnapshotPanelProps) {
   const t = useTranslations("settings");
+  const locale = useLocale();
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [lastDownloadedAt, setLastDownloadedAt] = useState<string | null>(null);
@@ -61,7 +62,10 @@ export function SettingsSnapshotPanel({ orgId, canExport }: SettingsSnapshotPane
       link.remove();
       window.URL.revokeObjectURL(objectUrl);
 
-      const downloadedAt = new Date().toLocaleString();
+      const downloadedAt = new Intl.DateTimeFormat(locale, {
+        dateStyle: "medium",
+        timeStyle: "short",
+      }).format(new Date());
       setLastDownloadedAt(downloadedAt);
       toast.success(t("snapshot.successToast"));
     } catch (err) {

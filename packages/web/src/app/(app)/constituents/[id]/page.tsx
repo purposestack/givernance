@@ -136,6 +136,7 @@ export default async function ConstituentDetailPage({ params, searchParams }: De
   const t = await getTranslations("constituentDetail");
   const tType = await getTranslations("constituents.types");
   const tCustom = await getTranslations("customFields");
+  const tCommon = await getTranslations("common");
   const locale = await getLocale();
 
   // Timeline teaser only — the giving totals come from the API (issue #614),
@@ -147,6 +148,7 @@ export default async function ConstituentDetailPage({ params, searchParams }: De
       <DetailBreadcrumbs
         constituentName={fullName(constituent)}
         labels={{
+          ariaLabel: tCommon("breadcrumb"),
           root: t("breadcrumbRoot"),
           constituents: t("breadcrumbConstituents"),
         }}
@@ -273,10 +275,10 @@ function DetailBreadcrumbs({
   labels,
 }: {
   constituentName: string;
-  labels: { root: string; constituents: string };
+  labels: { ariaLabel: string; root: string; constituents: string };
 }) {
   return (
-    <nav aria-label="Breadcrumb" className="mb-2">
+    <nav aria-label={labels.ariaLabel} className="mb-2">
       <ol className="flex items-center gap-2 text-sm text-on-surface-variant">
         <li>
           <Link href="/dashboard" className="whitespace-nowrap hover:text-on-surface">

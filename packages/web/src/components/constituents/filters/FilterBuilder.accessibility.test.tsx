@@ -6,6 +6,8 @@ import { FilterBuilder } from "./FilterBuilder";
 
 // Mock next-intl
 vi.mock("next-intl", () => ({
+  // FilterChip formats dates in the app locale (issue #614).
+  useLocale: () => "en",
   useTranslations: () => (key: string, values?: Record<string, unknown>) => {
     const translations: Record<string, string> = {
       title: "Advanced Filters",

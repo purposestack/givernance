@@ -47,6 +47,7 @@ import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/toast";
 import { ApiProblem } from "@/lib/api";
 import { createClientApiClient } from "@/lib/api/client-browser";
+import { formatDate } from "@/lib/format";
 import { type Constituent, type ConstituentListRow, fullName } from "@/models/constituent";
 import { ConstituentService } from "@/services/ConstituentService";
 import {
@@ -482,7 +483,7 @@ export function CampaignMembersCard({
           const date = new Date(addedAt);
           return (
             <span className="text-xs text-on-surface-variant">
-              {Number.isNaN(date.getTime()) ? addedAt : date.toLocaleDateString()}
+              {Number.isNaN(date.getTime()) ? addedAt : formatDate(date, locale, "short")}
             </span>
           );
         },

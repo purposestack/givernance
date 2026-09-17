@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronRight, Clock, ShieldCheck, TriangleAlert } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useCallback, useMemo } from "react";
 import { useForm } from "react-hook-form";
 
@@ -9,6 +9,7 @@ import { InitialLetterAvatar } from "@/components/branding/initial-letter-avatar
 import { Form, FormField, FormItem, FormMessage } from "@/components/shared/form-field";
 import { FormSection } from "@/components/shared/form-section";
 import { Button } from "@/components/ui/button";
+import { formatDate } from "@/lib/format";
 import type { OrgMembership } from "@/services/OrgPickerService";
 import { switchOrg } from "@/services/OrgPickerService";
 
@@ -24,6 +25,7 @@ interface OrgPickerValues {
 /** Org picker list — keyboard-navigable cards (issue #112 / doc 22 §6.3). */
 export function OrgPickerClient({ memberships, defaultOrgId }: Props) {
   const t = useTranslations("auth.selectOrganization");
+  const locale = useLocale();
 
   const sorted = useMemo(() => {
     const primary = memberships.find((membership) => membership.orgId === defaultOrgId);
@@ -153,7 +155,7 @@ export function OrgPickerClient({ memberships, defaultOrgId }: Props) {
                             <span className="inline-flex items-center gap-1">
                               <Clock size={12} aria-hidden="true" />
                               {t("lastVisited", {
-                                date: new Date(membership.lastVisitedAt).toLocaleDateString(),
+                                date: formatDate(membership.lastVisitedAt, locale, "short"),
                               })}
                             </span>
                           ) : null}

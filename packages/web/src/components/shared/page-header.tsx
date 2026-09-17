@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { Fragment, type ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
@@ -37,8 +38,9 @@ function BreadcrumbLabel({ crumb, isLast }: { crumb: Breadcrumb; isLast: boolean
 }
 
 function Breadcrumbs({ items }: { items: Breadcrumb[] }) {
+  const t = useTranslations("common");
   return (
-    <nav aria-label="Breadcrumb" className="mb-2">
+    <nav aria-label={t("breadcrumb")} className="mb-2">
       <ol className="flex items-center gap-2 text-sm text-on-surface-variant">
         {items.map((crumb, index) => {
           const isLast = index === items.length - 1;

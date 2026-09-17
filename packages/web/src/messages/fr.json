@@ -31,7 +31,9 @@
       "backToDashboard": "Retour au tableau de bord",
       "search": "Rechercher",
       "or": "ou",
-      "submitting": "Enregistrement…"
+      "submitting": "Enregistrement…",
+      "close": "Fermer",
+      "clearSearch": "Effacer la recherche"
     },
     "footer": {
       "platform": "Givernance NPO Platform",
@@ -39,7 +41,8 @@
     },
     "brandingFallback": {
       "altText": "Logo provisoire de {orgName}"
-    }
+    },
+    "breadcrumb": "Fil d'Ariane"
   },
   "auth": {
     "login": {
@@ -314,6 +317,10 @@
       "description": "Un problème est survenu de notre côté. Notre équipe a été notifiée et travaille à résoudre le problème.",
       "errorId": "ID erreur : {digest}",
       "dashboardLink": "Vous pouvez aussi retourner au <link>tableau de bord</link>."
+    },
+    "app": {
+      "title": "Impossible d'afficher cette page",
+      "description": "Une erreur est survenue de notre côté lors du chargement de cette page. Notre équipe a été prévenue. Vous pouvez réessayer ou revenir au tableau de bord."
     }
   },
   "appShell": {
@@ -2419,7 +2426,9 @@
         "allocationAmount": "Montant",
         "allocationRemove": "Supprimer la ligne",
         "allocationAdd": "Ajouter une ligne",
-        "allocationsHint": "Les répartitions doivent totaliser le montant du don. Laissez vide pour un don non-alloué."
+        "allocationsHint": "Les répartitions doivent totaliser le montant du don. Laissez vide pour un don non-alloué.",
+        "campaignsLoading": "Chargement des campagnes…",
+        "campaignWithStatus": "{name} ({status})"
       },
       "paymentMethods": {
         "wire": "Virement bancaire",
@@ -2806,7 +2815,8 @@
       "steps": {
         "template": "Télécharger le modèle",
         "upload": "Charger le fichier",
-        "progress": "Progression"
+        "progress": "Progression",
+        "ariaLabel": "Progression de l'import"
       },
       "template": {
         "title": "Étape 1 — Télécharger le modèle",
@@ -3741,7 +3751,8 @@
       "inAppHint": "Afficher dans la cloche et le panneau de notifications",
       "emailDigest": "Résumé par email",
       "emailDigestHint": "Inclure dans le résumé quotidien envoyé à 09 h 00 UTC",
-      "defaultBadge": "Par défaut"
+      "defaultBadge": "Par défaut",
+      "updateFailed": "Échec de la mise à jour"
     },
     "types": {
       "donation_received": {

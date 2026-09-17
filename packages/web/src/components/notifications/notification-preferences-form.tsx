@@ -145,14 +145,14 @@ export function NotificationPreferencesForm({ initial }: NotificationPreferences
                   emailDigest: previousRow.emailDigest,
                   isDefault: previousRow.isDefault,
                   saving: false,
-                  error: err instanceof Error ? err.message : "Update failed",
+                  error: err instanceof Error ? err.message : t("updateFailed"),
                 }
               : row,
           ),
         );
       }
     },
-    [client],
+    [client, t],
   );
 
   return (

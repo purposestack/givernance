@@ -31,7 +31,9 @@
       "backToDashboard": "Back to dashboard",
       "search": "Search",
       "or": "or",
-      "submitting": "Saving…"
+      "submitting": "Saving…",
+      "close": "Close",
+      "clearSearch": "Clear search"
     },
     "footer": {
       "platform": "Givernance NPO Platform",
@@ -39,7 +41,8 @@
     },
     "brandingFallback": {
       "altText": "{orgName} logo placeholder"
-    }
+    },
+    "breadcrumb": "Breadcrumb"
   },
   "auth": {
     "login": {
@@ -314,6 +317,10 @@
       "description": "Something went wrong on our end. Our team has been notified and is working to resolve the issue.",
       "errorId": "Error ID: {digest}",
       "dashboardLink": "You can also go back to the <link>dashboard</link>."
+    },
+    "app": {
+      "title": "This page couldn't be displayed",
+      "description": "Something went wrong on our end while loading this page. Our team has been notified. You can try again, or head back to the dashboard."
     }
   },
   "appShell": {
@@ -2419,7 +2426,9 @@
         "allocationAmount": "Amount",
         "allocationRemove": "Remove allocation",
         "allocationAdd": "Add allocation",
-        "allocationsHint": "Allocations must sum to the total amount. Leave empty for unallocated."
+        "allocationsHint": "Allocations must sum to the total amount. Leave empty for unallocated.",
+        "campaignsLoading": "Loading campaigns…",
+        "campaignWithStatus": "{name} ({status})"
       },
       "paymentMethods": {
         "wire": "Bank transfer",
@@ -2806,7 +2815,8 @@
       "steps": {
         "template": "Download template",
         "upload": "Upload file",
-        "progress": "Progress"
+        "progress": "Progress",
+        "ariaLabel": "Import progress"
       },
       "template": {
         "title": "Step 1 — Download the template",
@@ -3741,7 +3751,8 @@
       "inAppHint": "Show in the bell and notifications panel",
       "emailDigest": "Email digest",
       "emailDigestHint": "Include in the daily digest email at 09:00 UTC",
-      "defaultBadge": "Default"
+      "defaultBadge": "Default",
+      "updateFailed": "Update failed"
     },
     "types": {
       "donation_received": {

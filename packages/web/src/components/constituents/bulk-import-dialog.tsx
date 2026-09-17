@@ -181,7 +181,7 @@ function Stepper({ current }: { current: Step }) {
   const currentIndex = steps.findIndex((s) => s.id === current);
 
   return (
-    <ol className="mb-6 flex items-center gap-2" aria-label="Progress">
+    <ol className="mb-6 flex items-center gap-2" aria-label={t("ariaLabel")}>
       {steps.map((s, index) => {
         const completed = index < currentIndex;
         const active = index === currentIndex;
