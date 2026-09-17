@@ -1,12 +1,13 @@
 /** Pledges service — business logic for pledge and installment operations */
 
 import {
+  constituents,
   type OutboxMetadata,
   outboxEvents,
   pledgeInstallments,
   pledges,
 } from "@givernance/shared/schema";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import type { FastifyRequest } from "fastify";
 import { withTenantContext } from "../../lib/db.js";
 import { buildOutboxMetadata } from "../../lib/trace-context.js";
@@ -21,7 +22,50 @@ export interface PledgeInput {
   paymentGateway?: string;
 }
 
-/** Create a pledge and generate the first year of installments */
+/**
+ * Expected dates for the first year of installments: 12 monthly or 1 yearly,
+ * starting one period after `from`.
+ *
+ * UTC arithmetic with the day clamped to the last day of the target month
+ * (issue #611). `Date#setMonth` overflows instead — Jan 31 + 1 month lands on
+ * Mar 3, so a pledge created on the 31st skipped Feb / Apr / Jun / Sep / Nov
+ * and doubled up on the following month. Each date is derived from `from`
+ * (never from the previous installment), so a clamp in February does not
+ * drag the March installment back to the 28th.
+ */
+export function buildInstallmentDates(from: Date, frequency: "monthly" | "yearly"): Date[] {
+  const count = frequency === "monthly" ? 12 : 1;
+  const dates: Date[] = [];
+  for (let i = 1; i <= count; i++) {
+    const monthsAhead = frequency === "monthly" ? i : i * 12;
+    const targetMonthIndex = from.getUTCMonth() + monthsAhead;
+    // Day 0 of the month AFTER the target = last day of the target month.
+    const lastDayOfTarget = new Date(
+      Date.UTC(from.getUTCFullYear(), targetMonthIndex + 1, 0),
+    ).getUTCDate();
+    dates.push(
+      new Date(
+        Date.UTC(
+          from.getUTCFullYear(),
+          targetMonthIndex,
+          Math.min(from.getUTCDate(), lastDayOfTarget),
+          from.getUTCHours(),
+          from.getUTCMinutes(),
+          from.getUTCSeconds(),
+          from.getUTCMilliseconds(),
+        ),
+      ),
+    );
+  }
+  return dates;
+}
+
+/**
+ * Create a pledge and generate the first year of installments.
+ *
+ * @returns the pledge, or `null` when the constituent is unknown, soft-deleted
+ *   or belongs to another tenant (route → 404).
+ */
 export async function createPledge(
   orgId: string,
   userId: string,
@@ -32,6 +76,22 @@ export async function createPledge(
   const metadata: OutboxMetadata | null = request ? buildOutboxMetadata(request) : null;
 
   return withTenantContext(orgId, async (tx) => {
+    // Verify the constituent belongs to this tenant (FK checks bypass RLS, so
+    // the FK alone would accept another tenant's id; an unknown id would
+    // surface as a 500). Mirrors `createDonation` — issue #611.
+    const [constituent] = await tx
+      .select({ id: constituents.id })
+      .from(constituents)
+      .where(
+        and(
+          eq(constituents.id, input.constituentId),
+          eq(constituents.orgId, orgId),
+          isNull(constituents.deletedAt),
+        ),
+      );
+
+    if (!constituent) return null;
+
     const [pledge] = await tx
       .insert(pledges)
       .values({
@@ -52,18 +112,8 @@ export async function createPledge(
     const pledgeId = pledge!.id;
 
     // Generate first year of installments
-    const count = input.frequency === "monthly" ? 12 : 1;
-    const now = new Date();
-    const installmentValues = [];
-
-    for (let i = 0; i < count; i++) {
-      const expectedAt = new Date(now);
-      if (input.frequency === "monthly") {
-        expectedAt.setMonth(expectedAt.getMonth() + i + 1);
-      } else {
-        expectedAt.setFullYear(expectedAt.getFullYear() + i + 1);
-      }
-      installmentValues.push({
+    const installmentValues = buildInstallmentDates(new Date(), input.frequency).map(
+      (expectedAt) => ({
         orgId,
         pledgeId,
         expectedAt,
@@ -72,8 +122,8 @@ export async function createPledge(
         // first-year scaffold generated here every installment mirrors the
         // pledge amount so reconciliation against donations is straightforward.
         amountCents: input.amountCents,
-      });
-    }
+      }),
+    );
 
     await tx.insert(pledgeInstallments).values(installmentValues);
 

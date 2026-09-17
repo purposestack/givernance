@@ -105,9 +105,10 @@ export async function pledgeRoutes(app: FastifyInstance) {
       };
 
       const pledge = await createPledge(orgId, userId, body, request);
-      if (pledge) {
-        reply.header("Location", `/v1/pledges/${pledge.id}`);
+      if (!pledge) {
+        return reply.status(404).send(problemDetail(404, "Not Found", "Constituent not found"));
       }
+      reply.header("Location", `/v1/pledges/${pledge.id}`);
       return reply.status(201).send({ data: pledge });
     },
   );
