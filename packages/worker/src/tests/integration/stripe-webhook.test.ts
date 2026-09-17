@@ -462,6 +462,10 @@ describe("processStripeWebhook", () => {
       payload: {
         id: "ch_test_refund_1",
         payment_intent: paymentRef,
+        // Full refund — Stripe sets `refunded: true` only in that case.
+        refunded: true,
+        amount: 5000,
+        amount_refunded: 5000,
       },
     });
 
@@ -880,7 +884,13 @@ describe("processStripeWebhook", () => {
         stripeEventId: "evt_test_refunded_at_marker",
         eventType: "charge.refunded",
         accountId: STRIPE_ACCOUNT_ID,
-        payload: { id: "ch_refunded_at", payment_intent: paymentRef },
+        payload: {
+          id: "ch_refunded_at",
+          payment_intent: paymentRef,
+          refunded: true,
+          amount: 5000,
+          amount_refunded: 5000,
+        },
       }),
     );
     const [don] = await db
@@ -890,5 +900,105 @@ describe("processStripeWebhook", () => {
     expect(don?.status).toBe("refunded");
     expect(don?.refundedAt).toBeTruthy();
     expect(don?.refundedAt instanceof Date).toBe(true);
+  });
+
+  // ─── #612: a PARTIAL refund must not mark the whole donation refunded ──────
+
+  it("charge.refunded for a partial refund leaves the donation cleared and the campaign fee intact", async () => {
+    const paymentRef = "pi_test_partial_refund";
+    const campaignIdPartial = "00000000-0000-0000-0000-000000000c92";
+    await db.execute(
+      sql`INSERT INTO constituents (id, org_id, first_name, last_name, type)
+          VALUES ('00000000-0000-0000-0000-000000000c91', ${ORG_ID}, 'Partial', 'Refund', 'donor')
+          ON CONFLICT (id) DO NOTHING`,
+    );
+    await db.execute(
+      sql`INSERT INTO campaigns (id, org_id, name, type, platform_fees_cents)
+          VALUES (${campaignIdPartial}, ${ORG_ID}, 'Partial Refund Campaign', 'digital', 105)
+          ON CONFLICT (id) DO UPDATE SET platform_fees_cents = 105`,
+    );
+    await db.execute(
+      sql`INSERT INTO donations
+          (org_id, constituent_id, amount_cents, currency, exchange_rate, amount_base_cents,
+           campaign_id, status, platform_fee_cents, payment_method, payment_ref, donated_at, fiscal_year)
+          VALUES (${ORG_ID}, '00000000-0000-0000-0000-000000000c91', 5000, 'EUR', '1', 5000,
+                  ${campaignIdPartial}, 'cleared', 105, 'stripe', ${paymentRef}, now(), 2026)
+          ON CONFLICT DO NOTHING`,
+    );
+    await db.insert(webhookEvents).values({
+      id: "00000000-0000-0000-0000-000000000c93",
+      stripeEventId: "evt_test_partial_refund",
+      eventType: "charge.refunded",
+      accountId: STRIPE_ACCOUNT_ID,
+      payload: {},
+      status: "pending",
+    });
+
+    await processStripeWebhook(
+      makeMockJob({
+        webhookEventId: "00000000-0000-0000-0000-000000000c93",
+        stripeEventId: "evt_test_partial_refund",
+        eventType: "charge.refunded",
+        accountId: STRIPE_ACCOUNT_ID,
+        // €10 refunded out of €50 — Stripe still names the event
+        // `charge.refunded`, but `refunded` stays false.
+        payload: {
+          id: "ch_test_partial_refund",
+          payment_intent: paymentRef,
+          refunded: false,
+          amount: 5000,
+          amount_refunded: 1000,
+        },
+      }),
+    );
+
+    const [don] = await db
+      .select({ id: donations.id, status: donations.status, refundedAt: donations.refundedAt })
+      .from(donations)
+      .where(and(eq(donations.orgId, ORG_ID), eq(donations.paymentRef, paymentRef)));
+    expect(don?.status).toBe("cleared");
+    expect(don?.refundedAt).toBeNull();
+
+    const campaignResult = await db.execute(
+      sql`SELECT platform_fees_cents FROM campaigns WHERE id = ${campaignIdPartial}`,
+    );
+    const campaignRows = (
+      campaignResult as unknown as { rows: { platform_fees_cents: string | number }[] }
+    ).rows;
+    expect(Number(campaignRows[0]?.platform_fees_cents ?? -1)).toBe(105);
+
+    // No `donation.refunded` domain event for this payment.
+    const events = await db
+      .select({ payload: outboxEvents.payload })
+      .from(outboxEvents)
+      .where(and(eq(outboxEvents.tenantId, ORG_ID), eq(outboxEvents.type, "donation.refunded")));
+    expect(
+      events.filter((e) => (e.payload as { paymentRef?: string }).paymentRef === paymentRef),
+    ).toHaveLength(0);
+
+    // …but the event is traced: a system-initiated audit row, status unchanged.
+    const auditRows = await db.execute(
+      sql`SELECT user_id, actor_id, old_values, new_values
+          FROM audit_logs
+          WHERE org_id = ${ORG_ID}
+            AND action = 'WEBHOOK:charge.refunded.partial'
+            AND resource_id = ${don?.id ?? ""}`,
+    );
+    const auditRow = (auditRows as unknown as { rows: Record<string, unknown>[] }).rows[0];
+    expect(auditRow).toBeDefined();
+    expect(auditRow?.user_id).toBeNull();
+    expect(auditRow?.actor_id).toBeNull();
+    expect(auditRow?.new_values).toMatchObject({
+      status: "cleared",
+      amountCents: 5000,
+      amountRefundedCents: 1000,
+    });
+
+    // The webhook event itself is handled, not DLQ'd.
+    const [evt] = await db
+      .select({ status: webhookEvents.status })
+      .from(webhookEvents)
+      .where(eq(webhookEvents.id, "00000000-0000-0000-0000-000000000c93"));
+    expect(evt?.status).toBe("completed");
   });
 });

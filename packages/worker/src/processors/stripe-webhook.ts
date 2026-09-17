@@ -442,6 +442,14 @@ async function handlePaymentIntentSucceeded(
  * Idempotent against retries: if the donation is already `refunded`,
  * the update is a no-op (filter on `status != 'refunded'` for the campaign
  * fee decrement so we don't double-decrement on a webhook replay).
+ *
+ * PARTIAL refunds (issue #612): Stripe fires `charge.refunded` for every
+ * refund on a charge, partial or full — the event name does not
+ * distinguish them. Only `charge.refunded === true` (equivalently
+ * `amount_refunded >= amount`) means the charge is fully refunded. A
+ * partial refund leaves the donation `cleared` and the campaign fee
+ * untouched; it is traced in `audit_logs` only. Modelling the refunded
+ * amount on the donation needs a schema change — out of scope here.
  */
 async function handleChargeRefunded(
   accountId: string | null,
@@ -490,6 +498,40 @@ async function handleChargeRefunded(
 
     if (donation.status === "refunded") {
       log.info({ donationId: donation.id }, "Donation already marked refunded, skipping");
+      return;
+    }
+
+    if (!isFullyRefunded(charge)) {
+      // Same system-initiated audit shape as the full-refund row below
+      // (`userId` / `actorId` null); status is recorded unchanged so a
+      // forensic reader sees that we saw the event and deliberately did
+      // not flip the donation.
+      await tx.insert(auditLogs).values({
+        orgId,
+        userId: null,
+        actorId: null,
+        action: "WEBHOOK:charge.refunded.partial",
+        resourceType: "donations",
+        resourceId: donation.id,
+        oldValues: { status: donation.status },
+        newValues: {
+          status: donation.status,
+          chargeId: charge.id,
+          paymentIntentId,
+          amountCents: charge.amount ?? null,
+          amountRefundedCents: charge.amount_refunded ?? null,
+        },
+      });
+      log.warn(
+        {
+          donationId: donation.id,
+          paymentIntentId,
+          chargeId: charge.id,
+          amountCents: charge.amount,
+          amountRefundedCents: charge.amount_refunded,
+        },
+        "Partial Stripe refund — donation left as-is (not marked refunded)",
+      );
       return;
     }
 
@@ -555,6 +597,23 @@ async function handleChargeRefunded(
       "Donation refunded from Stripe charge.refunded",
     );
   });
+}
+
+/**
+ * True only when Stripe says the charge is refunded IN FULL. `refunded` is
+ * the authoritative boolean on the Charge object; the amount comparison is
+ * a belt-and-braces equivalent. Anything else — including a payload that
+ * carries neither — is NOT treated as a full refund: wrongly marking a
+ * donation refunded (and rolling back the campaign fee) is the worse error.
+ */
+function isFullyRefunded(charge: Stripe.Charge): boolean {
+  if (charge.refunded === true) return true;
+  return (
+    typeof charge.amount === "number" &&
+    typeof charge.amount_refunded === "number" &&
+    charge.amount > 0 &&
+    charge.amount_refunded >= charge.amount
+  );
 }
 
 // ─── #436 — payment_attempts upsert + failed-intent handler ────────────────
