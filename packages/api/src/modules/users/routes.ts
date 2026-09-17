@@ -8,6 +8,7 @@ import { Type } from "@sinclair/typebox";
 import { and, eq, isNull, ne, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { systemDb, withTenantContext } from "../../lib/db.js";
+import { isUniqueViolation } from "../../lib/db-errors.js";
 import { requireAuth, requireOrgAdmin } from "../../lib/guards.js";
 import { resolveTranslations } from "../../lib/i18n.js";
 import { keycloakAdmin } from "../../lib/keycloak-admin.js";
@@ -715,7 +716,11 @@ export async function userRoutes(app: FastifyInstance) {
       schema: {
         tags: ["Users"],
         body: CreateUserBody,
-        response: { 201: DataResponse(UserResponse), ...ErrorResponses },
+        response: {
+          201: DataResponse(UserResponse),
+          409: ProblemDetailSchema,
+          ...ErrorResponses,
+        },
       },
     },
     async (request, reply) => {
@@ -727,31 +732,44 @@ export async function userRoutes(app: FastifyInstance) {
         role?: string;
       };
 
-      // withTenantContext already wraps in a transaction — use tx for outbox pattern
-      const result = await withTenantContext(orgId, async (tx) => {
-        const [inserted] = await tx
-          .insert(users)
-          .values({
-            ...body,
-            role: (body.role as "org_admin" | "user" | "viewer") ?? "user",
-            orgId,
-          })
-          .returning();
+      try {
+        // withTenantContext already wraps in a transaction — use tx for outbox pattern
+        const result = await withTenantContext(orgId, async (tx) => {
+          const [inserted] = await tx
+            .insert(users)
+            .values({
+              ...body,
+              role: (body.role as "org_admin" | "user" | "viewer") ?? "user",
+              orgId,
+            })
+            .returning();
 
-        // biome-ignore lint/style/noNonNullAssertion: returning() always yields one row for single insert
-        const user = inserted!;
-        await tx.insert(outboxEvents).values({
-          tenantId: orgId,
-          type: "user.created",
-          payload: { userId: user.id, email: user.email, orgId },
-          // W3C trace-context for the relay → worker pipeline (issue #55).
-          metadata: buildOutboxMetadata(request),
+          // biome-ignore lint/style/noNonNullAssertion: returning() always yields one row for single insert
+          const user = inserted!;
+          await tx.insert(outboxEvents).values({
+            tenantId: orgId,
+            type: "user.created",
+            payload: { userId: user.id, email: user.email, orgId },
+            // W3C trace-context for the relay → worker pipeline (issue #55).
+            metadata: buildOutboxMetadata(request),
+          });
+
+          return user;
         });
 
-        return user;
-      });
-
-      return reply.status(201).send({ data: result });
+        return reply.status(201).send({ data: result });
+      } catch (err) {
+        // `users(org_id, email)` is UNIQUE among non-deleted users — a
+        // duplicate email in this org is a 409, not a 500 (issue #611). The
+        // live index is `users_org_id_email_active_uniq` (migration 0032);
+        // the prefix also matches the pre-0032 `users_org_id_email_uniq`.
+        if (isUniqueViolation(err, /users_org_id_email/)) {
+          return reply
+            .status(409)
+            .send(problemDetail(409, "Conflict", "A user with this email already exists"));
+        }
+        throw err;
+      }
     },
   );
 

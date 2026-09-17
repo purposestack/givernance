@@ -7,6 +7,7 @@ import { Type } from "@sinclair/typebox";
 import { eq, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { db } from "../../lib/db.js";
+import { isUniqueViolation } from "../../lib/db-errors.js";
 import { requireAdminSecret, requireSuperAdminOrOwnOrgAdmin } from "../../lib/guards.js";
 import { resolveTranslations } from "../../lib/i18n.js";
 import {
@@ -14,6 +15,8 @@ import {
   DataResponse,
   ErrorResponses,
   IdParams,
+  ProblemDetailSchema,
+  problemDetail,
   UuidSchema,
 } from "../../lib/schemas.js";
 import { buildOutboxMetadata } from "../../lib/trace-context.js";
@@ -244,7 +247,11 @@ export async function tenantRoutes(app: FastifyInstance) {
       schema: {
         tags: ["Tenants"],
         body: CreateTenantBody,
-        response: { 201: DataResponse(TenantResponse), ...ErrorResponses },
+        response: {
+          201: DataResponse(TenantResponse),
+          409: ProblemDetailSchema,
+          ...ErrorResponses,
+        },
       },
     },
     async (request, reply) => {
@@ -253,29 +260,40 @@ export async function tenantRoutes(app: FastifyInstance) {
       // Transactional outbox: insert tenant + outbox event in same transaction.
       // outbox_events has FORCE RLS, so we set tenant context within the transaction
       // using the newly created tenant's ID.
-      const result = await db.transaction(async (tx) => {
-        const [tenant] = await tx
-          .insert(tenants)
-          .values({ name: body.name, slug: body.slug, plan: body.plan ?? "starter" })
-          .returning();
+      try {
+        const result = await db.transaction(async (tx) => {
+          const [tenant] = await tx
+            .insert(tenants)
+            .values({ name: body.name, slug: body.slug, plan: body.plan ?? "starter" })
+            .returning();
 
-        // biome-ignore lint/style/noNonNullAssertion: returning() always yields one row for single insert
-        const t = tenant!;
+          // biome-ignore lint/style/noNonNullAssertion: returning() always yields one row for single insert
+          const t = tenant!;
 
-        // Set RLS context for outbox_events insert (FORCE RLS is active on that table)
-        await tx.execute(sql`SELECT set_config('app.current_organization_id', ${t.id}, true)`);
-        await tx.insert(outboxEvents).values({
-          tenantId: t.id,
-          type: "tenant.created",
-          payload: { tenantId: t.id, name: t.name, slug: t.slug },
-          // W3C trace-context for the relay → worker pipeline (issue #55).
-          metadata: buildOutboxMetadata(request),
+          // Set RLS context for outbox_events insert (FORCE RLS is active on that table)
+          await tx.execute(sql`SELECT set_config('app.current_organization_id', ${t.id}, true)`);
+          await tx.insert(outboxEvents).values({
+            tenantId: t.id,
+            type: "tenant.created",
+            payload: { tenantId: t.id, name: t.name, slug: t.slug },
+            // W3C trace-context for the relay → worker pipeline (issue #55).
+            metadata: buildOutboxMetadata(request),
+          });
+
+          return tenant;
         });
 
-        return tenant;
-      });
-
-      return reply.status(201).send({ data: result });
+        return reply.status(201).send({ data: result });
+      } catch (err) {
+        // Duplicate slug → 409, not a 500 (issue #611). Same constraint hint
+        // as the self-serve signup path.
+        if (isUniqueViolation(err, /tenants_slug/)) {
+          return reply
+            .status(409)
+            .send(problemDetail(409, "Conflict", "An organization with this slug already exists"));
+        }
+        throw err;
+      }
     },
   );
 

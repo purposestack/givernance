@@ -3,6 +3,7 @@
 import { FUND_TYPE_VALUES } from "@givernance/shared/schema";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
+import { isUniqueViolation } from "../../lib/db-errors.js";
 import { requireAuth, requireOrgAdmin } from "../../lib/guards.js";
 import {
   DataArrayResponse,
@@ -26,6 +27,13 @@ import {
 } from "./service.js";
 
 const FundTypeSchema = Type.Union(FUND_TYPE_VALUES.map((value) => Type.Literal(value)));
+
+/** `funds(org_id, name)` is UNIQUE — a duplicate name is a 409, not a 500 (issue #611). */
+const FUND_NAME_UNIQ = /funds_org_name_uniq/;
+
+function fundNameConflictProblem() {
+  return problemDetail(409, "Conflict", "A fund with this name already exists");
+}
 
 const FundCreateBody = Type.Object({
   name: Type.String({ minLength: 1, maxLength: 255 }),
@@ -110,6 +118,7 @@ export async function fundRoutes(app: FastifyInstance) {
         response: {
           201: DataResponse(FundResponse),
           400: ProblemDetailSchema,
+          409: ProblemDetailSchema,
           ...ErrorResponses,
         },
       },
@@ -126,8 +135,15 @@ export async function fundRoutes(app: FastifyInstance) {
         type?: "restricted" | "unrestricted";
       };
 
-      const fund = await createFund(orgId, body);
-      return reply.status(201).send({ data: fund });
+      try {
+        const fund = await createFund(orgId, body);
+        return reply.status(201).send({ data: fund });
+      } catch (err) {
+        if (isUniqueViolation(err, FUND_NAME_UNIQ)) {
+          return reply.status(409).send(fundNameConflictProblem());
+        }
+        throw err;
+      }
     },
   );
 
@@ -169,6 +185,7 @@ export async function fundRoutes(app: FastifyInstance) {
         response: {
           200: DataResponse(FundResponse),
           400: ProblemDetailSchema,
+          409: ProblemDetailSchema,
           ...ErrorResponses,
         },
       },
@@ -186,13 +203,20 @@ export async function fundRoutes(app: FastifyInstance) {
         type?: "restricted" | "unrestricted";
       };
 
-      const updated = await updateFund(orgId, id, body);
+      try {
+        const updated = await updateFund(orgId, id, body);
 
-      if (!updated) {
-        return reply.status(404).send(problemDetail(404, "Not Found", "Fund not found"));
+        if (!updated) {
+          return reply.status(404).send(problemDetail(404, "Not Found", "Fund not found"));
+        }
+
+        return { data: updated };
+      } catch (err) {
+        if (isUniqueViolation(err, FUND_NAME_UNIQ)) {
+          return reply.status(409).send(fundNameConflictProblem());
+        }
+        throw err;
       }
-
-      return { data: updated };
     },
   );
 

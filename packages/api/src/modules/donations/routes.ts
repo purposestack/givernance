@@ -16,6 +16,7 @@ import {
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { CustomFieldValidationError, customFieldsProblem } from "../../lib/custom-field-values.js";
+import { isUniqueViolation } from "../../lib/db-errors.js";
 import { flagService as defaultFlagService } from "../../lib/flags/flag-service.js";
 import { requireAuth, requireOrgAdmin, requireWrite } from "../../lib/guards.js";
 import { resolveTranslations } from "../../lib/i18n.js";
@@ -212,9 +213,21 @@ async function resolveDonationCustomWrite(
 function donationWriteErrorProblem(
   err: unknown,
   t: ReturnType<typeof resolveTranslations>,
-): { status: 404 | 422; problem: ReturnType<typeof problemDetail> } | null {
+): { status: 404 | 409 | 422; problem: ReturnType<typeof problemDetail> } | null {
   if (err instanceof AllocationSumMismatchError) {
     return { status: 422, problem: problemDetail(422, "Unprocessable Entity", err.message) };
+  }
+  // Same (paymentMethod, paymentRef) already recorded for this org — e.g. a
+  // cheque number keyed twice. Conflict, not a server fault (issue #611).
+  if (isUniqueViolation(err, /donations_org_payment_uniq/)) {
+    return {
+      status: 409,
+      problem: problemDetail(
+        409,
+        "Conflict",
+        "A donation with this payment method and reference already exists",
+      ),
+    };
   }
   // Cross-tenant campaign / fund reference → 404 (not 422) so we don't
   // expose whether the id exists at all. Aligns with forthcoming ADR on
@@ -846,6 +859,7 @@ export async function donationRoutes(app: FastifyInstance) {
         headers: IdempotencyKeyHeader,
         response: {
           201: DataResponse(DonationResponse),
+          409: ProblemDetailSchema,
           422: ProblemDetailSchema,
           ...ErrorResponses,
         },
@@ -921,6 +935,7 @@ export async function donationRoutes(app: FastifyInstance) {
         body: DonationUpdateBody,
         response: {
           200: DataResponse(DonationResponse),
+          409: ProblemDetailSchema,
           422: ProblemDetailSchema,
           ...ErrorResponses,
         },
@@ -975,13 +990,11 @@ export async function donationRoutes(app: FastifyInstance) {
         if (err instanceof CustomFieldValidationError) {
           return reply.status(422).send(customValidationProblem(err.errors));
         }
-        if (err instanceof AllocationSumMismatchError) {
-          return reply.status(422).send({
-            type: "https://httpproblems.com/http-status/422",
-            title: "Unprocessable Entity",
-            status: 422,
-            detail: err.message,
-          });
+        // Same mapping as POST — an unknown / cross-tenant campaign or fund
+        // is a 404, not a 500 (issue #611).
+        const mapped = donationWriteErrorProblem(err, t);
+        if (mapped) {
+          return reply.status(mapped.status).send(mapped.problem);
         }
         throw err;
       }
