@@ -22,6 +22,7 @@ import type { FastifyRequest } from "fastify";
 import { applyCustomPatchInTx } from "../../lib/custom-field-values.js";
 import { withTenantContext } from "../../lib/db.js";
 import { buildOutboxMetadata } from "../../lib/trace-context.js";
+import { invalidatePublicPageCache } from "../public/cache.js";
 
 /**
  * Single source of truth for the campaigns sort whitelist (issue #218).
@@ -532,7 +533,7 @@ export async function updateCampaign(
   // W3C trace-context → outbox metadata (issue #55); null outside an HTTP request.
   const metadata: OutboxMetadata | null = request ? buildOutboxMetadata(request) : null;
 
-  return withTenantContext(orgId, async (tx) => {
+  const result = await withTenantContext(orgId, async (tx) => {
     // FOR UPDATE: the `custom` merge-patch below is read-modify-write, so
     // a concurrent update of the same campaign must block until this tx
     // commits and then re-read the fresh blob — otherwise the two patches
@@ -610,6 +611,15 @@ export async function updateCampaign(
 
     return updated ? getCampaignById(tx, orgId, updated.id) : null;
   });
+
+  // The donor-facing page is gated on `campaigns.status = 'active'` (issue
+  // #611) and cached for 30 s — bust it AFTER the commit so a status change
+  // (activate / back-to-draft / close via PATCH) is visible immediately and a
+  // concurrent read cannot re-cache the pre-commit state.
+  if (result && input.status !== undefined) {
+    await invalidatePublicPageCache(id);
+  }
+  return result;
 }
 
 /** Close (soft-delete) a campaign by setting status to 'closed' */
@@ -622,7 +632,7 @@ export async function closeCampaign(
   // W3C trace-context → outbox metadata (issue #55); null outside an HTTP request.
   const metadata: OutboxMetadata | null = request ? buildOutboxMetadata(request) : null;
 
-  return withTenantContext(orgId, async (tx) => {
+  const result = await withTenantContext(orgId, async (tx) => {
     const [existing] = await tx
       .select()
       .from(campaigns)
@@ -649,6 +659,13 @@ export async function closeCampaign(
 
     return closed ? getCampaignById(tx, orgId, closed.id) : null;
   });
+
+  // A closed campaign's public page must 404 right away, not after the 30 s
+  // cache TTL (issue #611). After the commit — see `updateCampaign`.
+  if (result) {
+    await invalidatePublicPageCache(id);
+  }
+  return result;
 }
 
 /** Get campaign stats: total raised, donation count, unique donors */
