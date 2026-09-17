@@ -9,6 +9,7 @@ import { useCallback, useMemo, useTransition } from "react";
 import { EmptyState } from "@/components/shared/empty-state";
 import { DataTable, type DataTablePagination } from "@/components/ui/data-table";
 import { formatCurrency, formatDate } from "@/lib/format";
+import { paymentMethodLabel } from "@/lib/payment-method";
 import { cn } from "@/lib/utils";
 import type { Donation } from "@/models/donation";
 
@@ -24,6 +25,7 @@ export function DonationsTable({ donations, pagination }: DonationsTableProps) {
   const [isPending, startTransition] = useTransition();
   const locale = useLocale();
   const t = useTranslations("constituentDetail.donationsTab");
+  const tPaymentMethods = useTranslations("donations.paymentMethods");
 
   const navigateToPage = useCallback(
     (page: number) => {
@@ -66,7 +68,9 @@ export function DonationsTable({ donations, pagination }: DonationsTableProps) {
         accessorKey: "paymentMethod",
         header: () => t("columns.paymentMethod"),
         cell: ({ row }) => (
-          <span className="text-on-surface-variant">{row.original.paymentMethod ?? "—"}</span>
+          <span className="text-on-surface-variant">
+            {paymentMethodLabel(tPaymentMethods, row.original.paymentMethod) ?? "—"}
+          </span>
         ),
       },
       {
@@ -78,7 +82,7 @@ export function DonationsTable({ donations, pagination }: DonationsTableProps) {
         ),
       },
     ],
-    [t, locale],
+    [t, tPaymentMethods, locale],
   );
 
   return (

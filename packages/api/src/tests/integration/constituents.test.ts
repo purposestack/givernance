@@ -7,6 +7,7 @@ import {
   authHeader,
   ensureTestTenants,
   ORG_A,
+  ORG_B,
   signToken,
   signTokenB,
   USER_A,
@@ -23,6 +24,108 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await app.close();
+});
+
+// ─── Detail giving totals (issue #614) ──────────────────────────────────────
+
+describe("GET /v1/constituents/:id giving totals (issue #614)", () => {
+  it("returns lifetimeAmountCents + lastDonationAt over ALL cleared donations, not one page", async () => {
+    const tokenA = signToken(app);
+    const created = await app.inject({
+      method: "POST",
+      url: "/v1/constituents?force=true",
+      headers: authHeader(tokenA),
+      payload: { firstName: "Totals", lastName: `Donor${Date.now()}`, type: "donor" },
+    });
+    const constituentId = created.json<{ data: { id: string } }>().data.id;
+
+    // Same-named decoy in tenant B: its donation must never leak into A's sum.
+    const tokenB = signTokenB(app);
+    const decoy = await app.inject({
+      method: "POST",
+      url: "/v1/constituents?force=true",
+      headers: authHeader(tokenB),
+      payload: { firstName: "Totals", lastName: "Decoy", type: "donor" },
+    });
+    const decoyId = decoy.json<{ data: { id: string } }>().data.id;
+
+    const base = { currency: "EUR", exchangeRate: "1" } as const;
+    await withTenantContext(ORG_A, async (tx) => {
+      await tx.insert(donations).values([
+        // 12 cleared gifts of 10.00 — more than the profile's page of 10.
+        ...Array.from({ length: 12 }, (_, i) => ({
+          ...base,
+          orgId: ORG_A,
+          constituentId,
+          amountCents: 1000,
+          amountBaseCents: 1000,
+          status: "cleared" as const,
+          donatedAt: new Date(Date.UTC(2026, 0, i + 1)),
+        })),
+        // Not money received: excluded from the sum AND from lastDonationAt,
+        // even though they are the most recent rows.
+        {
+          ...base,
+          orgId: ORG_A,
+          constituentId,
+          amountCents: 99900,
+          amountBaseCents: 99900,
+          status: "refunded" as const,
+          donatedAt: new Date(Date.UTC(2026, 5, 1)),
+        },
+        {
+          ...base,
+          orgId: ORG_A,
+          constituentId,
+          amountCents: 77700,
+          amountBaseCents: 77700,
+          status: "pending" as const,
+          donatedAt: new Date(Date.UTC(2026, 6, 1)),
+        },
+      ]);
+    });
+    await withTenantContext(ORG_B, async (tx) => {
+      await tx.insert(donations).values({
+        ...base,
+        orgId: ORG_B,
+        constituentId: decoyId,
+        amountCents: 555500,
+        amountBaseCents: 555500,
+        status: "cleared",
+      });
+    });
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/v1/constituents/${constituentId}`,
+      headers: authHeader(tokenA),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{
+      data: { lifetimeAmountCents: number; lastDonationAt: string | null };
+    }>();
+    expect(body.data.lifetimeAmountCents).toBe(12_000);
+    expect(body.data.lastDonationAt).toBe("2026-01-12T00:00:00.000Z");
+  });
+
+  it("returns zero / null for a constituent who never gave", async () => {
+    const tokenA = signToken(app);
+    const created = await app.inject({
+      method: "POST",
+      url: "/v1/constituents?force=true",
+      headers: authHeader(tokenA),
+      payload: { firstName: "NoGift", lastName: `Yet${Date.now()}`, type: "volunteer" },
+    });
+    const id = created.json<{ data: { id: string } }>().data.id;
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/v1/constituents/${id}`,
+      headers: authHeader(tokenA),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ data: { lifetimeAmountCents: 0, lastDonationAt: null } });
+  });
 });
 
 // ─── CRUD Operations ────────────────────────────────────────────────────────

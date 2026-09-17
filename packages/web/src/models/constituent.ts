@@ -59,10 +59,21 @@ export interface Constituent {
 /**
  * List-only enrichment: latest donation date for the constituent, or
  * `null` if they've never donated. Surfaced by the API's
- * `GET /v1/constituents` LEFT JOIN aggregate (issue #215). The detail
- * route does not return this field.
+ * `GET /v1/constituents` LEFT JOIN aggregate (issue #215).
  */
 export interface ConstituentListRow extends Constituent {
+  lastDonationAt: string | null;
+}
+
+/**
+ * Detail-only enrichment from `GET /v1/constituents/:id` (issue #614):
+ * giving totals over ALL of the constituent's CLEARED donations — never
+ * derived client-side from a page of the donations list.
+ */
+export interface ConstituentDetail extends Constituent {
+  /** Lifetime cleared giving, in the tenant's base-currency cents. */
+  lifetimeAmountCents: number;
+  /** Most recent cleared donation, or `null` if they've never given. */
   lastDonationAt: string | null;
 }
 

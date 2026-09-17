@@ -41,12 +41,29 @@ function renderSection(overrides: Partial<Parameters<typeof PostalCampaignSectio
       initialMemberTotal={0}
       initialExports={[]}
       mergedPdfEnabled={false}
+      advancedFiltersEnabled={false}
       {...overrides}
     />,
   );
 }
 
 describe("PostalCampaignSection", () => {
+  // Issue #614 — `advanced_filters` off-state QA: the members card's Filter
+  // entry point must be completely absent (its endpoints 404 with the flag off).
+  it("hides the Advanced Filters button when advanced_filters is off", () => {
+    renderSection({ advancedFiltersEnabled: false });
+
+    expect(screen.queryByRole("button", { name: "Advanced Filters" })).not.toBeInTheDocument();
+    // The plain "Add constituents" picker stays.
+    expect(screen.getByRole("button", { name: "Add constituents" })).toBeInTheDocument();
+  });
+
+  it("shows the Advanced Filters button when advanced_filters is on", () => {
+    renderSection({ advancedFiltersEnabled: true });
+
+    expect(screen.getByRole("button", { name: "Advanced Filters" })).toBeInTheDocument();
+  });
+
   it("disables Generate ZIP and shows the readiness banner when the campaign is still a draft", () => {
     renderSection({ campaignStatus: "draft" });
 

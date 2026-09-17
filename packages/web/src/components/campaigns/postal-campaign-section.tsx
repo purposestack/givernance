@@ -57,6 +57,13 @@ interface PostalCampaignSectionProps {
    * the ZIP/merged-PDF format selector when false.
    */
   mergedPdfEnabled: boolean;
+  /**
+   * Whether `advanced_filters` is enabled for this tenant (Epic #418).
+   * SSR-resolved in the campaign page server component and passed straight
+   * through to the members card, which hides its Filter button, the
+   * FilterBuilder and the applied-filters strip when false.
+   */
+  advancedFiltersEnabled: boolean;
 }
 
 export function PostalCampaignSection({
@@ -70,6 +77,7 @@ export function PostalCampaignSection({
   initialExports,
   donorCustomDefs = [],
   mergedPdfEnabled,
+  advancedFiltersEnabled,
 }: PostalCampaignSectionProps) {
   const [memberCount, setMemberCount] = useState(initialMemberTotal);
 
@@ -81,6 +89,7 @@ export function PostalCampaignSection({
         initialTotal={initialMemberTotal}
         donorCustomDefs={donorCustomDefs}
         doorDrop={campaignType === "door_drop"}
+        advancedFiltersEnabled={advancedFiltersEnabled}
         onTotalChanged={setMemberCount}
       />
       <PostalExportPanel

@@ -2,6 +2,7 @@
 
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
+import { useTranslations } from "next-intl";
 import {
   type ComponentPropsWithoutRef,
   type ElementRef,
@@ -48,59 +49,62 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 export const DialogContent = forwardRef<
   ElementRef<typeof DialogPrimitive.Content>,
   ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, ...props }, ref) => (
-  <DialogPortal>
-    <DialogOverlay />
-    <DialogPrimitive.Content
-      ref={ref}
-      className={cn(
-        // TOP-ANCHORED, not vertically centered: a centered overlay
-        // re-centers on every content-height change, so any dialog whose
-        // body grows/shrinks while open (search results, wizard steps,
-        // async loads, error banners) makes the whole surface jump.
-        // Anchored at a fixed 15vh, height changes only extend the
-        // bottom edge and inputs never move. Static confirmation
-        // surfaces that want true centering use AlertDialog — a
-        // centered overlay may never contain height-dynamic content.
-        "fixed left-1/2 top-[15vh] z-[var(--z-modal)] -translate-x-1/2 translate-y-0",
-        "w-full max-w-lg p-6",
-        "max-h-[80vh] overflow-y-auto",
-        "bg-surface-container-lowest text-on-surface",
-        "border border-border-brand rounded-[var(--radius-lg)]",
-        "shadow-overlay",
-        // ADR-035 D15 — enter: opacity 0→1 + scale(0.98)→1 over
-        // --duration-slower (300ms) --ease-out via @starting-style, once
-        // per open. Exit: plain fade, faster than entrance — the
-        // dedicated `overlay-exit` keyframe over --duration-exit (200ms)
-        // --ease-in, with the entrance transition disabled on close so
-        // the exit animation owns the closed state. Radix centering rides
-        // the `translate` property, so the opacity/scale motion never
-        // touches it — compositor properties only (E18).
-        "transition-[opacity,scale] duration-[var(--duration-slower)] ease-out",
-        "starting:opacity-0 starting:scale-[0.98]",
-        "data-[state=closed]:transition-none",
-        "data-[state=closed]:opacity-0",
-        "data-[state=closed]:animate-[overlay-exit_var(--duration-exit)_var(--ease-in)_forwards]",
-        "focus:outline-none",
-        className,
-      )}
-      {...props}
-    >
-      {children}
-      <DialogPrimitive.Close
+>(({ className, children, ...props }, ref) => {
+  const t = useTranslations("common.actions");
+  return (
+    <DialogPortal>
+      <DialogOverlay />
+      <DialogPrimitive.Content
+        ref={ref}
         className={cn(
-          "absolute right-4 top-4 rounded-[var(--radius-sm)] p-1",
-          "text-on-surface-variant opacity-70 transition-opacity",
-          "hover:opacity-100 focus-visible:outline-none focus-visible:shadow-ring",
-          "disabled:pointer-events-none",
+          // TOP-ANCHORED, not vertically centered: a centered overlay
+          // re-centers on every content-height change, so any dialog whose
+          // body grows/shrinks while open (search results, wizard steps,
+          // async loads, error banners) makes the whole surface jump.
+          // Anchored at a fixed 15vh, height changes only extend the
+          // bottom edge and inputs never move. Static confirmation
+          // surfaces that want true centering use AlertDialog — a
+          // centered overlay may never contain height-dynamic content.
+          "fixed left-1/2 top-[15vh] z-[var(--z-modal)] -translate-x-1/2 translate-y-0",
+          "w-full max-w-lg p-6",
+          "max-h-[80vh] overflow-y-auto",
+          "bg-surface-container-lowest text-on-surface",
+          "border border-border-brand rounded-[var(--radius-lg)]",
+          "shadow-overlay",
+          // ADR-035 D15 — enter: opacity 0→1 + scale(0.98)→1 over
+          // --duration-slower (300ms) --ease-out via @starting-style, once
+          // per open. Exit: plain fade, faster than entrance — the
+          // dedicated `overlay-exit` keyframe over --duration-exit (200ms)
+          // --ease-in, with the entrance transition disabled on close so
+          // the exit animation owns the closed state. Radix centering rides
+          // the `translate` property, so the opacity/scale motion never
+          // touches it — compositor properties only (E18).
+          "transition-[opacity,scale] duration-[var(--duration-slower)] ease-out",
+          "starting:opacity-0 starting:scale-[0.98]",
+          "data-[state=closed]:transition-none",
+          "data-[state=closed]:opacity-0",
+          "data-[state=closed]:animate-[overlay-exit_var(--duration-exit)_var(--ease-in)_forwards]",
+          "focus:outline-none",
+          className,
         )}
+        {...props}
       >
-        <X size={16} aria-hidden="true" />
-        <span className="sr-only">Close</span>
-      </DialogPrimitive.Close>
-    </DialogPrimitive.Content>
-  </DialogPortal>
-));
+        {children}
+        <DialogPrimitive.Close
+          className={cn(
+            "absolute right-4 top-4 rounded-[var(--radius-sm)] p-1",
+            "text-on-surface-variant opacity-70 transition-opacity",
+            "hover:opacity-100 focus-visible:outline-none focus-visible:shadow-ring",
+            "disabled:pointer-events-none",
+          )}
+        >
+          <X size={16} aria-hidden="true" />
+          <span className="sr-only">{t("close")}</span>
+        </DialogPrimitive.Close>
+      </DialogPrimitive.Content>
+    </DialogPortal>
+  );
+});
 DialogContent.displayName = DialogPrimitive.Content.displayName;
 
 export function DialogHeader({ className, ...props }: HTMLAttributes<HTMLDivElement>) {

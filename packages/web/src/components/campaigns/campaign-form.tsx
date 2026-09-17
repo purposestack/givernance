@@ -111,6 +111,12 @@ export type CampaignFormProps = (CreateMode | EditMode) & {
    * the custom-fields section is completely absent.
    */
   customFieldDefs?: CustomFieldDefinition[];
+  /**
+   * Whether the caller may manage postal recipients (org_admin — docs/23 §7).
+   * Only then does creating a nominative postal campaign continue to the
+   * add-constituents step; everyone else lands on the campaign detail.
+   */
+  canManageRecipients?: boolean;
 };
 
 const EMPTY_PARENT = "__none__";
@@ -120,7 +126,7 @@ const CAMPAIGN_OPTION_PAGE_SIZE = 100;
 const QR_REFERENCE_MODES: readonly CampaignQrReferenceMode[] = ["auto", "qrr", "scor"];
 
 export function CampaignForm(props: CampaignFormProps) {
-  const { mode, customFieldDefs = [] } = props;
+  const { mode, customFieldDefs = [], canManageRecipients = false } = props;
   const router = useRouter();
   const t = useTranslations("campaigns.form");
   const tCampaigns = useTranslations("campaigns");
@@ -265,7 +271,8 @@ export function CampaignForm(props: CampaignFormProps) {
         });
         toast.success(t("success.created"));
         // For nominative postal campaigns, redirect to constituent selection
-        if (created.type === "nominative_postal") {
+        // — org admins only, the recipient endpoints are `requireOrgAdmin`.
+        if (created.type === "nominative_postal" && canManageRecipients) {
           router.push(`/campaigns/${created.id}/add-constituents`);
         } else {
           router.push(`/campaigns/${created.id}`);

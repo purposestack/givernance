@@ -1,3 +1,4 @@
+import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
 import { Filter, Users } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -9,9 +10,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
-import { requirePermission } from "@/lib/auth/guards";
+import { requireOrgAdmin } from "@/lib/auth/guards";
 import type { Campaign } from "@/models/campaign";
 import { CampaignService } from "@/services/CampaignService";
+import { FeatureFlagsService, isFlagEnabled } from "@/services/FeatureFlagsService";
 
 import { AddConstituentsContent } from "./add-constituents-content";
 
@@ -32,10 +34,23 @@ async function fetchCampaignOrNotFound(id: string): Promise<Campaign> {
 }
 
 export default async function AddConstituentsPage({ params }: AddConstituentsPageProps) {
-  await requirePermission("write");
+  // Every recipient endpoint (`/v1/campaigns/:id/constituents`, the filter
+  // bulk-add) is `requireOrgAdmin` — docs/23 §7. A `write` page guard let
+  // role `user` in, only to hit a guaranteed 403 on submit (issue #614).
+  await requireOrgAdmin();
 
   const { id } = await params;
   const campaign = await fetchCampaignOrNotFound(id);
+
+  // Epic #418 — with `advanced_filters` off the "Advanced filters" card is
+  // completely absent (its preview/bulk-add endpoints 404). Fail-closed.
+  let advancedFiltersEnabled = false;
+  try {
+    const flags = await FeatureFlagsService.listPublic(await createServerApiClient());
+    advancedFiltersEnabled = isFlagEnabled(flags, FEATURE_FLAG_KEYS.ADVANCED_FILTERS);
+  } catch {
+    advancedFiltersEnabled = false;
+  }
 
   const [t, tCampaigns] = await Promise.all([
     getTranslations("campaigns.addConstituents"),
@@ -91,19 +106,21 @@ export default async function AddConstituentsPage({ params }: AddConstituentsPag
         }
       />
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Filter size={18} aria-hidden="true" />
-              {t("advancedFilters.title")}
-            </CardTitle>
-            <CardDescription>{t("advancedFilters.description")}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <AddConstituentsContent campaignId={campaign.id} mode="filter" />
-          </CardContent>
-        </Card>
+      <div className={advancedFiltersEnabled ? "grid gap-6 lg:grid-cols-2" : "grid gap-6"}>
+        {advancedFiltersEnabled ? (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Filter size={18} aria-hidden="true" />
+                {t("advancedFilters.title")}
+              </CardTitle>
+              <CardDescription>{t("advancedFilters.description")}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <AddConstituentsContent campaignId={campaign.id} mode="filter" />
+            </CardContent>
+          </Card>
+        ) : null}
 
         <Card>
           <CardHeader>

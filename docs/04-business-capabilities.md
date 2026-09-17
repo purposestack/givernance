@@ -354,8 +354,8 @@ Inputs (resources, funding) → Activities (programs) → Outputs (service deliv
 | `/v1/constituents/{id}/sar` | GET | Subject access report |
 | `/v1/constituents/{id}/erasure` | POST | Queues erasure |
 | `/v1/households` | GET, POST | |
-| `/v1/donations` | GET, POST | |
-| `/v1/donations/{id}` | GET, PATCH | |
+| `/v1/donations` | GET, POST | List rows carry the lifecycle `status` (`pending` / `cleared` / `refunded` / `failed`) so the list can badge non-settled gifts |
+| `/v1/donations/{id}` | GET, PATCH | GET returns `status` and `campaign: { id, name } \| null` (org-scoped lookup) so the detail page shows the campaign name, not its UUID |
 | `/v1/donations/{id}/refund` | POST | |
 | `/v1/pledges` | GET, POST | |
 | `/v1/campaigns` | GET, POST | |

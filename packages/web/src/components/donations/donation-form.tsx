@@ -125,6 +125,28 @@ export type DonationFormProps = (CreateMode | EditMode) & {
   customFieldDefs?: CustomFieldDefinition[];
 };
 
+/**
+ * The campaign picker only lists ACTIVE campaigns. When the donation being
+ * edited is attributed to a campaign outside that list, fetch it and prepend
+ * it so the select shows the real attribution (issue #614). A fetch failure
+ * degrades to the active-only list.
+ */
+async function withCurrentCampaign(
+  client: ReturnType<typeof createClientApiClient>,
+  activeCampaigns: Campaign[],
+  currentCampaignId: string | null,
+): Promise<Campaign[]> {
+  if (!currentCampaignId || activeCampaigns.some((c) => c.id === currentCampaignId)) {
+    return activeCampaigns;
+  }
+  try {
+    const current = await CampaignService.getCampaign(client, currentCampaignId);
+    return [current, ...activeCampaigns];
+  } catch {
+    return activeCampaigns;
+  }
+}
+
 async function loadDonationFunds(campaignId: string): Promise<Fund[]> {
   const client = createClientApiClient();
 
@@ -143,6 +165,7 @@ export function DonationForm(props: DonationFormProps) {
   const { mode, customFieldDefs = [] } = props;
   const router = useRouter();
   const t = useTranslations("donations.form");
+  const tCampaignStatus = useTranslations("campaigns.status");
   const tCustom = useTranslations("customFields");
 
   // Epic #539 — custom values live outside react-hook-form (controlled map;
@@ -234,6 +257,7 @@ export function DonationForm(props: DonationFormProps) {
 
   const [campaignOptions, setCampaignOptions] = useState<Campaign[]>([]);
   const [campaignsLoading, setCampaignsLoading] = useState(true);
+  const currentCampaignId = props.donation?.campaignId ?? null;
 
   const [fundOptions, setFundOptions] = useState<Fund[]>([]);
 
@@ -247,8 +271,12 @@ export function DonationForm(props: DonationFormProps) {
           perPage: 100,
           status: "active",
         });
+        // Issue #614 — editing a donation whose campaign is no longer active
+        // (closed / draft) left the select empty, and saving then silently
+        // dropped the attribution. Fetch that one campaign and prepend it.
+        const options = await withCurrentCampaign(client, result.data, currentCampaignId);
         if (active) {
-          setCampaignOptions(result.data);
+          setCampaignOptions(options);
         }
       } catch {
         // ignore
@@ -260,7 +288,7 @@ export function DonationForm(props: DonationFormProps) {
     return () => {
       active = false;
     };
-  }, []);
+  }, [currentCampaignId]);
 
   useEffect(() => {
     const subscription = form.watch((values, info) => {
@@ -548,13 +576,18 @@ export function DonationForm(props: DonationFormProps) {
                     <SelectItem value="__none__">{t("fields.campaignIdPlaceholder")}</SelectItem>
                     {campaignOptions.map((campaign) => (
                       <SelectItem key={campaign.id} value={campaign.id}>
-                        {campaign.name}
+                        {campaign.status === "active"
+                          ? campaign.name
+                          : t("fields.campaignWithStatus", {
+                              name: campaign.name,
+                              status: tCampaignStatus(campaign.status),
+                            })}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
                 {campaignsLoading ? (
-                  <p className="text-xs text-on-surface-variant">Chargement des campagnes...</p>
+                  <p className="text-xs text-on-surface-variant">{t("fields.campaignsLoading")}</p>
                 ) : null}
                 <FormMessage />
               </FormItem>

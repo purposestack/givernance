@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
 import { hasPermission, requireAuth } from "@/lib/auth/guards";
+import { redirectPastLastPage } from "@/lib/pagination";
 import type {
   ConstituentListResponse,
   ConstituentSortField,
@@ -62,6 +63,44 @@ function parsePositiveInt(value: string | string[] | undefined, fallback: number
   const parsed = val ? Number.parseInt(val, 10) : Number.NaN;
   if (!Number.isFinite(parsed) || parsed < 1) return fallback;
   return max ? Math.min(parsed, max) : parsed;
+}
+
+/**
+ * Basic "More filters" dialog params (issue #614). The dialog writes full
+ * ISO-8601 instants (`2026-01-01T00:00:00.000Z`); the API querystring schema
+ * is `format: "date-time"`, so anything else (hand-edited URL) is dropped
+ * here rather than round-tripped into a 400.
+ */
+function parseIsoDateTime(value: string | string[] | undefined): string | undefined {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (!raw || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/.test(raw)) {
+    return undefined;
+  }
+  return Number.isNaN(Date.parse(raw)) ? undefined : raw;
+}
+
+function parseNonNegativeInt(value: string | string[] | undefined): number | undefined {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (!raw || !/^\d+$/.test(raw)) return undefined;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isSafeInteger(parsed) ? parsed : undefined;
+}
+
+/**
+ * Basic "More filters" dialog params — the only filter entry point when
+ * `advanced_filters` is off. With the flag on the FilterBuilder replaces the
+ * dialog, so nothing is forwarded.
+ */
+function parseBasicFilters(
+  params: Record<string, string | string[] | undefined>,
+  advancedFiltersEnabled: boolean,
+) {
+  if (advancedFiltersEnabled) return {};
+  return {
+    lastDonationFrom: parseIsoDateTime(params.lastDonationFrom),
+    lastDonationTo: parseIsoDateTime(params.lastDonationTo),
+    minLifetimeAmountCents: parseNonNegativeInt(params.minLifetimeAmountCents),
+  };
 }
 
 export default async function ConstituentsPage({ searchParams }: ConstituentsPageProps) {
@@ -164,6 +203,9 @@ export default async function ConstituentsPage({ searchParams }: ConstituentsPag
     sort,
     order,
     filters: effectiveFilters,
+    // Basic "More filters" dialog (issue #614) — forwarded only with
+    // `advanced_filters` off.
+    ...parseBasicFilters(params, advancedFiltersEnabled),
   };
 
   let result: ConstituentListResponse;
@@ -190,6 +232,9 @@ export default async function ConstituentsPage({ searchParams }: ConstituentsPag
       throw err;
     }
   }
+
+  // Issue #614 — a page past the last one redirects to the last real page.
+  redirectPastLastPage("/constituents", params, result.pagination);
 
   const hasAny = result.pagination.total > 0;
   // A zero-result view REACHED THROUGH filtering must keep the table shell

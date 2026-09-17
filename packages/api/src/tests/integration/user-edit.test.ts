@@ -18,7 +18,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { auditLogs, tenants, users } from "@givernance/shared/schema";
+import { auditLogs, outboxEvents, tenants, users } from "@givernance/shared/schema";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -167,6 +167,8 @@ afterEach(async () => {
       // for cleanup (matches signup.test.ts / team-invitations.test.ts).
       await tx.execute(sql`SET LOCAL session_replication_role = 'replica'`);
       await tx.delete(auditLogs).where(inArray(auditLogs.orgId, ids));
+      // DELETE /v1/users/:id emits `user.soft_deleted` (issue #614 suite).
+      await tx.delete(outboxEvents).where(inArray(outboxEvents.tenantId, ids));
       await tx.delete(users).where(inArray(users.orgId, ids));
       await tx.delete(tenants).where(inArray(tenants.id, ids));
     });
@@ -612,5 +614,131 @@ describe("PATCH /v1/users/:id (issue #161)", () => {
       title: "Forbidden",
       status: 403,
     });
+  });
+});
+
+// ─── DELETE /v1/users/:id removal guards (issue #614) ────────────────────────
+
+describe("DELETE /v1/users/:id removal guards (issue #614)", () => {
+  /** Insert an extra org_admin row in the fixture tenant (optionally soft-deleted). */
+  async function insertAdmin(
+    f: Fixture,
+    opts: { deleted: boolean },
+  ): Promise<{ id: string; kcId: string }> {
+    const id = randomUUID();
+    const kcId = `kc-extra-${randomUUID().slice(0, 8)}`;
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT set_config('app.current_organization_id', ${f.orgId}, true)`);
+      await tx.insert(users).values({
+        id,
+        orgId: f.orgId,
+        email: `extra-${id.slice(0, 8)}-${f.slug}@example.org`,
+        firstName: "Extra",
+        lastName: "Admin",
+        role: "org_admin",
+        // ADR-021 — a soft-deleted row has its keycloak link cleared.
+        keycloakId: opts.deleted ? null : kcId,
+        deletedAt: opts.deleted ? new Date() : null,
+      });
+    });
+    return { id, kcId };
+  }
+
+  it("returns 422 cannot_remove_self when an org_admin removes their own row", async () => {
+    const f = await makeFixture();
+    // A second active admin exists, so ONLY the self guard can fire.
+    await insertAdmin(f, { deleted: false });
+
+    const res = await app.inject({
+      method: "DELETE",
+      url: `/v1/users/${f.adminUserId}`,
+      headers: authHeader(f.adminToken),
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json()).toMatchObject({
+      type: "https://httpproblems.com/http-status/422",
+      title: "Unprocessable Entity",
+      status: 422,
+      errorCode: "cannot_remove_self",
+    });
+
+    // DB unchanged — row still active, keycloak link intact.
+    const [row] = await db
+      .select({ deletedAt: users.deletedAt, keycloakId: users.keycloakId })
+      .from(users)
+      .where(eq(users.id, f.adminUserId));
+    expect(row?.deletedAt).toBeNull();
+    expect(row?.keycloakId).toBe(f.adminKcId);
+    expect(fakeKeycloakAdmin.deleteUser).not.toHaveBeenCalledWith(f.adminKcId);
+  });
+
+  it("returns 422 cannot_remove_last_admin when the target is the only ACTIVE org_admin (soft-deleted admins don't count)", async () => {
+    const f = await makeFixture();
+    // A soft-deleted admin must NOT count as a remaining admin.
+    await insertAdmin(f, { deleted: true });
+    // Caller: the member's sub with an org_admin JWT claim (same trick as
+    // the PATCH last-admin test — the DB row says `user`, so the fixture
+    // admin is the only active org_admin row).
+    const callerToken = signToken(app, {
+      sub: f.memberKcId,
+      org_id: f.orgId,
+      role: "org_admin",
+    });
+
+    const res = await app.inject({
+      method: "DELETE",
+      url: `/v1/users/${f.adminUserId}`,
+      headers: authHeader(callerToken),
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json()).toMatchObject({
+      type: "https://httpproblems.com/http-status/422",
+      title: "Unprocessable Entity",
+      status: 422,
+      errorCode: "cannot_remove_last_admin",
+    });
+
+    const [row] = await db
+      .select({ deletedAt: users.deletedAt })
+      .from(users)
+      .where(eq(users.id, f.adminUserId));
+    expect(row?.deletedAt).toBeNull();
+  });
+
+  it("PATCH last-admin count ignores soft-deleted admins too", async () => {
+    const f = await makeFixture();
+    await insertAdmin(f, { deleted: true });
+    const callerToken = signToken(app, {
+      sub: f.memberKcId,
+      org_id: f.orgId,
+      role: "org_admin",
+    });
+
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/v1/users/${f.adminUserId}`,
+      headers: authHeader(callerToken),
+      payload: { role: "user" },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json()).toMatchObject({ errorCode: "cannot_demote_last_admin" });
+  });
+
+  it("allows removing an org_admin while another active org_admin remains", async () => {
+    const f = await makeFixture();
+    const other = await insertAdmin(f, { deleted: false });
+
+    const res = await app.inject({
+      method: "DELETE",
+      url: `/v1/users/${other.id}`,
+      headers: authHeader(f.adminToken),
+    });
+    expect(res.statusCode).toBe(200);
+
+    const [row] = await db
+      .select({ deletedAt: users.deletedAt })
+      .from(users)
+      .where(eq(users.id, other.id));
+    expect(row?.deletedAt).not.toBeNull();
   });
 });

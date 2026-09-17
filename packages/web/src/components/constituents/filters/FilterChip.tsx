@@ -2,9 +2,10 @@
 "use client";
 
 import { Sparkles, X } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { formatDate } from "@/lib/format";
 import { filterFields, getOperatorLabel } from "./filter-presets";
 import type { FilterChipData, FilterField } from "./filter-types";
 
@@ -134,6 +135,7 @@ export function FilterChip({
   namespace = "constituents.filters",
 }: FilterChipProps) {
   const t = useTranslations(namespace);
+  const locale = useLocale();
   const catalog = fields ?? filterFields;
   const isPattern = filter.kind === "pattern";
   // `filter.label` and `filter.field` are both candidates: callers either
@@ -177,7 +179,7 @@ export function FilterChip({
       if (value.length === 2 && filter.operator === "between") {
         // Format date range
         if (typeof value[0] === "string" && value[0].match(/\d{4}-\d{2}-\d{2}/)) {
-          return `${new Date(value[0]).toLocaleDateString()} - ${new Date(value[1]).toLocaleDateString()}`;
+          return `${formatDate(value[0], locale, "short")} - ${formatDate(value[1], locale, "short")}`;
         }
         return `${value[0]} - ${value[1]}`;
       }
@@ -189,7 +191,7 @@ export function FilterChip({
     }
 
     if (typeof value === "string" && value.match(/\d{4}-\d{2}-\d{2}/)) {
-      return new Date(value).toLocaleDateString();
+      return formatDate(value, locale, "short");
     }
 
     // Single-value condition (e.g. legacy `eq donor`) — resolve through the

@@ -37,8 +37,10 @@ interface RefundDonationButtonProps {
  * only — guarded both client-side (rendered behind `hasPermission(auth,
  * "admin")` on the detail page) and server-side (`requireOrgAdmin`).
  *
- * On success we `router.refresh()` so the donation status badge flips
- * to "refunded" without a full reload. The Stripe-side rollback of the
+ * On success we `router.refresh()` so the page re-renders from the server:
+ * the header's `DonationStatusBadge` flips to "refunded" and this button
+ * disappears (`canRefund` is false for refunded rows), without a full
+ * reload. The Stripe-side rollback of the
  * application fee is handled by the route's `refund_application_fee:
  * true` flag (issue #199 / docs/payments-overview.md).
  */

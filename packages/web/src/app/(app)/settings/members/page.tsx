@@ -6,6 +6,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
 import { createServerApiClient } from "@/lib/api/client-server";
 import { requireAuth } from "@/lib/auth/guards";
+import { redirectPastLastPage } from "@/lib/pagination";
 import { InvitationService } from "@/services/InvitationService";
 import { MemberService } from "@/services/MemberService";
 import { UserService } from "@/services/UserService";
@@ -73,6 +74,10 @@ export default async function MembersPage({ searchParams }: MembersPageProps) {
       : Promise.resolve(null),
     canManageMembers ? UserService.getMe(client) : Promise.resolve(null),
   ]);
+
+  // Issue #614 — a page past the last one redirects to the last real page.
+  if (members) redirectPastLastPage("/settings/members", params, members.pagination, "mPage");
+  redirectPastLastPage("/settings/members", params, invitationsResult.pagination, "iPage");
 
   const invitationCount = invitationsResult.pagination.total;
   const memberCount = members?.pagination.total ?? 0;

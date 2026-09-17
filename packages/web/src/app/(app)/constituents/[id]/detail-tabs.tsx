@@ -22,14 +22,14 @@ export function DetailTabs({ overview, donations, timeline }: DetailTabsProps) {
   const t = useTranslations("constituentDetail.tabs");
 
   return (
-    // ADR-035 rule A2 — the tabs block is step 2 of the detail-page
-    // cascade (profile header 0, AI suggestion 1). The class sits on the
+    // ADR-035 rule A2 — the tabs block is step 1 of the detail-page
+    // cascade (profile header 0). The class sits on the
     // persistent Tabs root, so switching tabs (which remounts panels)
     // never replays the entrance (rule B12).
     <Tabs
       defaultValue="overview"
       className="w-full reveal-item"
-      style={{ "--cascade-i": 2 } as React.CSSProperties}
+      style={{ "--cascade-i": 1 } as React.CSSProperties}
     >
       <TabsList>
         <TabsTrigger value="overview">{t("overview")}</TabsTrigger>

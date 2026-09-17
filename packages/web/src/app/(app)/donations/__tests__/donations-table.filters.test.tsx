@@ -73,7 +73,10 @@ describe("DonationsTable advanced-filter gating", () => {
     renderTable({ advancedFiltersEnabled: false });
 
     expect(screen.queryByText("Active filter")).not.toBeInTheDocument();
-    expect(screen.queryByText("Status")).not.toBeInTheDocument();
+    // "Status" is also the lifecycle column header (issue #614) — only the
+    // header may carry it; the chip (field label + operator) stays absent.
+    expect(screen.getAllByText("Status")).toHaveLength(1);
+    expect(screen.queryByText("equals")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "More filters" })).toBeInTheDocument();
   });
 
@@ -92,7 +95,8 @@ describe("DonationsTable advanced-filter gating", () => {
 
     expect(screen.getByText("Active filter")).toBeInTheDocument();
     // Field label + operator + localized enum value from the donations catalog.
-    expect(screen.getByText("Status")).toBeInTheDocument();
+    // Twice: the chip's field label + the lifecycle column header (issue #614).
+    expect(screen.getAllByText("Status")).toHaveLength(2);
     expect(screen.getByText("equals")).toBeInTheDocument();
     expect(screen.getByText("Cleared")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Clear filter" })).toBeInTheDocument();

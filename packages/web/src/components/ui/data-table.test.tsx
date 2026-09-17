@@ -18,7 +18,7 @@
  */
 
 import type { ColumnDef } from "@tanstack/react-table";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { fireEvent, render } from "@/tests/test-utils";
 
@@ -152,5 +152,35 @@ describe("DataTable — entrance choreography (ADR-035)", () => {
     for (const row of bodyRows(container)) {
       expect(row.classList.contains("row-reveal")).toBe(false);
     }
+  });
+});
+
+describe("DataTable — pagination footer", () => {
+  it("hides the footer for an empty first page", () => {
+    const { queryByRole } = render(
+      <DataTable
+        columns={columns}
+        data={[]}
+        pagination={{ page: 1, perPage: 20, total: 0, totalPages: 0 }}
+        onPageChange={() => {}}
+      />,
+    );
+    expect(queryByRole("button", { name: "Previous page" })).toBeNull();
+  });
+
+  it("keeps the footer on an empty page past the first so the operator can page back (issue #614)", () => {
+    const onPageChange = vi.fn();
+    const { getByRole } = render(
+      <DataTable
+        columns={columns}
+        data={[]}
+        pagination={{ page: 4, perPage: 20, total: 45, totalPages: 3 }}
+        onPageChange={onPageChange}
+      />,
+    );
+
+    expect(getByRole("button", { name: "Next page" })).toBeDisabled();
+    fireEvent.click(getByRole("button", { name: "Previous page" }));
+    expect(onPageChange).toHaveBeenCalledWith(3);
   });
 });

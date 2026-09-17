@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { Fragment, type ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
@@ -10,6 +11,8 @@ export interface Breadcrumb {
 
 export interface PageHeaderProps {
   title: string;
+  /** Status badge rendered inline after the title (mockup `page-header-title-row`). */
+  titleBadge?: ReactNode;
   description?: ReactNode;
   breadcrumbs?: Breadcrumb[];
   actions?: ReactNode;
@@ -35,8 +38,9 @@ function BreadcrumbLabel({ crumb, isLast }: { crumb: Breadcrumb; isLast: boolean
 }
 
 function Breadcrumbs({ items }: { items: Breadcrumb[] }) {
+  const t = useTranslations("common");
   return (
-    <nav aria-label="Breadcrumb" className="mb-2">
+    <nav aria-label={t("breadcrumb")} className="mb-2">
       <ol className="flex items-center gap-2 text-sm text-on-surface-variant">
         {items.map((crumb, index) => {
           const isLast = index === items.length - 1;
@@ -61,6 +65,7 @@ function Breadcrumbs({ items }: { items: Breadcrumb[] }) {
 
 export function PageHeader({
   title,
+  titleBadge,
   description,
   breadcrumbs,
   actions,
@@ -75,9 +80,12 @@ export function PageHeader({
     >
       <div className="min-w-0 flex-1">
         {breadcrumbs && breadcrumbs.length > 0 ? <Breadcrumbs items={breadcrumbs} /> : null}
-        <h1 className="font-heading text-4xl font-normal leading-[1.1] tracking-tight text-on-surface sm:text-5xl">
-          {title}
-        </h1>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <h1 className="font-heading text-4xl font-normal leading-[1.1] tracking-tight text-on-surface sm:text-5xl">
+            {title}
+          </h1>
+          {titleBadge}
+        </div>
         {description ? <p className="mt-2 text-lg text-on-surface-variant">{description}</p> : null}
       </div>
       {actions ? (

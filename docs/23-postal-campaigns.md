@@ -639,6 +639,10 @@ See [`docs/18-feature-flags.md § 0`](18-feature-flags.md) for the registry shap
 | `GET /v1/constituents/bulk-email-jobs/:id` | `requireOrgAdmin` | Polling endpoint, rate-limited 60/min |
 | `POST /v1/constituents/bulk-email-jobs/:id/resume` | `requireOrgAdmin` | Creates a fresh job targeting recipients the source never reached; gated on source status (`partial` / `failed` / stalled `processing`) |
 
+**Web guards mirror the API (issue #614).** The recipient picker page `/campaigns/:id/add-constituents` is guarded by `requireOrgAdmin` (non-admins get a 404, same anti-disclosure posture as the API-side 403 would otherwise surface as a dead-end toast), the postal panel on the campaign detail renders for `org_admin` only, and after creating a `nominative_postal` campaign only an `org_admin` is redirected to the recipient picker — a `user` lands on the campaign detail.
+
+**`advanced_filters` off-state.** The bulk-add-by-filter surfaces (the members card's "Advanced Filters" button + FilterBuilder + applied-filters strip, and the "Advanced filters" card on the recipient picker) are SSR-gated on the `advanced_filters` flag and completely absent when it is off; the plain search picker stays.
+
 ## 8. Privacy & GDPR
 
 - **Opaque tokens** — printed QR codes carry no PII. A scrap of paper found in the wild reveals nothing about the recipient or the tenant

@@ -31,7 +31,9 @@
       "backToDashboard": "Back to dashboard",
       "search": "Search",
       "or": "or",
-      "submitting": "Saving…"
+      "submitting": "Saving…",
+      "close": "Close",
+      "clearSearch": "Clear search"
     },
     "footer": {
       "platform": "Givernance NPO Platform",
@@ -39,7 +41,8 @@
     },
     "brandingFallback": {
       "altText": "{orgName} logo placeholder"
-    }
+    },
+    "breadcrumb": "Breadcrumb"
   },
   "auth": {
     "login": {
@@ -314,6 +317,10 @@
       "description": "Something went wrong on our end. Our team has been notified and is working to resolve the issue.",
       "errorId": "Error ID: {digest}",
       "dashboardLink": "You can also go back to the <link>dashboard</link>."
+    },
+    "app": {
+      "title": "This page couldn't be displayed",
+      "description": "Something went wrong on our end while loading this page. Our team has been notified. You can try again, or head back to the dashboard."
     }
   },
   "appShell": {
@@ -1779,6 +1786,8 @@
       "errors": {
         "resendGeneric": "Couldn't resend the invitation. Please try again.",
         "revokeGeneric": "Couldn't revoke the invitation. Please try again.",
+        "removeSelf": "You can't remove your own account from the workspace.",
+        "removeLastAdmin": "Can't remove the last admin in this workspace — promote another admin first.",
         "removeGeneric": "Couldn't remove the member. Please try again."
       }
     },
@@ -2187,7 +2196,8 @@
       "paymentMethod": "Payment method",
       "receipt": "Receipt",
       "actions": "Actions",
-      "tags": "Tags"
+      "tags": "Tags",
+      "status": "Status"
     },
     "receiptStatus": {
       "pending": "Pending",
@@ -2416,7 +2426,9 @@
         "allocationAmount": "Amount",
         "allocationRemove": "Remove allocation",
         "allocationAdd": "Add allocation",
-        "allocationsHint": "Allocations must sum to the total amount. Leave empty for unallocated."
+        "allocationsHint": "Allocations must sum to the total amount. Leave empty for unallocated.",
+        "campaignsLoading": "Loading campaigns…",
+        "campaignWithStatus": "{name} ({status})"
       },
       "paymentMethods": {
         "wire": "Bank transfer",
@@ -2486,6 +2498,23 @@
         "error": "Could not open the receipt. Please try again.",
         "missing": "No receipt available yet."
       }
+    },
+    "status": {
+      "pending": "Pending",
+      "cleared": "Cleared",
+      "refunded": "Refunded",
+      "failed": "Failed"
+    },
+    "paymentMethods": {
+      "wire": "Bank transfer",
+      "bank_transfer": "Bank transfer",
+      "cheque": "Cheque",
+      "check": "Cheque",
+      "card": "Card",
+      "stripe": "Online payment (Stripe)",
+      "sepa": "SEPA direct debit",
+      "cash": "Cash",
+      "other": "Other"
     }
   },
   "constituents": {
@@ -2786,7 +2815,8 @@
       "steps": {
         "template": "Download template",
         "upload": "Upload file",
-        "progress": "Progress"
+        "progress": "Progress",
+        "ariaLabel": "Import progress"
       },
       "template": {
         "title": "Step 1 — Download the template",
@@ -3616,8 +3646,6 @@
     },
     "actions": {
       "edit": "Edit",
-      "merge": "Merge",
-      "exportGdpr": "GDPR export",
       "delete": "Delete"
     },
     "tabs": {
@@ -3655,13 +3683,6 @@
         "lastDonation": "Donation of {amount} received",
         "profileCreated": "Profile created"
       }
-    },
-    "aiSuggestion": {
-      "ariaLabel": "AI suggestion",
-      "label": "AI suggestion",
-      "body": "This donor hasn't given in 14 months — consider sending a re-engagement email.",
-      "apply": "Apply",
-      "ignore": "Ignore"
     }
   },
   "dataTable": {
@@ -3730,7 +3751,8 @@
       "inAppHint": "Show in the bell and notifications panel",
       "emailDigest": "Email digest",
       "emailDigestHint": "Include in the daily digest email at 09:00 UTC",
-      "defaultBadge": "Default"
+      "defaultBadge": "Default",
+      "updateFailed": "Update failed"
     },
     "types": {
       "donation_received": {

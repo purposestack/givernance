@@ -31,7 +31,9 @@
       "backToDashboard": "Retour au tableau de bord",
       "search": "Rechercher",
       "or": "ou",
-      "submitting": "Enregistrement…"
+      "submitting": "Enregistrement…",
+      "close": "Fermer",
+      "clearSearch": "Effacer la recherche"
     },
     "footer": {
       "platform": "Givernance NPO Platform",
@@ -39,7 +41,8 @@
     },
     "brandingFallback": {
       "altText": "Logo provisoire de {orgName}"
-    }
+    },
+    "breadcrumb": "Fil d'Ariane"
   },
   "auth": {
     "login": {
@@ -314,6 +317,10 @@
       "description": "Un problème est survenu de notre côté. Notre équipe a été notifiée et travaille à résoudre le problème.",
       "errorId": "ID erreur : {digest}",
       "dashboardLink": "Vous pouvez aussi retourner au <link>tableau de bord</link>."
+    },
+    "app": {
+      "title": "Impossible d'afficher cette page",
+      "description": "Une erreur est survenue de notre côté lors du chargement de cette page. Notre équipe a été prévenue. Vous pouvez réessayer ou revenir au tableau de bord."
     }
   },
   "appShell": {
@@ -1779,6 +1786,8 @@
       "errors": {
         "resendGeneric": "Impossible de renvoyer l'invitation. Veuillez réessayer.",
         "revokeGeneric": "Impossible de révoquer l'invitation. Veuillez réessayer.",
+        "removeSelf": "Vous ne pouvez pas retirer votre propre compte de l'espace.",
+        "removeLastAdmin": "Impossible de retirer le·la dernier·ère admin de l'espace — promouvez d'abord un·e autre admin.",
         "removeGeneric": "Impossible de retirer le membre. Veuillez réessayer."
       }
     },
@@ -2187,7 +2196,8 @@
       "paymentMethod": "Paiement",
       "receipt": "Reçu",
       "actions": "Actions",
-      "tags": "Tags"
+      "tags": "Tags",
+      "status": "Statut"
     },
     "receiptStatus": {
       "pending": "En attente",
@@ -2416,7 +2426,9 @@
         "allocationAmount": "Montant",
         "allocationRemove": "Supprimer la ligne",
         "allocationAdd": "Ajouter une ligne",
-        "allocationsHint": "Les répartitions doivent totaliser le montant du don. Laissez vide pour un don non-alloué."
+        "allocationsHint": "Les répartitions doivent totaliser le montant du don. Laissez vide pour un don non-alloué.",
+        "campaignsLoading": "Chargement des campagnes…",
+        "campaignWithStatus": "{name} ({status})"
       },
       "paymentMethods": {
         "wire": "Virement bancaire",
@@ -2486,6 +2498,23 @@
         "error": "Impossible d'ouvrir le reçu. Réessayez.",
         "missing": "Aucun reçu disponible pour l'instant."
       }
+    },
+    "status": {
+      "pending": "En attente",
+      "cleared": "Encaissé",
+      "refunded": "Remboursé",
+      "failed": "Échoué"
+    },
+    "paymentMethods": {
+      "wire": "Virement bancaire",
+      "bank_transfer": "Virement bancaire",
+      "cheque": "Chèque",
+      "check": "Chèque",
+      "card": "Carte bancaire",
+      "stripe": "Paiement en ligne (Stripe)",
+      "sepa": "Prélèvement SEPA",
+      "cash": "Espèces",
+      "other": "Autre"
     }
   },
   "constituents": {
@@ -2786,7 +2815,8 @@
       "steps": {
         "template": "Télécharger le modèle",
         "upload": "Charger le fichier",
-        "progress": "Progression"
+        "progress": "Progression",
+        "ariaLabel": "Progression de l'import"
       },
       "template": {
         "title": "Étape 1 — Télécharger le modèle",
@@ -3616,8 +3646,6 @@
     },
     "actions": {
       "edit": "Modifier",
-      "merge": "Fusionner",
-      "exportGdpr": "Export RGPD",
       "delete": "Supprimer"
     },
     "tabs": {
@@ -3655,13 +3683,6 @@
         "lastDonation": "Don de {amount} reçu",
         "profileCreated": "Profil créé"
       }
-    },
-    "aiSuggestion": {
-      "ariaLabel": "Suggestion IA",
-      "label": "Suggestion IA",
-      "body": "Ce donateur n'a pas donné depuis 14 mois — envisagez un email de réactivation.",
-      "apply": "Appliquer",
-      "ignore": "Ignorer"
     }
   },
   "dataTable": {
@@ -3730,7 +3751,8 @@
       "inAppHint": "Afficher dans la cloche et le panneau de notifications",
       "emailDigest": "Résumé par email",
       "emailDigestHint": "Inclure dans le résumé quotidien envoyé à 09 h 00 UTC",
-      "defaultBadge": "Par défaut"
+      "defaultBadge": "Par défaut",
+      "updateFailed": "Échec de la mise à jour"
     },
     "types": {
       "donation_received": {

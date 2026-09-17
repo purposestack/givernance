@@ -104,12 +104,23 @@ No new endpoints — the change rides existing constituent routes; guards are un
 | Endpoint | Guard | Multi-type behaviour |
 |---|---|---|
 | `GET /v1/constituents` | `requireAuth` | accepts `?types=` (repeatable) + legacy `?type=`; overlap filter |
-| `GET /v1/constituents/:id` | `requireAuth` | returns `types` + `type` |
+| `GET /v1/constituents/:id` | `requireAuth` | returns `types` + `type`; also the profile's giving totals `lifetimeAmountCents` + `lastDonationAt` (see § 4.1) |
 | `POST /v1/constituents` | `requireWrite` | accepts `types`; 422 if >1 and flag off |
 | `PUT /v1/constituents/:id` | `requireWrite` | accepts `types`; 422 if >1 and flag off |
 | `DELETE /v1/constituents/:id` | `requireOrgAdmin` | unchanged |
 | `POST /v1/constituents/:id/merge` | `requireOrgAdmin` | unchanged |
 | Advanced filter routes | (existing `advanced_filters` flag) | `constituent.type` is array-typed |
+
+### 4.1 Detail giving totals (issue #614)
+
+`GET /v1/constituents/:id` returns two server-computed fields so the profile's "Total donated" / "Last activity" stats cover the constituent's **whole** giving history — they were previously derived client-side from one page of 10 donations:
+
+| Field | Meaning |
+|---|---|
+| `lifetimeAmountCents` | `SUM(donations.amount_base_cents)` over the constituent's **cleared** donations, in the tenant's base currency. `0` when they have never given. Pending, failed and refunded donations are excluded — they are not money received. |
+| `lastDonationAt` | `MAX(donations.donated_at)` over the same cleared set (ISO-8601), or `null`. |
+
+The aggregate runs inside the route's `withTenantContext` with an explicit `eq(donations.orgId, …)` predicate next to the `constituent_id` one (issue #430). The fields live on a detail-only response schema, so the write routes (`POST` / `PUT` / `DELETE`) never project them. No new PII: both are aggregates of data the caller can already read through `GET /v1/donations?constituentId=`.
 
 ## 5. Privacy / GDPR posture
 

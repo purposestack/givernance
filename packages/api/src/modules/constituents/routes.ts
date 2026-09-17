@@ -276,14 +276,26 @@ const ConstituentResponse = Type.Object({
 
 /**
  * List-only row shape: `ConstituentResponse` + `lastDonationAt` (issue
- * #215). The detail endpoint (`GET /v1/constituents/:id`) doesn't compute
- * the aggregate, so the field lives on the list row only — modeling it
- * here means TypeBox response validation drops the field from any other
- * route's payload, even if a future refactor accidentally projects it.
+ * #215). Modeled apart from the base shape so TypeBox response validation
+ * drops the field from the write routes' payloads, even if a future refactor
+ * accidentally projects it.
  */
 const ConstituentListRow = Type.Composite([
   ConstituentResponse,
   Type.Object({
+    lastDonationAt: Type.Union([Type.Null(), Type.String()]),
+  }),
+]);
+
+/**
+ * Detail shape (`GET /v1/constituents/:id`): `ConstituentResponse` + the
+ * giving totals shown on the profile (issue #614). CLEARED donations only,
+ * `lifetimeAmountCents` in the tenant's base currency.
+ */
+const ConstituentDetailResponse = Type.Composite([
+  ConstituentResponse,
+  Type.Object({
+    lifetimeAmountCents: Type.Integer(),
     lastDonationAt: Type.Union([Type.Null(), Type.String()]),
   }),
 ]);
@@ -627,7 +639,7 @@ export async function constituentRoutes(app: FastifyInstance) {
       schema: {
         tags: ["Constituents"],
         params: IdParams,
-        response: { 200: DataResponse(ConstituentResponse), ...ErrorResponses },
+        response: { 200: DataResponse(ConstituentDetailResponse), ...ErrorResponses },
       },
     },
     async (request, reply) => {

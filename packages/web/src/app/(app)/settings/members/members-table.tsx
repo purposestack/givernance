@@ -91,6 +91,24 @@ function resolveMemberUpdateError(
   return t("editDialog.errors.generic");
 }
 
+/**
+ * Map an `ApiProblem` from `DELETE /v1/users/:id` to a localised toast
+ * message — same `errorCode` convention as `resolveMemberUpdateError`.
+ */
+function resolveMemberRemoveError(
+  err: unknown,
+  t: ReturnType<typeof useTranslations<"settings.members">>,
+): string {
+  const code =
+    err instanceof ApiProblem && typeof err.extensions.errorCode === "string"
+      ? err.extensions.errorCode
+      : undefined;
+  if (code === "cannot_remove_self") return t("errors.removeSelf");
+  if (code === "cannot_remove_last_admin") return t("errors.removeLastAdmin");
+  if (err instanceof ApiProblem) return err.detail ?? err.title ?? t("errors.removeGeneric");
+  return t("errors.removeGeneric");
+}
+
 interface MembersTableProps {
   members: Member[];
   pagination: DataTablePagination;
@@ -150,11 +168,7 @@ export function MembersTable({
       router.refresh();
     } catch (err) {
       if (!(err instanceof ApiProblem)) console.error("members.remove failed", err);
-      const message =
-        err instanceof ApiProblem
-          ? (err.detail ?? err.title ?? t("errors.removeGeneric"))
-          : t("errors.removeGeneric");
-      toast.error(message);
+      toast.error(resolveMemberRemoveError(err, t));
     } finally {
       setIsMutating(false);
     }
@@ -227,7 +241,13 @@ export function MembersTable({
       cell: ({ row }) => (
         <RowActions
           onEdit={() => setEditTarget(row.original)}
-          onRemove={() => setRemoveTarget(row.original)}
+          // Self-removal lock (issue #614): no "Remove" on the caller's own
+          // row. The API's `cannot_remove_self` 422 is the durable gate.
+          onRemove={
+            row.original.keycloakId === currentUserKeycloakId
+              ? undefined
+              : () => setRemoveTarget(row.original)
+          }
           disabled={isMutating}
           editLabel={t("actions.edit")}
           removeLabel={t("actions.remove")}
@@ -307,7 +327,8 @@ export function MembersTable({
 
 interface RowActionsProps {
   onEdit: () => void;
-  onRemove: () => void;
+  /** Omitted on the caller's own row — the "Remove" item is not rendered. */
+  onRemove?: () => void;
   disabled: boolean;
   editLabel: string;
   removeLabel: string;
@@ -340,10 +361,12 @@ function RowActions({
           <Pencil size={16} aria-hidden="true" />
           {editLabel}
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={onRemove} className="text-error focus:text-error">
-          <Trash2 size={16} aria-hidden="true" />
-          {removeLabel}
-        </DropdownMenuItem>
+        {onRemove ? (
+          <DropdownMenuItem onSelect={onRemove} className="text-error focus:text-error">
+            <Trash2 size={16} aria-hidden="true" />
+            {removeLabel}
+          </DropdownMenuItem>
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   );

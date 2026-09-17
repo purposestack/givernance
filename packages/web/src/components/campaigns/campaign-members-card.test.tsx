@@ -94,6 +94,7 @@ describe("CampaignMembersCard", () => {
     initialMembers: mockMembers,
     initialTotal: 1,
     doorDrop: false,
+    advancedFiltersEnabled: true,
   };
 
   beforeEach(() => {

@@ -133,6 +133,7 @@ describe("DonationForm", () => {
           paymentMethod: "wire",
           paymentRef: "WIRE-2026-0001",
           status: "cleared",
+          campaign: null,
           donatedAt: "2026-04-22T00:00:00.000Z",
           fiscalYear: 2026,
           createdAt: "2026-04-22T00:00:00.000Z",
@@ -169,6 +170,54 @@ describe("DonationForm", () => {
     expect(mockToast.success).toHaveBeenCalledWith("Donation updated.");
     expect(mockRouter.push).toHaveBeenCalledWith("/donations/33333333-3333-4333-8333-333333333333");
     expect(mockRouter.refresh).toHaveBeenCalled();
+  });
+
+  it("prepends the donation's non-active campaign so the select isn't empty when editing (issue #614)", async () => {
+    const campaignId = "44444444-4444-4444-8444-444444444444";
+    vi.spyOn(CampaignService, "listCampaigns").mockResolvedValue({
+      data: [],
+      pagination: { page: 1, perPage: 100, total: 0, totalPages: 0 },
+    });
+    const getCampaign = vi.spyOn(CampaignService, "getCampaign").mockResolvedValue({
+      id: campaignId,
+      name: "Winter appeal",
+      status: "closed",
+      defaultCurrency: "EUR",
+    } as Awaited<ReturnType<typeof CampaignService.getCampaign>>);
+    vi.spyOn(CampaignService, "getCampaignFunds").mockResolvedValue([]);
+
+    render(
+      <DonationForm
+        mode="edit"
+        donation={{
+          id: "33333333-3333-4333-8333-333333333333",
+          orgId: "org-1",
+          constituentId: "22222222-2222-4222-8222-222222222222",
+          amountCents: 2550,
+          currency: "EUR",
+          campaignId,
+          paymentMethod: "wire",
+          paymentRef: null,
+          status: "cleared",
+          campaign: { id: campaignId, name: "Winter appeal" },
+          donatedAt: "2026-04-22T00:00:00.000Z",
+          fiscalYear: 2026,
+          createdAt: "2026-04-22T00:00:00.000Z",
+          updatedAt: "2026-04-22T00:00:00.000Z",
+          constituent: {
+            id: "22222222-2222-4222-8222-222222222222",
+            firstName: "Ada",
+            lastName: "Lovelace",
+            email: "ada@example.com",
+          },
+          allocations: [],
+        }}
+      />,
+    );
+
+    await waitFor(() => expect(getCampaign).toHaveBeenCalledWith(expect.anything(), campaignId));
+    // The closed campaign is selectable again, labelled with its status.
+    expect((await screen.findAllByText("Winter appeal (Closed)")).length).toBeGreaterThan(0);
   });
 
   it("flags incomplete allocation rows instead of dropping them silently", () => {

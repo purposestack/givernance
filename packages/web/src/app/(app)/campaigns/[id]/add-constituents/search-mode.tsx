@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { ConstituentListRow } from "@/models/constituent";
 
+import type { AddConstituentsTranslator } from "./add-constituents-content";
+
 interface SearchModeProps {
   searchQuery: string;
   searchResults: ConstituentListRow[];
@@ -14,10 +16,10 @@ interface SearchModeProps {
   onSearch: (query: string) => void;
   onToggleConstituent: (id: string, selected: boolean) => void;
   onAdd: () => void;
-  t: (key: string, values?: Record<string, unknown>) => string;
+  t: AddConstituentsTranslator;
   ProgressDisplay: React.FC<{
     progress: number;
-    t: (key: string, values?: Record<string, unknown>) => string;
+    t: AddConstituentsTranslator;
   }>;
   SearchResultItem: React.FC<{
     constituent: ConstituentListRow;

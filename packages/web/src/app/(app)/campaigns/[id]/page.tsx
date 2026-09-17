@@ -30,6 +30,7 @@ import { createServerApiClient } from "@/lib/api/client-server";
 import { hasPermission, requireAuth } from "@/lib/auth/guards";
 import { isPostalMergedPdfEnabled } from "@/lib/feature-flags/server";
 import { formatCurrency, formatDate, formatPercent } from "@/lib/format";
+import { redirectPastLastPage } from "@/lib/pagination";
 import type { Campaign, CampaignRoiMetrics, CampaignStats } from "@/models/campaign";
 import type { DonationListResponse, DonationSortField, DonationSortOrder } from "@/models/donation";
 import { BankAccountService } from "@/services/BankAccountService";
@@ -249,13 +250,18 @@ export default async function CampaignDetailPage({
   // off / fetch failure ⇒ no defs ⇒ every custom surface absent.
   let campaignCustomEnabled = false;
   let constituentCustomEnabled = false;
+  // Epic #418 — with `advanced_filters` off the members card's Filter button,
+  // FilterBuilder and applied-filters strip are absent (issue #614).
+  let advancedFiltersEnabled = false;
   try {
     const flags = await FeatureFlagsService.listPublic(client);
+    advancedFiltersEnabled = isFlagEnabled(flags, FEATURE_FLAG_KEYS.ADVANCED_FILTERS);
     campaignCustomEnabled = isFlagEnabled(flags, FEATURE_FLAG_KEYS.CAMPAIGNS_CUSTOM_FIELDS);
     constituentCustomEnabled = isFlagEnabled(flags, FEATURE_FLAG_KEYS.CONSTITUENTS_CUSTOM_FIELDS);
   } catch {
     campaignCustomEnabled = false;
     constituentCustomEnabled = false;
+    advancedFiltersEnabled = false;
   }
   // Campaign-domain fields use the detail catalog (includeArchived) so
   // archived definitions' stored values stay visible on this page; the
@@ -300,6 +306,9 @@ export default async function CampaignDetailPage({
     getTranslations("donations"),
     getLocale(),
   ]);
+
+  // Issue #614 — a donations page past the last one redirects to the last real page.
+  redirectPastLastPage(`/campaigns/${id}`, sp, donationsResult.pagination);
   const totalCostDisplayValue =
     roiMetrics.totalCostCents > 0
       ? formatCurrency(roiMetrics.totalCostCents, locale)
@@ -418,6 +427,7 @@ export default async function CampaignDetailPage({
               initialExports={postalExports}
               donorCustomDefs={donorDefs}
               mergedPdfEnabled={mergedPdfEnabled}
+              advancedFiltersEnabled={advancedFiltersEnabled}
             />
           ) : null}
           <DonationBreakdownCard

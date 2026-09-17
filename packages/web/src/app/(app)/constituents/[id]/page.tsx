@@ -1,10 +1,11 @@
 import { FEATURE_FLAG_KEYS } from "@givernance/shared/constants";
 import type { CustomFieldValues } from "@givernance/shared/custom-fields";
-import { Download, FileText, GitMerge, Mail, Pencil, Sparkles, Trash2 } from "lucide-react";
+import { FileText, Mail, Pencil } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
 import { ConstituentTypeBadges } from "@/components/constituents/constituent-type-badge";
+import { DeleteConstituentButton } from "@/components/constituents/delete-constituent-button";
 import {
   CustomFieldDetailRows,
   type DetailCustomFieldDefinition,
@@ -17,7 +18,7 @@ import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
 import { hasPermission, requireAuth } from "@/lib/auth/guards";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { type Constituent, fullName, initials } from "@/models/constituent";
+import { type Constituent, type ConstituentDetail, fullName, initials } from "@/models/constituent";
 import type { Donation, DonationListResponse } from "@/models/donation";
 import { ConstituentService } from "@/services/ConstituentService";
 import { DonationService } from "@/services/DonationService";
@@ -54,7 +55,7 @@ function parsePositiveInt(value: string | string[] | undefined, fallback: number
   return max ? Math.min(parsed, max) : parsed;
 }
 
-async function fetchConstituentOrNotFound(id: string): Promise<Constituent> {
+async function fetchConstituentOrNotFound(id: string): Promise<ConstituentDetail> {
   const client = await createServerApiClient();
   try {
     return await ConstituentService.getConstituent(client, id);
@@ -135,12 +136,11 @@ export default async function ConstituentDetailPage({ params, searchParams }: De
   const t = await getTranslations("constituentDetail");
   const tType = await getTranslations("constituents.types");
   const tCustom = await getTranslations("customFields");
+  const tCommon = await getTranslations("common");
   const locale = await getLocale();
 
-  const totalDonatedCents = donationsResult.data.reduce(
-    (sum: number, d: Donation) => sum + d.amountCents,
-    0,
-  );
+  // Timeline teaser only — the giving totals come from the API (issue #614),
+  // never from this one page of donations.
   const lastDonation = donationsResult.data[0];
 
   return (
@@ -148,6 +148,7 @@ export default async function ConstituentDetailPage({ params, searchParams }: De
       <DetailBreadcrumbs
         constituentName={fullName(constituent)}
         labels={{
+          ariaLabel: tCommon("breadcrumb"),
           root: t("breadcrumbRoot"),
           constituents: t("breadcrumbConstituents"),
         }}
@@ -168,27 +169,15 @@ export default async function ConstituentDetailPage({ params, searchParams }: De
           email: t("profile.email"),
           phone: t("profile.phone"),
           edit: t("actions.edit"),
-          merge: t("actions.merge"),
-          exportGdpr: t("actions.exportGdpr"),
-          delete: t("actions.delete"),
-        }}
-      />
-      <AiSuggestionCard
-        labels={{
-          ariaLabel: t("aiSuggestion.ariaLabel"),
-          label: t("aiSuggestion.label"),
-          body: t("aiSuggestion.body"),
-          apply: t("aiSuggestion.apply"),
-          ignore: t("aiSuggestion.ignore"),
         }}
       />
       <DetailTabs
         overview={
           <>
             <OverviewTab
-              totalDonatedCents={totalDonatedCents}
+              totalDonatedCents={constituent.lifetimeAmountCents}
               donationCount={donationsResult.pagination.total}
-              lastDonationAt={lastDonation?.donatedAt}
+              lastDonationAt={constituent.lastDonationAt}
               locale={locale}
               labels={{
                 ariaLabel: t("overview.ariaLabel"),
@@ -286,10 +275,10 @@ function DetailBreadcrumbs({
   labels,
 }: {
   constituentName: string;
-  labels: { root: string; constituents: string };
+  labels: { ariaLabel: string; root: string; constituents: string };
 }) {
   return (
-    <nav aria-label="Breadcrumb" className="mb-2">
+    <nav aria-label={labels.ariaLabel} className="mb-2">
       <ol className="flex items-center gap-2 text-sm text-on-surface-variant">
         <li>
           <Link href="/dashboard" className="whitespace-nowrap hover:text-on-surface">
@@ -322,9 +311,6 @@ interface ProfileLabels {
   email: string;
   phone: string;
   edit: string;
-  merge: string;
-  exportGdpr: string;
-  delete: string;
 }
 
 function ProfileCard({
@@ -355,8 +341,8 @@ function ProfileCard({
     <section
       aria-label={labels.ariaLabel}
       // ADR-035 rule A2 — content cascades in reading order: profile
-      // header (0) → AI suggestion (1) → tabs block (2). Breadcrumbs are
-      // static structure (rule A1). Pure CSS on server-rendered markup.
+      // header (0) → tabs block (1). Breadcrumbs are static structure
+      // (rule A1). Pure CSS on server-rendered markup.
       className="mb-6 flex flex-col gap-5 rounded-2xl bg-surface-container-lowest p-6 border border-border-brand md:flex-row md:items-start reveal-item"
     >
       <div
@@ -399,6 +385,7 @@ function ProfileCard({
 
       <ProfileActions
         constituentId={constituent.id}
+        constituentName={fullName(constituent)}
         canManageAdminActions={canManageAdminActions}
         canWrite={canWrite}
         labels={labels}
@@ -435,27 +422,31 @@ function ContactLink({ href, children }: { href: string; children: string }) {
 
 function ProfileActions({
   constituentId,
+  constituentName,
   canManageAdminActions,
   canWrite,
   labels,
 }: {
   constituentId: string;
+  constituentName: string;
   /**
-   * Merge (`POST /v1/constituents/:id/merge`) and Delete
-   * (`DELETE /v1/constituents/:id`) both require `org_admin` server-side.
-   * Hide the affordances for non-admins so they don't see buttons that
-   * would 403 once wired up.
+   * Delete (`DELETE /v1/constituents/:id`) requires `org_admin` server-side.
+   * Hide the affordance for non-admins so they don't see a button that
+   * would 403.
    */
   canManageAdminActions: boolean;
   /**
    * `false` for the `viewer` role — Edit (`PUT /v1/constituents/:id`) is
    * `requireWrite` server-side. Hide the button so viewers land on a
-   * read-only profile view rather than a CTA that would 403. Export GDPR
-   * stays visible because it's a read-side stub.
+   * read-only profile view rather than a CTA that would 403.
    */
   canWrite: boolean;
   labels: ProfileLabels;
 }) {
+  // Issue #614 — only actions with a backing flow render. The permanently
+  // disabled Merge / Export GDPR placeholders are gone until those profile
+  // flows exist.
+  if (!canWrite && !canManageAdminActions) return null;
   return (
     <div className="flex flex-wrap items-center gap-2 md:shrink-0">
       {canWrite ? (
@@ -467,50 +458,9 @@ function ProfileActions({
         </Button>
       ) : null}
       {canManageAdminActions ? (
-        <Button variant="secondary" size="sm" disabled>
-          <GitMerge size={16} aria-hidden="true" />
-          {labels.merge}
-        </Button>
-      ) : null}
-      <Button variant="secondary" size="sm" disabled>
-        <Download size={16} aria-hidden="true" />
-        {labels.exportGdpr}
-      </Button>
-      {canManageAdminActions ? (
-        <Button variant="destructive" size="sm" disabled>
-          <Trash2 size={16} aria-hidden="true" />
-          {labels.delete}
-        </Button>
+        <DeleteConstituentButton constituentId={constituentId} constituentName={constituentName} />
       ) : null}
     </div>
-  );
-}
-
-function AiSuggestionCard({
-  labels,
-}: {
-  labels: { ariaLabel: string; label: string; body: string; apply: string; ignore: string };
-}) {
-  return (
-    <section
-      aria-label={labels.ariaLabel}
-      className="mb-6 rounded-2xl border border-primary/20 bg-primary-50/40 p-5 reveal-item"
-      style={{ "--cascade-i": 1 } as React.CSSProperties}
-    >
-      <div className="flex items-center gap-2 text-primary">
-        <Sparkles size={16} aria-hidden="true" />
-        <span className="font-mono text-xs font-bold uppercase tracking-wide">{labels.label}</span>
-      </div>
-      <p className="mt-2 text-sm text-on-surface">{labels.body}</p>
-      <div className="mt-3 flex items-center gap-2">
-        <Button size="sm" variant="primary" disabled>
-          {labels.apply}
-        </Button>
-        <Button size="sm" variant="ghost" disabled>
-          {labels.ignore}
-        </Button>
-      </div>
-    </section>
   );
 }
 
@@ -532,7 +482,7 @@ function OverviewTab({
 }: {
   totalDonatedCents: number;
   donationCount: number;
-  lastDonationAt: string | undefined;
+  lastDonationAt: string | null;
   locale: string;
   labels: OverviewLabels;
 }) {
