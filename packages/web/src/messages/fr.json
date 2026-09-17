@@ -3636,8 +3636,6 @@
     },
     "actions": {
       "edit": "Modifier",
-      "merge": "Fusionner",
-      "exportGdpr": "Export RGPD",
       "delete": "Supprimer"
     },
     "tabs": {
@@ -3675,13 +3673,6 @@
         "lastDonation": "Don de {amount} reçu",
         "profileCreated": "Profil créé"
       }
-    },
-    "aiSuggestion": {
-      "ariaLabel": "Suggestion IA",
-      "label": "Suggestion IA",
-      "body": "Ce donateur n'a pas donné depuis 14 mois — envisagez un email de réactivation.",
-      "apply": "Appliquer",
-      "ignore": "Ignorer"
     }
   },
   "dataTable": {

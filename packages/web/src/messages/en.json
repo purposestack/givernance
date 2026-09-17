@@ -3636,8 +3636,6 @@
     },
     "actions": {
       "edit": "Edit",
-      "merge": "Merge",
-      "exportGdpr": "GDPR export",
       "delete": "Delete"
     },
     "tabs": {
@@ -3675,13 +3673,6 @@
         "lastDonation": "Donation of {amount} received",
         "profileCreated": "Profile created"
       }
-    },
-    "aiSuggestion": {
-      "ariaLabel": "AI suggestion",
-      "label": "AI suggestion",
-      "body": "This donor hasn't given in 14 months — consider sending a re-engagement email.",
-      "apply": "Apply",
-      "ignore": "Ignore"
     }
   },
   "dataTable": {

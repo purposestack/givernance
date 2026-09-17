@@ -3,13 +3,12 @@
  * page's server data fetches run on navigation (ADR-035 rule A5:
  * data-shaped ghosts, no shimmer, no spinner). Mirrors the final
  * geometry of ./page.tsx — breadcrumbs, the profile card (72px avatar +
- * name + badges + contact grid + action row), the AI suggestion card,
- * then the tabs region (TabsList pill strip + overview panel with its
- * 3-stat grid) — so real content replaces the ghosts with zero layout
- * shift (rule A6). The breadcrumb ghost is static structure (rule A1);
- * the three content blocks cascade subtly via `.cascade`, matching the
- * real page's profile → AI → tabs reveal order. Reduced motion collapses
- * the cascade globally (rule E17).
+ * name + badges + contact grid + action row), then the tabs region
+ * (TabsList pill strip + overview panel with its 3-stat grid) — so real
+ * content replaces the ghosts with zero layout shift (rule A6). The
+ * breadcrumb ghost is static structure (rule A1); the two content blocks
+ * cascade subtly via `.cascade`, matching the real page's profile → tabs
+ * reveal order. Reduced motion collapses the cascade globally (rule E17).
  *
  * Deliberately a synchronous, data-free server component: no
  * translations, no fetches — the sr-only label is hardcoded in the
@@ -17,7 +16,7 @@
  * must never itself wait on anything.
  */
 
-const ACTION_GHOSTS = ["action-1", "action-2", "action-3"] as const;
+const ACTION_GHOSTS = ["action-1", "action-2"] as const;
 const STAT_GHOSTS = ["stat-1", "stat-2", "stat-3"] as const;
 
 export default function ConstituentDetailLoading() {
@@ -53,16 +52,6 @@ export default function ConstituentDetailLoading() {
             {ACTION_GHOSTS.map((key) => (
               <div key={key} className="ghost h-[var(--btn-height-sm)] w-28" />
             ))}
-          </div>
-        </div>
-
-        {/* AI suggestion card ghost. */}
-        <div className="rounded-2xl border border-primary/20 bg-primary-50/40 p-5">
-          <div className="ghost h-4 w-32" />
-          <div className="ghost mt-2 h-5 w-full max-w-2xl" />
-          <div className="mt-3 flex items-center gap-2">
-            <div className="ghost h-[var(--btn-height-sm)] w-24" />
-            <div className="ghost h-[var(--btn-height-sm)] w-20" />
           </div>
         </div>
 
