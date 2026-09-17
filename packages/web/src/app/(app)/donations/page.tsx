@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
 import { hasPermission, requireAuth } from "@/lib/auth/guards";
+import { redirectPastLastPage } from "@/lib/pagination";
 import type {
   DonationListQuery,
   DonationListResponse,
@@ -205,6 +206,8 @@ export default async function DonationsPage({ searchParams }: DonationsPageProps
   };
 
   const { result, advancedFilterInvalid } = await fetchDonationList(client, listQuery);
+  // Issue #614 — a page past the last one redirects to the last real page.
+  redirectPastLastPage("/donations", params, result.pagination);
 
   const hasAny = result.pagination.total > 0;
   // The date-range filter now lives INSIDE the table's search row (the

@@ -30,6 +30,7 @@ import { createServerApiClient } from "@/lib/api/client-server";
 import { hasPermission, requireAuth } from "@/lib/auth/guards";
 import { isPostalMergedPdfEnabled } from "@/lib/feature-flags/server";
 import { formatCurrency, formatDate, formatPercent } from "@/lib/format";
+import { redirectPastLastPage } from "@/lib/pagination";
 import type { Campaign, CampaignRoiMetrics, CampaignStats } from "@/models/campaign";
 import type { DonationListResponse, DonationSortField, DonationSortOrder } from "@/models/donation";
 import { BankAccountService } from "@/services/BankAccountService";
@@ -305,6 +306,9 @@ export default async function CampaignDetailPage({
     getTranslations("donations"),
     getLocale(),
   ]);
+
+  // Issue #614 — a donations page past the last one redirects to the last real page.
+  redirectPastLastPage(`/campaigns/${id}`, sp, donationsResult.pagination);
   const totalCostDisplayValue =
     roiMetrics.totalCostCents > 0
       ? formatCurrency(roiMetrics.totalCostCents, locale)

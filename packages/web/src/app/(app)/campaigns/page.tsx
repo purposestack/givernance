@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
 import { hasPermission, requireAuth } from "@/lib/auth/guards";
+import { redirectPastLastPage } from "@/lib/pagination";
 import type { CampaignListResponse, CampaignSortField, CampaignSortOrder } from "@/models/campaign";
 import { CampaignService } from "@/services/CampaignService";
 import { FeatureFlagsService, isFlagEnabled } from "@/services/FeatureFlagsService";
@@ -109,6 +110,9 @@ export default async function CampaignsPage({ searchParams }: CampaignsPageProps
       throw err;
     }
   }
+
+  // Issue #614 — a page past the last one redirects to the last real page.
+  redirectPastLastPage("/campaigns", params, result.pagination);
 
   const campaignsWithStats = await Promise.all(
     result.data.map(async (campaign) => ({

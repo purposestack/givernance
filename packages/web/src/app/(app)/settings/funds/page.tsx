@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { createServerApiClient } from "@/lib/api/client-server";
 import { requireAuth } from "@/lib/auth/guards";
+import { redirectPastLastPage } from "@/lib/pagination";
 import type { FundSortField, FundSortOrder } from "@/models/fund";
 import { FundService } from "@/services/FundService";
 
@@ -57,6 +58,8 @@ export default async function FundsPage({ searchParams }: FundsPageProps) {
 
   const client = await createServerApiClient();
   const result = await FundService.listFunds(client, { page, perPage, sort, order });
+  // Issue #614 — a page past the last one redirects to the last real page.
+  redirectPastLastPage("/settings/funds", params, result.pagination);
 
   const hasAny = result.pagination.total > 0;
 

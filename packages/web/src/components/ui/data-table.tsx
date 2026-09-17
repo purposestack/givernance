@@ -352,8 +352,8 @@ export function DataTable<TData>({
                  * `rowPadding`, but this cell hosts a block component, so it
                  * needs its own `py-5` — without it the empty state sits
                  * flush against the thead border above and the container
-                 * edge below (the pagination footer is hidden when
-                 * `!hasRows`). Fixed here once for every DataTable consumer.
+                 * edge below (the pagination footer is hidden for an empty
+                 * first page). Fixed here once for every DataTable consumer.
                  */}
                 <td colSpan={columns.length} className="px-5 py-5">
                   {emptyState}
@@ -364,7 +364,9 @@ export function DataTable<TData>({
         </table>
       </div>
 
-      {hasRows && pagination && onPageChange ? (
+      {/* Footer also renders on an EMPTY page past the first (issue #614) so
+          the operator can page back instead of hitting a dead end. */}
+      {(hasRows || (pagination?.page ?? 1) > 1) && pagination && onPageChange ? (
         <div className="flex flex-col gap-3 border-t border-border-brand px-5 py-3 text-sm text-on-surface-variant sm:flex-row sm:items-center sm:justify-between">
           <span>
             {t("pageOf", { page: pagination.page, totalPages: Math.max(pagination.totalPages, 1) })}

@@ -14,6 +14,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const listConstituentsMock = vi.fn();
 const isFlagEnabledMock = vi.fn<(flags: unknown, key: string) => boolean>(() => false);
 
+const redirectMock = vi.fn((href: string) => {
+  // Mirror Next: `redirect()` never returns.
+  throw new Error(`NEXT_REDIRECT:${href}`);
+});
+
+vi.mock("next/navigation", () => ({
+  redirect: (href: string) => redirectMock(href),
+}));
+
 vi.mock("next-intl/server", () => ({
   getTranslations: async () => (key: string, values?: Record<string, string | number>) =>
     values ? `${key} ${JSON.stringify(values)}` : key,
@@ -116,5 +125,36 @@ describe("ConstituentsPage — basic More filters passthrough", () => {
     const query = lastListQuery();
     expect(query.lastDonationFrom).toBeUndefined();
     expect(query.minLifetimeAmountCents).toBeUndefined();
+  });
+});
+
+describe("ConstituentsPage — page past the last one (issue #614)", () => {
+  beforeEach(() => {
+    redirectMock.mockClear();
+    isFlagEnabledMock.mockReset();
+    isFlagEnabledMock.mockReturnValue(false);
+  });
+
+  it("redirects to the last real page, preserving the other params", async () => {
+    listConstituentsMock.mockReset();
+    listConstituentsMock.mockResolvedValue({
+      data: [],
+      pagination: { page: 9, perPage: 20, total: 45, totalPages: 3 },
+    });
+
+    await expect(renderPage({ page: "9", search: "dupont" })).rejects.toThrow(
+      "NEXT_REDIRECT:/constituents?search=dupont&page=3",
+    );
+  });
+
+  it("does not redirect a genuinely empty list", async () => {
+    listConstituentsMock.mockReset();
+    listConstituentsMock.mockResolvedValue({
+      data: [],
+      pagination: { page: 4, perPage: 20, total: 0, totalPages: 0 },
+    });
+
+    await renderPage({ page: "4" });
+    expect(redirectMock).not.toHaveBeenCalled();
   });
 });

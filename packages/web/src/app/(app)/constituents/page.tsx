@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { ApiProblem } from "@/lib/api";
 import { createServerApiClient } from "@/lib/api/client-server";
 import { hasPermission, requireAuth } from "@/lib/auth/guards";
+import { redirectPastLastPage } from "@/lib/pagination";
 import type {
   ConstituentListResponse,
   ConstituentSortField,
@@ -231,6 +232,9 @@ export default async function ConstituentsPage({ searchParams }: ConstituentsPag
       throw err;
     }
   }
+
+  // Issue #614 — a page past the last one redirects to the last real page.
+  redirectPastLastPage("/constituents", params, result.pagination);
 
   const hasAny = result.pagination.total > 0;
   // A zero-result view REACHED THROUGH filtering must keep the table shell
