@@ -108,6 +108,13 @@ interface CampaignMembersCardProps {
   /** Disable add/remove for door-drop campaigns (no recipient list by definition). */
   doorDrop: boolean;
   /**
+   * Whether `advanced_filters` is enabled for this tenant (Epic #418),
+   * SSR-resolved by the campaign page. When false the Filter button, the
+   * FilterBuilder dialog and the applied-filters strip are completely absent
+   * — the filter endpoints 404 with the flag off (issue #614).
+   */
+  advancedFiltersEnabled: boolean;
+  /**
    * Notify the parent when the linked-constituent count changes (Epic #274
    * UX bug). The campaign detail page passes a sibling `PostalExportPanel`
    * the same count to gate the "Personalized" mode toggle — without this
@@ -177,6 +184,7 @@ export function CampaignMembersCard({
   initialTotal,
   donorCustomDefs = [],
   doorDrop,
+  advancedFiltersEnabled,
   onTotalChanged,
 }: CampaignMembersCardProps) {
   const t = useTranslations("campaigns.postal.members");
@@ -217,6 +225,8 @@ export function CampaignMembersCard({
   // full set of filters used so far. Per-campaign scoping (the storage key
   // includes `campaignId`) keeps two campaigns from cross-leaking context.
   useEffect(() => {
+    // Flag off ⇒ the strip is absent, so there is nothing to hydrate.
+    if (!advancedFiltersEnabled) return;
     if (typeof window === "undefined") return;
     try {
       const raw = window.localStorage.getItem(filterStorageKey(campaignId));
@@ -230,7 +240,7 @@ export function CampaignMembersCard({
     } catch {
       // localStorage may throw under privacy-locked profiles; ignore.
     }
-  }, [campaignId, patternLabelFor]);
+  }, [advancedFiltersEnabled, campaignId, patternLabelFor]);
 
   // Notify the parent whenever the local `total` shifts. Done from an effect
   // (not inside the `setTotal` updater) so a strict-mode / concurrent render
@@ -554,15 +564,17 @@ export function CampaignMembersCard({
                 {t("actions.clearList")}
               </Button>
             )}
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              onClick={() => setFilterDialogOpen(true)}
-            >
-              <Filter size={16} aria-hidden="true" />
-              {t("actions.filter")}
-            </Button>
+            {advancedFiltersEnabled ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={() => setFilterDialogOpen(true)}
+              >
+                <Filter size={16} aria-hidden="true" />
+                {t("actions.filter")}
+              </Button>
+            ) : null}
             <Button type="button" size="sm" onClick={() => setDialogOpen(true)}>
               <Plus size={16} aria-hidden="true" />
               {t("actions.add")}
@@ -570,7 +582,7 @@ export function CampaignMembersCard({
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          {activeFilters.length > 0 && (
+          {advancedFiltersEnabled && activeFilters.length > 0 && (
             // Read-only record of HOW this list was built — the advanced
             // filter(s) last applied to bulk-add constituents. NOT a live
             // selection lens: applying a filter immediately links every match
@@ -610,12 +622,14 @@ export function CampaignMembersCard({
         onAdded={handleAdded}
       />
 
-      <FilterBuilder
-        open={filterDialogOpen}
-        onOpenChange={setFilterDialogOpen}
-        onApply={handleApplyFilters}
-        initialQuery={lastAppliedQuery ?? undefined}
-      />
+      {advancedFiltersEnabled ? (
+        <FilterBuilder
+          open={filterDialogOpen}
+          onOpenChange={setFilterDialogOpen}
+          onApply={handleApplyFilters}
+          initialQuery={lastAppliedQuery ?? undefined}
+        />
+      ) : null}
 
       <AlertDialog open={clearConfirmOpen} onOpenChange={setClearConfirmOpen}>
         <AlertDialogContent>

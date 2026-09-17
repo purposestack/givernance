@@ -56,6 +56,65 @@ type UpdateUserGuardResult =
   | { kind: "cannot_demote_last_admin" };
 
 /**
+ * Count the ACTIVE org_admins of the tenant other than `excludeUserId`.
+ * Shared by the PATCH (demote) and DELETE (remove) last-admin guards. A
+ * soft-deleted admin is not a remaining admin (issue #614).
+ */
+async function countOtherActiveAdmins(
+  tx: Parameters<Parameters<typeof withTenantContext>[1]>[0],
+  orgId: string,
+  excludeUserId: string,
+): Promise<number> {
+  const countRows = await tx
+    .select({ count: sql<number>`count(*)::int` })
+    .from(users)
+    .where(
+      and(
+        eq(users.orgId, orgId),
+        eq(users.role, "org_admin"),
+        ne(users.id, excludeUserId),
+        isNull(users.deletedAt),
+      ),
+    );
+  return countRows[0]?.count ?? 0;
+}
+
+/**
+ * DELETE /v1/users/:id guards (issue #614) — mirrors the PATCH role guards.
+ *  - Self-removal lock: a caller removing their own row walks out of their
+ *    own org. The UI hides "Remove" on the caller's row, but the API gate is
+ *    the durable enforcement.
+ *  - Last-admin lock-out: refuse to remove the only remaining ACTIVE
+ *    org_admin. Recovery from a zero-admin tenant requires super_admin
+ *    intervention.
+ */
+async function guardUserRemoval(
+  tx: Parameters<Parameters<typeof withTenantContext>[1]>[0],
+  args: {
+    existing: { id: string; keycloakId: string | null; role: string };
+    orgId: string;
+    callerKcId: string;
+  },
+): Promise<"cannot_remove_self" | "cannot_remove_last_admin" | null> {
+  const { existing, orgId, callerKcId } = args;
+  if (existing.keycloakId !== null && existing.keycloakId === callerKcId) {
+    return "cannot_remove_self";
+  }
+  if (existing.role === "org_admin") {
+    const remainingAdmins = await countOtherActiveAdmins(tx, orgId, existing.id);
+    if (remainingAdmins === 0) return "cannot_remove_last_admin";
+  }
+  return null;
+}
+
+/** Human-readable `detail` for the structured DELETE 422s. */
+const USER_REMOVAL_GUARD_DETAIL = {
+  cannot_remove_self: "An org_admin cannot remove their own account from the organisation.",
+  cannot_remove_last_admin:
+    "Cannot remove the last org_admin in this tenant — promote another admin first.",
+} as const;
+
+/**
  * Load the target user (ADR-021 — soft-deleted rows excluded so the 404
  * path is the same as cross-tenant or non-existent), then walk the three
  * role-change guards (missing keycloak link, self-demote, last admin).
@@ -105,19 +164,7 @@ async function loadAndGuardUserUpdate(
   // org_admin even when the caller is a different admin. Recovery from a
   // zero-admin tenant requires super_admin intervention.
   if (body.role !== undefined && existing.role === "org_admin" && body.role !== "org_admin") {
-    const countRows = await tx
-      .select({ count: sql<number>`count(*)::int` })
-      .from(users)
-      .where(
-        and(
-          eq(users.orgId, orgId),
-          eq(users.role, "org_admin"),
-          ne(users.id, existing.id),
-          // Issue #614 — a soft-deleted admin is not a remaining admin.
-          isNull(users.deletedAt),
-        ),
-      );
-    const remainingAdmins = countRows[0]?.count ?? 0;
+    const remainingAdmins = await countOtherActiveAdmins(tx, orgId, existing.id);
     if (remainingAdmins === 0) {
       return { kind: "cannot_demote_last_admin" };
     }
@@ -999,34 +1046,9 @@ export async function userRoutes(app: FastifyInstance) {
           };
         }
 
-        // Self-removal lock (issue #614) — a caller removing their own row
-        // walks out of their own org. The UI hides "Remove" on the caller's
-        // row, but the API gate is the durable enforcement (mirrors the
-        // PATCH `cannot_self_demote` guard).
-        if (existing.keycloakId !== null && existing.keycloakId === callerKcId) {
-          return { kind: "cannot_remove_self" as const };
-        }
-
-        // Last-admin lock-out (issue #614) — refuse to remove the only
-        // remaining ACTIVE org_admin. Recovery from a zero-admin tenant
-        // requires super_admin intervention.
-        if (existing.role === "org_admin") {
-          const countRows = await tx
-            .select({ count: sql<number>`count(*)::int` })
-            .from(users)
-            .where(
-              and(
-                eq(users.orgId, orgId),
-                eq(users.role, "org_admin"),
-                ne(users.id, existing.id),
-                isNull(users.deletedAt),
-              ),
-            );
-          const remainingAdmins = countRows[0]?.count ?? 0;
-          if (remainingAdmins === 0) {
-            return { kind: "cannot_remove_last_admin" as const };
-          }
-        }
+        // Self-removal + last-admin locks (issue #614).
+        const blocked = await guardUserRemoval(tx, { existing, orgId, callerKcId });
+        if (blocked) return { kind: "blocked" as const, code: blocked };
 
         // Soft-delete: clear keycloakId so any future query treating it
         // as a foreign key into KC misses (the realm user is about to
@@ -1070,26 +1092,12 @@ export async function userRoutes(app: FastifyInstance) {
           detail: t("errors.notFound", { resource: t("resources.user") }),
         });
       }
-      if (result.kind === "cannot_remove_self") {
-        // Structured 422 — `code: cannot_remove_self` lets the UI render a
-        // targeted message without string-matching the detail.
+      if (result.kind === "blocked") {
+        // Structured 422 — `errorCode` lets the UI render a targeted message
+        // without string-matching the detail (same shape as the PATCH guards).
         return reply.status(422).send({
-          ...problemDetail(
-            422,
-            "Unprocessable Entity",
-            "An org_admin cannot remove their own account from the organisation.",
-          ),
-          errorCode: "cannot_remove_self",
-        });
-      }
-      if (result.kind === "cannot_remove_last_admin") {
-        return reply.status(422).send({
-          ...problemDetail(
-            422,
-            "Unprocessable Entity",
-            "Cannot remove the last org_admin in this tenant — promote another admin first.",
-          ),
-          errorCode: "cannot_remove_last_admin",
+          ...problemDetail(422, "Unprocessable Entity", USER_REMOVAL_GUARD_DETAIL[result.code]),
+          errorCode: result.code,
         });
       }
 

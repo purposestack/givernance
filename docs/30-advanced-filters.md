@@ -283,6 +283,15 @@ shows only the legacy basic dialog (no builder button, no chip strip, no
   list untouched, and list-row response-shape stability.
 - **Frontend**: `FilterCondition` renders no value input for `isNull`/`isNotNull`;
   the existing builder/preview/chip suites cover the reconciled catalog.
+- **Off-state on campaign surfaces** (issue #614): the campaign detail and
+  add-constituents pages SSR-resolve `advanced_filters` and pass
+  `advancedFiltersEnabled` down; with the flag off the members card's Filter
+  button, FilterBuilder and applied-filters strip, and the recipient picker's
+  "Advanced filters" card, are absent (`postal-campaign-section.test.tsx`,
+  `add-constituents/__tests__/page.test.tsx`). With the flag off the
+  constituents list falls back to the basic "More filters" dialog, whose
+  `lastDonationFrom` / `lastDonationTo` / `minLifetimeAmountCents` params the
+  page validates and forwards to `GET /v1/constituents`.
 
 ## 7. Out of scope (roadmap)
 Deliberately **not** in this PR — the audit chose a correct, working subset over

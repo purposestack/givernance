@@ -85,6 +85,23 @@ function parseNonNegativeInt(value: string | string[] | undefined): number | und
   return Number.isSafeInteger(parsed) ? parsed : undefined;
 }
 
+/**
+ * Basic "More filters" dialog params — the only filter entry point when
+ * `advanced_filters` is off. With the flag on the FilterBuilder replaces the
+ * dialog, so nothing is forwarded.
+ */
+function parseBasicFilters(
+  params: Record<string, string | string[] | undefined>,
+  advancedFiltersEnabled: boolean,
+) {
+  if (advancedFiltersEnabled) return {};
+  return {
+    lastDonationFrom: parseIsoDateTime(params.lastDonationFrom),
+    lastDonationTo: parseIsoDateTime(params.lastDonationTo),
+    minLifetimeAmountCents: parseNonNegativeInt(params.minLifetimeAmountCents),
+  };
+}
+
 export default async function ConstituentsPage({ searchParams }: ConstituentsPageProps) {
   const auth = await requireAuth();
   const canManageAdminActions = auth.roles.includes("org_admin");
@@ -185,14 +202,9 @@ export default async function ConstituentsPage({ searchParams }: ConstituentsPag
     sort,
     order,
     filters: effectiveFilters,
-    // Basic "More filters" dialog (issue #614) — the only filter entry point
-    // when `advanced_filters` is off. With the flag on the FilterBuilder
-    // replaces the dialog, so these params are not forwarded.
-    lastDonationFrom: advancedFiltersEnabled ? undefined : parseIsoDateTime(params.lastDonationFrom),
-    lastDonationTo: advancedFiltersEnabled ? undefined : parseIsoDateTime(params.lastDonationTo),
-    minLifetimeAmountCents: advancedFiltersEnabled
-      ? undefined
-      : parseNonNegativeInt(params.minLifetimeAmountCents),
+    // Basic "More filters" dialog (issue #614) — forwarded only with
+    // `advanced_filters` off.
+    ...parseBasicFilters(params, advancedFiltersEnabled),
   };
 
   let result: ConstituentListResponse;

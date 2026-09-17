@@ -1,4 +1,3 @@
-// @ts-nocheck
 "use client";
 
 import { useRouter } from "next/navigation";
@@ -21,8 +20,13 @@ interface AddConstituentsContentProps {
   mode: "filter" | "search";
 }
 
+/** The `campaigns.addConstituents` translator, shared with the mode components. */
+export type AddConstituentsTranslator = ReturnType<
+  typeof useTranslations<"campaigns.addConstituents">
+>;
+
 // Helper function to handle errors
-function getErrorMessage(err: unknown, t: (key: string) => string): string {
+function getErrorMessage(err: unknown, t: AddConstituentsTranslator): string {
   return err instanceof ApiProblem
     ? (err.detail ?? err.title ?? t("errors.addFailed"))
     : t("errors.addFailed");
@@ -49,7 +53,7 @@ function completeAddOperation(
 }
 
 // Progress display component
-function ProgressDisplay({ progress, t }: { progress: number; t: (key: string) => string }) {
+function ProgressDisplay({ progress, t }: { progress: number; t: AddConstituentsTranslator }) {
   return (
     <div className="space-y-2">
       <Progress value={progress} />
@@ -159,17 +163,17 @@ export function AddConstituentsContent({ campaignId, mode }: AddConstituentsCont
     setAdding(true);
     setProgress(0);
 
+    // Issue #614 — the simulated-progress interval is cleared in EVERY path
+    // (try/finally); it used to keep ticking after a failed add.
+    const progressInterval = startProgressInterval(setProgress);
     try {
       const client = createClientApiClient();
-      const progressInterval = startProgressInterval(setProgress);
-
       const result = await PostalCampaignService.addMembersFromFilter(
         client,
         campaignId,
         filterQuery,
       );
 
-      clearInterval(progressInterval);
       toast.success(
         t("success.addedFromFilter", {
           added: result.added,
@@ -182,6 +186,8 @@ export function AddConstituentsContent({ campaignId, mode }: AddConstituentsCont
       toast.error(getErrorMessage(err, t));
       setAdding(false);
       setProgress(0);
+    } finally {
+      clearInterval(progressInterval);
     }
   }, [campaignId, filterQuery, previewCount, router, t]);
 
@@ -191,17 +197,17 @@ export function AddConstituentsContent({ campaignId, mode }: AddConstituentsCont
     setAdding(true);
     setProgress(0);
 
+    // Issue #614 — the simulated-progress interval is cleared in EVERY path
+    // (try/finally); it used to keep ticking after a failed add.
+    const progressInterval = startProgressInterval(setProgress);
     try {
       const client = createClientApiClient();
-      const progressInterval = startProgressInterval(setProgress);
-
       const result = await PostalCampaignService.addMembers(
         client,
         campaignId,
         Array.from(selectedIds),
       );
 
-      clearInterval(progressInterval);
       toast.success(
         t("success.addedFromSearch", {
           added: result.added,
@@ -214,6 +220,8 @@ export function AddConstituentsContent({ campaignId, mode }: AddConstituentsCont
       toast.error(getErrorMessage(err, t));
       setAdding(false);
       setProgress(0);
+    } finally {
+      clearInterval(progressInterval);
     }
   }, [campaignId, selectedIds, router, t]);
 

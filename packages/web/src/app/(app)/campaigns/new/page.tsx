@@ -5,11 +5,11 @@ import { CampaignForm } from "@/components/campaigns/campaign-form";
 import { fetchCustomFieldDefinitionsOrEmpty } from "@/components/shared/custom-fields";
 import { PageHeader } from "@/components/shared/page-header";
 import { createServerApiClient } from "@/lib/api/client-server";
-import { requirePermission } from "@/lib/auth/guards";
+import { hasPermission, requirePermission } from "@/lib/auth/guards";
 import { FeatureFlagsService, isFlagEnabled } from "@/services/FeatureFlagsService";
 
 export default async function NewCampaignPage() {
-  await requirePermission("write");
+  const auth = await requirePermission("write");
   const t = await getTranslations("campaigns.form");
   const tCampaigns = await getTranslations("campaigns");
 
@@ -43,7 +43,11 @@ export default async function NewCampaignPage() {
           header/shell stay static (rule A1). The wrapper animates
           opacity/transform only — zero layout shift (rule A6). */}
       <div className="reveal-item">
-        <CampaignForm mode="create" customFieldDefs={customFieldDefs} />
+        <CampaignForm
+          mode="create"
+          customFieldDefs={customFieldDefs}
+          canManageRecipients={hasPermission(auth, "admin")}
+        />
       </div>
     </>
   );

@@ -94,6 +94,36 @@ describe("CampaignForm", () => {
     expect(mockRouter.refresh).toHaveBeenCalled();
   });
 
+  // Issue #614 — the recipient endpoints are `requireOrgAdmin` (docs/23 §7),
+  // so only org admins continue to the add-constituents step.
+  it.each([
+    {
+      canManageRecipients: true,
+      target: "/campaigns/22222222-2222-4222-8222-222222222222/add-constituents",
+    },
+    { canManageRecipients: false, target: "/campaigns/22222222-2222-4222-8222-222222222222" },
+  ])("redirects a new nominative postal campaign to $target when canManageRecipients=$canManageRecipients", async ({
+    canManageRecipients,
+    target,
+  }) => {
+    const user = userEvent.setup();
+
+    vi.spyOn(CampaignService, "createCampaign").mockResolvedValue({
+      ...parentCampaign,
+      id: "22222222-2222-4222-8222-222222222222",
+      name: "Postal Appeal",
+      type: "nominative_postal",
+    });
+
+    render(<CampaignForm mode="create" canManageRecipients={canManageRecipients} />);
+
+    await waitFor(() => expect(CampaignService.listCampaigns).toHaveBeenCalled());
+    await user.type(screen.getByPlaceholderText("Spring appeal 2026"), "Postal Appeal");
+    await user.click(screen.getByRole("button", { name: "Create campaign" }));
+
+    await waitFor(() => expect(mockRouter.push).toHaveBeenCalledWith(target));
+  });
+
   it("surfaces API validation errors at the form level", async () => {
     const user = userEvent.setup();
 

@@ -11,6 +11,8 @@ import {
 import { Button } from "@/components/ui/button";
 import type { FilterQuery } from "@/services/PostalCampaignService";
 
+import type { AddConstituentsTranslator } from "./add-constituents-content";
+
 interface FilterModeProps {
   filterQuery: FilterQuery | null;
   previewCount: number | null;
@@ -19,10 +21,10 @@ interface FilterModeProps {
   progress: number;
   onFilterChange: (filter: FilterQuery) => void | Promise<void>;
   onAdd: () => void;
-  t: (key: string, values?: Record<string, unknown>) => string;
+  t: AddConstituentsTranslator;
   ProgressDisplay: React.FC<{
     progress: number;
-    t: (key: string, values?: Record<string, unknown>) => string;
+    t: AddConstituentsTranslator;
   }>;
 }
 

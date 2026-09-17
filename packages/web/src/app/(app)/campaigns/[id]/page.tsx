@@ -249,13 +249,18 @@ export default async function CampaignDetailPage({
   // off / fetch failure ⇒ no defs ⇒ every custom surface absent.
   let campaignCustomEnabled = false;
   let constituentCustomEnabled = false;
+  // Epic #418 — with `advanced_filters` off the members card's Filter button,
+  // FilterBuilder and applied-filters strip are absent (issue #614).
+  let advancedFiltersEnabled = false;
   try {
     const flags = await FeatureFlagsService.listPublic(client);
+    advancedFiltersEnabled = isFlagEnabled(flags, FEATURE_FLAG_KEYS.ADVANCED_FILTERS);
     campaignCustomEnabled = isFlagEnabled(flags, FEATURE_FLAG_KEYS.CAMPAIGNS_CUSTOM_FIELDS);
     constituentCustomEnabled = isFlagEnabled(flags, FEATURE_FLAG_KEYS.CONSTITUENTS_CUSTOM_FIELDS);
   } catch {
     campaignCustomEnabled = false;
     constituentCustomEnabled = false;
+    advancedFiltersEnabled = false;
   }
   // Campaign-domain fields use the detail catalog (includeArchived) so
   // archived definitions' stored values stay visible on this page; the
@@ -418,6 +423,7 @@ export default async function CampaignDetailPage({
               initialExports={postalExports}
               donorCustomDefs={donorDefs}
               mergedPdfEnabled={mergedPdfEnabled}
+              advancedFiltersEnabled={advancedFiltersEnabled}
             />
           ) : null}
           <DonationBreakdownCard
