@@ -1,8 +1,15 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { AppShell } from "@/components/layout";
 import { Toaster } from "@/components/ui/toast";
 import { AuthProvider } from "@/lib/auth";
 import { requireAuth } from "@/lib/auth/guards";
+
+// The back office must never surface in search results (issue #615) —
+// same non-discoverability posture as the 404-instead-of-403 guard below.
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+};
 
 /**
  * Back-office layout — guarded by `super_admin` realm role.

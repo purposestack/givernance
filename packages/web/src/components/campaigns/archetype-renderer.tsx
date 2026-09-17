@@ -1,7 +1,7 @@
 "use client";
 
 import { isPublicPageStyleKey, type PublicPageStyleKey } from "@givernance/shared/constants";
-import { type CSSProperties, type ReactNode, useEffect, useState } from "react";
+import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from "react";
 
 import { loadArchetype } from "@/archetypes/registry";
 import type { ArchetypeModule, ArchetypePageData } from "@/archetypes/types";
@@ -46,13 +46,26 @@ interface ArchetypeRendererProps {
    */
   formNode: ReactNode;
   /**
-   * Pre-rendered "loading the archetype bundle" placeholder shown
-   * between hydration start and the lazy-imported module landing.
-   * Defaults to a minimal skeleton; callers can pass the hardcoded
-   * pre-Epic-362 layout for the best fallback experience.
+   * A complete, working donation page (the donor page passes the
+   * hardcoded pre-Epic-362 layout, with its own live form). It is the
+   * server-rendered output and the donor-protection path (issue #615):
+   *
+   * - **Slot bundle failed to load** (or the key is invalid) → shown
+   *   immediately; the donor can still give.
+   * - **Slot bundle still loading** → in the DOM but held invisible by
+   *   `.archetype-fallback-pending` (`_shell.css`) for a few seconds, so
+   *   the common fast path doesn't flash one design and then swap to
+   *   another. The reveal is a pure-CSS delay: if hydration itself never
+   *   happens, the donor still ends up on a visible page.
+   *
+   * Omitted by the campaign-editor preview, which renders nothing until
+   * the bundle lands.
    */
   fallback?: ReactNode;
 }
+
+/** Stripe appends this to `return_url` after a 3DS / bank redirect. */
+const STRIPE_RETURN_PARAM = "payment_intent_client_secret";
 
 export function ArchetypeRenderer({
   styleKey,
@@ -61,7 +74,11 @@ export function ArchetypeRenderer({
   fallback = null,
 }: ArchetypeRendererProps) {
   const [archetype, setArchetype] = useState<ArchetypeModule | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  // True once the fallback IS the page for this visit — never swapped
+  // out afterwards.
+  const [fallbackSettled, setFallbackSettled] = useState(false);
+  const fallbackEngagedRef = useRef(false);
+  const hasFallback = fallback !== null;
 
   // Load the archetype's slot bundle whenever the operator-picked or
   // URL-overridden style changes. `data` / `formNode` are NOT in
@@ -69,38 +86,58 @@ export function ArchetypeRenderer({
   // effect only triggers on style key.
   useEffect(() => {
     if (!isPublicPageStyleKey(styleKey)) {
-      setLoadError(true);
+      setFallbackSettled(true);
+      return;
+    }
+    // The fallback carries its own `<PublicDonationForm>`, and the
+    // archetype would mount a SECOND instance in its place. On a Stripe
+    // return the first instance resolves the PaymentIntent and strips the
+    // redirect params from the URL — the second would then find nothing
+    // and show an empty form to a donor who has just paid. So a Stripe
+    // return settles on the fallback and never loads the archetype.
+    if (hasFallback && new URLSearchParams(window.location.search).has(STRIPE_RETURN_PARAM)) {
+      setFallbackSettled(true);
       return;
     }
     let cancelled = false;
     loadArchetype(styleKey)
       .then((mod) => {
-        if (!cancelled) {
-          setArchetype(mod);
-          setLoadError(false);
+        if (cancelled) return;
+        // Same double-instance hazard on a slow connection: the fallback
+        // was revealed and the donor is already in its form. Swapping now
+        // would wipe what they typed and drop their focus — keep them on
+        // the page they are using.
+        if (hasFallback && fallbackEngagedRef.current) {
+          setFallbackSettled(true);
+          return;
         }
+        setArchetype(mod);
+        setFallbackSettled(false);
       })
       .catch(() => {
-        if (!cancelled) setLoadError(true);
+        // Hard fail — slot bundle couldn't load. Telemetry on this event
+        // is not yet wired; the fallback is the donor-protection mechanism.
+        if (!cancelled) setFallbackSettled(true);
       });
     return () => {
       cancelled = true;
     };
-  }, [styleKey]);
+  }, [styleKey, hasFallback]);
 
-  if (loadError) {
-    // Hard fail — slot bundle couldn't load. Fall through to the
-    // shell's hardcoded layout (the `fallback` prop) so the donor
-    // can still complete a donation. The shell-level fallback is the
-    // immediate donor-protection mechanism; telemetry on this event
-    // is not yet wired.
-    return <>{fallback}</>;
-  }
-
-  if (!archetype) {
-    // Module still loading — render the shell's fallback briefly so
-    // the donor sees real content immediately, not a flash of blank.
-    return <>{fallback}</>;
+  if (fallbackSettled || !archetype) {
+    if (!hasFallback) return null;
+    // One wrapper for both the pending and the settled state so the
+    // fallback's form keeps its React state when the class flips.
+    return (
+      <div
+        className={fallbackSettled ? undefined : "archetype-fallback-pending"}
+        onFocusCapture={() => {
+          fallbackEngagedRef.current = true;
+        }}
+      >
+        {fallback}
+      </div>
+    );
   }
 
   const { Hero, Progress, AmountPicker, Footer } = archetype;

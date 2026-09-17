@@ -66,3 +66,28 @@
     grid-column: 1 / -1;
   }
 }
+
+/*
+ * Donor-protection fallback (issue #615). While the archetype's slot
+ * bundle is loading, `<ArchetypeRenderer>` keeps the server-rendered
+ * hardcoded layout in the DOM but invisible, then reveals it after 3 s
+ * with a zero-duration delayed animation. Fast path: the archetype lands
+ * first and the donor never sees one design swapped for another. Slow or
+ * broken path: the donor gets a working page without any JavaScript
+ * having to run (a load ERROR drops this class immediately instead of
+ * waiting). `visibility` — not `display` — so the layout box is already
+ * sized and the hidden form stays out of the tab order.
+ *
+ * Not motion: the global reduced-motion block shortens durations, not
+ * delays, so the reveal behaves the same for every donor.
+ */
+.archetype-fallback-pending {
+  visibility: hidden;
+  animation: archetype-fallback-reveal 0s linear 3s forwards;
+}
+
+@keyframes archetype-fallback-reveal {
+  to {
+    visibility: visible;
+  }
+}

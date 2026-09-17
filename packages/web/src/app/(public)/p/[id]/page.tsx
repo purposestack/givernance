@@ -1,8 +1,10 @@
 import { isPublicPageStyleKey, type PublicPageStyleKey } from "@givernance/shared/constants";
 import { Globe2, Users } from "lucide-react";
+import type { Metadata } from "next";
 import Image from "next/image";
 import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
+import { cache, type ReactNode } from "react";
 
 import type { ArchetypePageData } from "@/archetypes/types";
 import { InitialLetterAvatar } from "@/components/branding/initial-letter-avatar";
@@ -22,6 +24,76 @@ interface PublicCampaignPageProps {
 }
 
 const DEFAULT_THEME_COLOR = "#08675b";
+
+/**
+ * Query params that render a VARIANT of the campaign page rather than the
+ * page itself: `?style=` is an archetype preview, `?qr=` is one printed
+ * letter's attribution token. Variants are `noindex`, and the canonical
+ * URL never carries them — otherwise a shared preview link or a scanned
+ * QR code could become the indexed address of the campaign (issue #615).
+ */
+const VARIANT_SEARCH_PARAMS = ["style", "qr"] as const;
+
+/**
+ * One API round-trip per request, shared by `generateMetadata` and the
+ * page. React's `cache` memoises the promise — a rejection included — so
+ * a 404 costs one call too, and both callers see the same outcome.
+ */
+const loadPublicPage = cache(async (id: string) => {
+  const client = await createServerApiClient();
+  return CampaignPublicPageService.getPublishedCampaignPublicPage(client, id);
+});
+
+/**
+ * Donor-facing metadata: what a shared link shows in a messaging app or a
+ * search result. Never throws — an unpublished / unknown campaign gets a
+ * neutral `noindex` title and the page itself renders `not-found.tsx`.
+ */
+export async function generateMetadata({
+  params,
+  searchParams,
+}: PublicCampaignPageProps): Promise<Metadata> {
+  const { id } = await params;
+  const sp = await searchParams;
+  const t = await getTranslations("publicDonationPage");
+  const unavailable: Metadata = {
+    title: t("metadata.unavailableTitle"),
+    robots: { index: false, follow: false },
+  };
+  if (!isUuid(id)) return unavailable;
+
+  let page: Awaited<ReturnType<typeof loadPublicPage>>;
+  try {
+    page = await loadPublicPage(id);
+  } catch {
+    return unavailable;
+  }
+
+  const title = page.organisationName
+    ? t("metadata.title", { campaign: page.title, organisation: page.organisationName })
+    : page.title;
+  const description = page.description || t("descriptionFallback");
+  const canonical = `/p/${id}`;
+  const isVariant = VARIANT_SEARCH_PARAMS.some((param) => sp[param] !== undefined);
+
+  return {
+    metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"),
+    title,
+    description,
+    alternates: { canonical },
+    openGraph: {
+      type: "website",
+      title,
+      description,
+      url: canonical,
+      locale: await getLocale(),
+      ...(page.organisationName ? { siteName: page.organisationName } : {}),
+      ...(page.organisationLogoUrl ? { images: [{ url: page.organisationLogoUrl }] } : {}),
+    },
+    twitter: { card: "summary", title, description },
+    ...(isVariant ? { robots: { index: false, follow: false } } : {}),
+  };
+}
 
 /**
  * Postal QR token shape: nanoid base64url, 10–32 chars (matches the
@@ -93,8 +165,10 @@ function renderArchetype(args: {
   colorPrimary: string;
   locale: string;
   qrCode: string | undefined;
+  /** The hardcoded layout — see `ArchetypeRendererProps.fallback`. */
+  fallback: ReactNode;
 }) {
-  const { id, styleKey, page, colorPrimary, locale, qrCode } = args;
+  const { id, styleKey, page, colorPrimary, locale, qrCode, fallback } = args;
   const archetypeData: ArchetypePageData = {
     campaignId: id,
     title: page.title,
@@ -126,7 +200,14 @@ function renderArchetype(args: {
       chromeless
     />
   );
-  return <ArchetypeRenderer styleKey={styleKey} data={archetypeData} formNode={donationForm} />;
+  return (
+    <ArchetypeRenderer
+      styleKey={styleKey}
+      data={archetypeData}
+      formNode={donationForm}
+      fallback={fallback}
+    />
+  );
 }
 
 export default async function PublicCampaignPage({
@@ -158,7 +239,7 @@ export default async function PublicCampaignPage({
   }
 
   try {
-    const page = await CampaignPublicPageService.getPublishedCampaignPublicPage(client, id);
+    const page = await loadPublicPage(id);
     const colorPrimary = page.colorPrimary ?? DEFAULT_THEME_COLOR;
     const onPrimary = getReadableTextColor(colorPrimary);
     const { hasGoal, showProgress, goalCents, progressPercent } = computeProgressDisplay(
@@ -176,12 +257,10 @@ export default async function PublicCampaignPage({
     const resolvedStyle: PublicPageStyleKey | null =
       styleOverride ?? (isPublicPageStyleKey(page.publicPageStyle) ? page.publicPageStyle : null);
 
-    if (resolvedStyle !== null) {
-      return renderArchetype({ id, styleKey: resolvedStyle, page, colorPrimary, locale, qrCode });
-    }
-
-    // Fall through to the hardcoded layout (no archetype picked).
-    return renderHardcodedLayout({
+    // The hardcoded layout is the whole page when no archetype is picked,
+    // and the archetype branch's `fallback` otherwise — what the server
+    // renders and what the donor keeps if the slot bundle fails to load.
+    const hardcodedLayout = renderHardcodedLayout({
       id,
       page,
       colorPrimary,
@@ -194,6 +273,26 @@ export default async function PublicCampaignPage({
       goalCents,
       progressPercent,
     });
+
+    // Exactly one `<main id="main-content">` on either branch: it is the
+    // target of the root layout's skip link, and neither the renderer nor
+    // the hardcoded layout brings its own (the renderer is also mounted
+    // inside the campaign editor, under the app shell's `<main>`).
+    return (
+      <main id="main-content">
+        {resolvedStyle !== null
+          ? renderArchetype({
+              id,
+              styleKey: resolvedStyle,
+              page,
+              colorPrimary,
+              locale,
+              qrCode,
+              fallback: hardcodedLayout,
+            })
+          : hardcodedLayout}
+      </main>
+    );
   } catch (error) {
     if (error instanceof ApiProblem && error.status === 404) {
       notFound();
@@ -235,8 +334,10 @@ function renderHardcodedLayout(args: {
     goalCents,
     progressPercent,
   } = args;
+  // A `<div>`, not a `<main>` — the page owns the single `<main>` landmark
+  // so this layout can also be nested as the archetype branch's fallback.
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(8,103,91,0.14),_transparent_42%),linear-gradient(180deg,_var(--color-surface-container-lowest)_0%,_var(--color-surface)_100%)]">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(8,103,91,0.14),_transparent_42%),linear-gradient(180deg,_var(--color-surface-container-lowest)_0%,_var(--color-surface)_100%)]">
       <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-4 py-4 sm:px-8 sm:py-6 lg:px-10 lg:py-10">
         <div className="flex justify-end">
           <Badge variant="info">
@@ -353,7 +454,7 @@ function renderHardcodedLayout(args: {
           />
         </div>
       </div>
-    </main>
+    </div>
   );
 }
 

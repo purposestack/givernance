@@ -5,9 +5,16 @@
  * The locale picker is hoisted here so every pre-auth page (login, signup,
  * invite/accept, forgot-password) inherits it without each page managing its own.
  */
+import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 import { AuthWaves } from "@/components/auth/auth-waves";
 import { LocalePicker } from "@/components/auth/locale-picker";
+
+// Login / signup / invite / reset screens are entry points for account
+// holders, not content — keep them out of search results (issue #615).
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+};
 
 export default async function AuthLayout({ children }: { children: React.ReactNode }) {
   const t = await getTranslations("common");
