@@ -52,6 +52,13 @@ beforeAll(async () => {
       (${DASHBOARD_ORG}, 'V1', 'Vol', 'volunteer', ${inCurrent.toISOString()}, ${inCurrent.toISOString()})
   `);
 
+  // Issue #611 decoy — a soft-deleted donor created this month must NOT be
+  // counted as a new donor.
+  await db.execute(sql`
+    INSERT INTO constituents (org_id, first_name, last_name, type, created_at, updated_at, deleted_at)
+    VALUES (${DASHBOARD_ORG}, 'D7', 'Deleted', 'donor', ${inCurrent.toISOString()}, ${inCurrent.toISOString()}, now())
+  `);
+
   // Pick one constituent for donation FK
   const { rows: donorRows } = await db.execute<{ id: string }>(
     sql`SELECT id FROM constituents WHERE org_id = ${DASHBOARD_ORG} AND first_name = 'D1' LIMIT 1`,
@@ -69,6 +76,18 @@ beforeAll(async () => {
       (${DASHBOARD_ORG}, ${donorId}, 7000, 'EUR', 1.00000000, 7000, ${inCurrent.toISOString()}::timestamptz),
       (${DASHBOARD_ORG}, ${donorId}, 3000, 'EUR', 1.00000000, 3000, ${inPrevious.toISOString()}::timestamptz),
       (${DASHBOARD_ORG}, ${donorId}, 999, 'EUR', 1.00000000, 999, ${beforePrevious.toISOString()}::timestamptz)
+  `);
+
+  // Issue #611 decoys — only `cleared` gifts are money raised. None of these
+  // may move the 12000 / 3000 totals asserted below.
+  await db.execute(sql`
+    INSERT INTO donations (
+      org_id, constituent_id, amount_cents, currency, exchange_rate, amount_base_cents, status, donated_at
+    )
+    VALUES
+      (${DASHBOARD_ORG}, ${donorId}, 40000, 'EUR', 1.00000000, 40000, 'refunded', ${inCurrent.toISOString()}::timestamptz),
+      (${DASHBOARD_ORG}, ${donorId}, 1500, 'EUR', 1.00000000, 1500, 'failed', ${inCurrent.toISOString()}::timestamptz),
+      (${DASHBOARD_ORG}, ${donorId}, 2500, 'EUR', 1.00000000, 2500, 'pending', ${inPrevious.toISOString()}::timestamptz)
   `);
 
   // Campaigns: 1 active in current, 2 active in previous, 1 draft in current (must NOT count)

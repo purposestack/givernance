@@ -79,6 +79,38 @@ beforeAll(async () => {
   });
   const ancientId = ancientRes.json<{ data: { id: string } }>().data.id;
 
+  // Issue #611 — only `cleared` gifts count as "gave that year".
+  // RefundedLast: the only gift (last year) was refunded → in neither report.
+  const refundedLastRes = await app.inject({
+    method: "POST",
+    url: "/v1/constituents?force=true",
+    headers: authHeader(tokenA),
+    payload: { firstName: "RefundedLast", lastName: "Donor", type: "donor" },
+  });
+  const refundedLastId = refundedLastRes.json<{ data: { id: string } }>().data.id;
+
+  // RefundedThis: cleared gift last year, this year's gift was refunded →
+  // still LYBUNT (a refunded gift is not a gift this year).
+  const refundedThisRes = await app.inject({
+    method: "POST",
+    url: "/v1/constituents?force=true",
+    headers: authHeader(tokenA),
+    payload: { firstName: "RefundedThis", lastName: "Donor", type: "donor" },
+  });
+  const refundedThisId = refundedThisRes.json<{ data: { id: string } }>().data.id;
+
+  await db.execute(sql`
+    INSERT INTO donations (
+      org_id, constituent_id, amount_cents, currency, exchange_rate,
+      amount_base_cents, status, donated_at
+    )
+    VALUES
+      (${REPORTS_ORG}, ${refundedLastId}, 9000, 'EUR', 1.00000000, 9000, 'refunded', ${`${lastYear}-05-05`}::timestamptz),
+      (${REPORTS_ORG}, ${refundedThisId}, 1100, 'EUR', 1.00000000, 1100, 'cleared', ${`${lastYear}-05-06`}::timestamptz),
+      (${REPORTS_ORG}, ${refundedThisId}, 4000, 'EUR', 1.00000000, 4000, 'refunded', ${`${thisYear}-01-02`}::timestamptz),
+      (${REPORTS_ORG}, ${refundedThisId}, 700, 'EUR', 1.00000000, 700, 'failed', ${`${lastYear}-05-07`}::timestamptz)
+  `);
+
   // Insert donations directly for precise date control
   await db.execute(sql`
     INSERT INTO donations (
@@ -171,6 +203,25 @@ describe("LYBUNT Report", () => {
     const lybunt = body.data.find((d) => d.firstName === "Lybunt");
     expect(lybunt).toBeDefined();
     expect(lybunt?.totalDonatedCents).toBe(4900);
+  });
+
+  it("ignores refunded / failed gifts on both sides of the year boundary (issue #611)", async () => {
+    const token = signToken(app, { org_id: REPORTS_ORG });
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/reports/lybunt",
+      headers: authHeader(token),
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ data: { firstName: string; totalDonatedCents: number }[] }>();
+    const names = body.data.map((d) => d.firstName);
+    // Only gift was refunded → never "gave last year".
+    expect(names).not.toContain("RefundedLast");
+    // This year's gift was refunded → still lapsed; total = cleared only.
+    const refundedThis = body.data.find((d) => d.firstName === "RefundedThis");
+    expect(refundedThis).toBeDefined();
+    expect(refundedThis?.totalDonatedCents).toBe(1100);
   });
 
   it("GET /v1/reports/lybunt accepts year query parameter", async () => {
@@ -272,6 +323,23 @@ describe("SYBUNT Report", () => {
 });
 
 // ─── Reports RLS Tenant Isolation ──────────────────────────────────────────
+
+describe("SYBUNT Report — donation status (issue #611)", () => {
+  it("excludes a donor whose only past gift was refunded, keeps cleared-only totals", async () => {
+    const token = signToken(app, { org_id: REPORTS_ORG });
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/reports/sybunt",
+      headers: authHeader(token),
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ data: { firstName: string; totalDonatedCents: number }[] }>();
+    expect(body.data.map((d) => d.firstName)).not.toContain("RefundedLast");
+    const refundedThis = body.data.find((d) => d.firstName === "RefundedThis");
+    expect(refundedThis?.totalDonatedCents).toBe(1100);
+  });
+});
 
 describe("Reports RLS tenant isolation", () => {
   it("Tenant B LYBUNT report does not include Tenant A donors", async () => {

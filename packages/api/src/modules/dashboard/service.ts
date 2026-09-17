@@ -1,7 +1,7 @@
 /** Dashboard service — month-over-month KPI aggregates */
 
 import { campaigns, constituents, donations } from "@givernance/shared/schema";
-import { and, eq, gte, lt, sql } from "drizzle-orm";
+import { and, eq, gte, isNull, lt, sql } from "drizzle-orm";
 import { withTenantContext } from "../../lib/db.js";
 
 export interface DashboardPeriod {
@@ -51,6 +51,9 @@ export async function getDashboardStats(
       .where(
         and(
           eq(donations.orgId, orgId),
+          // Money actually raised: refunded / failed / pending rows are not
+          // income (issue #611) — same rule as the campaign totals.
+          eq(donations.status, "cleared"),
           gte(donations.donatedAt, ranges.previous.start),
           lt(donations.donatedAt, ranges.current.end),
         ),
@@ -66,6 +69,7 @@ export async function getDashboardStats(
         and(
           eq(constituents.orgId, orgId),
           eq(constituents.type, "donor"),
+          isNull(constituents.deletedAt),
           gte(constituents.createdAt, ranges.previous.start),
           lt(constituents.createdAt, ranges.current.end),
         ),
