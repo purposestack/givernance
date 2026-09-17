@@ -76,7 +76,8 @@ See: /diagrams/container.mmd
 
 #### `givernance-relay` (TypeScript, standalone)
 - Outbox relay microservice: polls the `outbox_events` table using `SELECT ... FOR UPDATE SKIP LOCKED` to prevent duplicate delivery across multiple relay instances
-- Enqueues events to BullMQ `givernance_events` queue, marks rows as `completed` or `failed`
+- Enqueues events to BullMQ `givernance_events` queue and marks rows `completed`. On an enqueue error the row **stays `pending`** (the message is recorded in `outbox_events.error`) and the tick stops at the first failure — the next tick retries; `jobId = outbox row id` makes the re-add idempotent. Rows are never parked in a `failed` state nothing would re-queue (issue #612)
+- Graceful shutdown: on SIGTERM/SIGINT the poll loop is stopped, the in-flight tick is awaited (it bails out between rows, leaving the remainder `pending`), and only then are the queue, Redis connection and pg pool closed (10s hard timeout)
 - Connects to PostgreSQL via `DATABASE_URL` using the `givernance` owner role (bypasses RLS — needs access to all tenant events)
 - Strict TypeBox environment validation; Pino structured logging with PII redaction
 
@@ -87,6 +88,7 @@ See: /diagrams/container.mmd
 - Connects to PostgreSQL via `DATABASE_URL` using the `givernance` owner role (bypasses RLS — workers process jobs across tenants)
 - Strict TypeBox environment validation; Pino structured logging with PII redaction (`authorization`, `cookie`, `password`, `token`, `iban`, `cardNumber`, `cvv`, `pan`)
 - Shares types and schemas with `givernance-api` via `@givernance/shared` package; separate process entry point
+- Retry / retention policy and graceful shutdown: see §7.1a
 
 #### `givernance-migrate` (TypeScript, Drizzle Kit)
 - One-off migration tool for Salesforce data
@@ -340,7 +342,8 @@ The `org_id` used in `withTenantContext` is read from the Keycloak-signed JWT (`
    SELECT ... FROM outbox_events WHERE status = 'pending'
    ORDER BY created_at ASC LIMIT 100
    FOR UPDATE SKIP LOCKED            ← prevents duplicate delivery across relay instances
-5. Relay enqueues to BullMQ `givernance_events` queue, marks row status = 'completed' (or 'failed')
+5. Relay enqueues to BullMQ `givernance_events` queue (jobId = outbox row id), marks row status = 'completed'.
+   On an enqueue error the row stays 'pending' (error message recorded) and is retried on the next tick.
 6. BullMQ (Redis) delivers job to givernance-worker (at-least-once, with retries + dead-letter)
 ```
 
@@ -349,6 +352,26 @@ The `org_id` used in `withTenantContext` is read from the Keycloak-signed JWT (`
 **Why outbox, not direct publish**: Guarantees job delivery even if Redis is temporarily unavailable; no dual-write problem. BullMQ provides at-least-once delivery, configurable retries, dead-letter queues, and job inspection — all natively.
 
 **Phase 4 migration path**: When NATS is introduced (see §7.4), the relay will publish to NATS instead of enqueueing BullMQ directly. The outbox table schema and domain event types are unchanged — only the relay's publish target is swapped.
+
+### 7.1a Worker retry, retention and shutdown semantics (issue #612)
+
+**Where the policy lives.** BullMQ reads `attempts` / `backoff` / `removeOnComplete` / `removeOnFail` from the **`Queue` instance that `add()`s the job** (`defaultJobOptions`, merged under per-`add()` options). A `Worker` constructor ignores them, and `defaultJobOptions` are per *instance* — not stored in Redis — so **every producer** (worker router, API routes, ops scripts) must build its queue handle with the same options. The single source of truth is `defaultJobOptionsFor(queueName)` in [`packages/shared/src/jobs/queue-options.ts`](../packages/shared/src/jobs/queue-options.ts).
+
+| Queue(s) | Attempts | Backoff | Completed retention | Failed retention (DLQ, ADR-020) |
+|---|---|---|---|---|
+| Baseline — `receipts`, `emails`, `campaigns`, `postal_exports`, `branding`, `keycloak_sync`, `tenant_lifecycle`, `gdpr`, `exports` | 3 | exponential from 30s | 24h / 1000 jobs | 14d / 500 jobs |
+| `webhooks` (Stripe payloads carry donor PII; the durable record is `webhook_events`) | 3 | exponential from 30s | **1h / 100 jobs** | 14d / 500 jobs |
+| `bulk_import` (processor restarts from row 0 on a re-run — not resume-safe yet) | **1** | — | 24h / 1000 jobs | 14d / 500 jobs |
+| `givernance_events` (set per-add by the relay) | 5 | exponential from 1s | 1000 jobs | 5000 jobs |
+| Cron queues — `notifications_digest`, `custom_fields`, `finance_dashboard`, `platform_reports` | 3 | exponential from 60s | 10 jobs | 50 jobs |
+
+Per-`add()` options still win — e.g. the API's signup-resend job pins `attempts: 1` because its token rotation is not retry-safe. Retention is evaluated lazily by BullMQ (when the next job of the same kind finishes), so `age` is a lower bound, not a timer.
+
+**Job ids and dedupe.** BullMQ drops an `add()` whose `jobId` matches a job in *any* state, including a retained `completed` one. Rule: a per-entity id (`receipt-{donationId}`, `postal-export-{exportId}`, `branding-process-{assetId}`) is only valid for work that must run **once per entity**; work that legitimately recurs for the same entity (`keycloak.sync_org_logo` per tenant, `generate-campaign-documents` per campaign) is keyed on the **outbox event id**, so a relay redelivery of the same row still collapses onto one job but the next event is not discarded.
+
+**Receipts.** The fiscal year of a receipt is derived inside the processor from the donation (`donations.fiscal_year`, else the UTC year of `donated_at`) — never from the wall clock when the job runs. The processor locks the donation row and returns the existing receipt if one already exists for `(org_id, donation_id)`, so a re-run never allocates a second number from the gapless `receipt_sequences` counter.
+
+**Graceful shutdown.** On SIGTERM/SIGINT (every Kamal deploy) the worker: (1) calls `worker.close()` on every BullMQ Worker — stop fetching, wait for active jobs; (2) closes the Queue handles; (3) `quit()`s the ioredis connections it created (BullMQ never closes a caller-supplied connection); (4) ends both pg pools; (5) exits 0. Repeated signals are ignored. A hard timeout (`WORKER_SHUTDOWN_TIMEOUT_MS`, default 25s — keep it below the container runtime's stop grace period) forces exit 1; jobs still active at that point are recovered by BullMQ's stalled-job check on the next container.
 
 ### 7.2 Domain events (key examples)
 

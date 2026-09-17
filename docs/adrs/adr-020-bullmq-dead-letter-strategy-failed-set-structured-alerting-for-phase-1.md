@@ -30,6 +30,10 @@ Worker jobs retry up to 3× with exponential backoff. After attempts exhaust, Bu
 
 The generic events queue is enqueued by the relay with `attempts: 5, removeOnFail: 5000` (`packages/relay/src/relay.ts`), not the `removeOnFail: { count: 50 }` default above. Accepted: every domain event funnels through this one queue, so a 50-item failed set could evict entries before an operator triages a burst; 5000 buys a longer forensic window at negligible Redis cost (failed jobs are small JSON envelopes). Terminal-failure detection is unaffected — the `on('failed', ...)` handler compares `attemptsMade` against the job's own `opts.attempts`, so the 5-attempt override is picked up automatically.
 
+### Update — issue #612 (queue-level policy actually wired)
+
+The Context above ("jobs retry up to 3×") was only true for the four cron queues: `attempts` / `backoff` had been passed to the `Worker` constructors, which BullMQ ignores, so every outbox-routed queue and the Stripe `webhooks` queue ran with **zero retries and unbounded retention** — every first failure was terminal and logged `dlq: true`. Issue #612 moved the policy onto the producing `Queue` handles via the shared `defaultJobOptionsFor()` (`packages/shared/src/jobs/queue-options.ts`): 3 attempts with exponential backoff, failed set bounded at **14 days / 500 jobs** (inside the 30-day ceiling in the revisit criteria below), completed set at 24h / 1000. `bulk_import` stays at 1 attempt until its processor is resume-safe. The detection / alerting design in this ADR is unchanged. Full table: `docs/02-reference-architecture.md` §7.1a.
+
 ### Revisit criteria
 
 - Sustained > 10 terminal jobs / day → separate DLQ queue.
